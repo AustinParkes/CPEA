@@ -118,7 +118,7 @@ To Print Opcode
          'p8 [N]' to print hexpair list for N bytes and remember to add '00' string terminator
 To Convert to Raw Binary
     - 'xxd -r -p input.opcode output.bin' to get raw binary
-	  - Read this into Unicorn and store in char array.
+	  - Read this into Unicorn and store in char array. :)
 	  
 
 

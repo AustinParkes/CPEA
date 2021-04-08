@@ -63,4 +63,4 @@ QEMU vs Unicorn
    QEMU (full-system emulation)
       - Executes .ELF only
       - Do we need to emulate anything other than peripherals?
-        - like the stack
+        - like the stack :)

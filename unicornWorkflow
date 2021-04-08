@@ -1,0 +1,135 @@
+/* Emulating Firmware */
+Write a Unicorn program that executes a firmware
+   Memory Mapping
+      -> Need to read up on CPU intialization and Start-up files
+         to see if a startup file will even be used.
+         If not, user will have to specify a few things manually.
+        
+      - ARM defines a standardized address space of 4GB
+         - Code area starts at 0x00000000 and aliases 0x08000000 (routine at 0x080016DC and be accessed from 0x000016DC)
+            - Includes SP, Reset, Vector Table
+            - Start up file will usually initialize SP,FP, entry point, but we are doing this MANUALLY for now.
+            -> Refer to Ghidra/Radare2 to get address ranges for now. May be able to automate this later
+         - MMIO ranges 0x40000000 - 0x5fffffff 
+         - Stack / Heap (0x200xx000 - 0x20000000)
+         	- Resides in SRAM where .data (VMA) and .bss are
+         - 	
+         	
+   MMIO Callbacks 
+      - Issue a FSM for checking configurations and providing the functionality
+        according to the register accessed and bits set.
+         - May be a flowchart/diagram in actual UART hardware that helps from reference manual
+           which will detail flow for before/after DR reads/writes.    
+   
+   User Configurations
+      - Think about what needs to be configured by the user specifically to configure their emulator
+      Code
+      	 -> User needs to
+      	    1)
+      	    2)
+      	    3)
+      Peripherals
+         -> User needs to
+            1) Give address of a peripheral (e.g. USART1)
+            2) Give the register address a particular bit functionality (e.g. USART1->CR1 mapped to USART1 enable)
+            3) Give the specific bit in that register that triggers that functionality
+            
+            - Registers can be 8 bit, 32 bit, other? (check for 16 bit registers ... just keep reading on other periphs)
+               - How do we emulate for 8 bit registers? (How does fw interact with 8 bit)
+                  - I want to know if we can keep 32 bit or if we need to have two different modes for 8 bit and 32 bit
+                     (May very well need an 8 bit mode.)
+                     - How do 32 bit UARTs compare to each other and how do 8 bit  UARTS compare to each other
+
+/* Bash Automation */   
+Bash Script Automation: Entry, End, Memory Map, Code file creation, Data file Creation
+(NEED TO UPDATE THIS)  
+       Program Begin and Program End
+	   Program Sections: readelf -l SimplePollUart.elf
+	      (VirtAddr column verified with: readelf -l SimplePollUart.elf | grep 'Type' | awk '{print $3;}') 
+	      (MemSize column verified with: readelf -l SimplePollUart.elf | grep 'Type' | awk '{print $6;}')
+	   
+	      Executable Sections: readelf -l SimplePollUart.elf | grep 'LOAD' | grep 'R E'     
+		     VirtAddr: readelf -l SimplePollUart.elf | grep 'LOAD' | grep 'R E'| awk '{print $3;}'  
+		     MemSiz:   readelf -l SimplePollUart.elf | grep 'LOAD' | grep 'R E'| awk '{print $6;}'
+		       
+	      Data Sections: readelf -l SimplePollUart.elf | grep 'LOAD' | grep 'RW'
+	         VirtAddr: readelf -l SimplePollUart.elf | grep 'LOAD' | grep 'RW'| awk '{print $3;}'
+	         MemSiz:   readelf -l SimplePollUart.elf | grep 'LOAD' | grep 'RW'| awk '{print $6;}'
+	      
+	      - File start addr, File end addr (file size)
+	      - Also gives information on segments and permissions (RWE)
+	      	
+	   Executable entry (_start) and _exit:
+	   (the _exit method of searching symbol table does not work with stripped elf files so we need a work around for that)
+	   _start   	
+          Entry Point: readelf -h SimplePollUart.elf | grep 'Entry' | awk '{print $4;}'
+       May be a better way of doing this than reading the symbol table   
+       _exit   
+          End Point address: readelf -s SimplePollUart.elf | grep 'FUNC' | grep -w '_exit' | awk '{print $2}'     
+    /* Making binary to emulate */   
+	objcopy notes (arm version)
+	Process:
+		1) Copy .text section into instruction file. Will need to know start/end addresses of .text section from .elf to know how many bytes to write
+		2) Copy .data section into data file         Will need to know start/end addresses of .data section from .elf to know how many bytes to write
+		3) These files can be read into emulator and written to their respective virtual addresses
+	Commands: arm-none-eabi-objcopy -O binary -j .text SimplePollUart.elf SimplePollUart.bin.text
+	 		  arm-none-eabi-objcopy -O binary -j .data SimplePollUart.elf SimplePollUart.bin.data	
+
+
+
+/* Compiling the Emulators */
+gcc EmulateSimplePollUart.c -lunicorn -lpthread
+or
+gcc EmulatePollingUart.c -lunicorn -lpthread
+or
+gcc AdvancedUartEmulator.c -lunicorn -lpthread
+
+/* Compiling and Making Unicorn */        
+Command to install and compile Unicorn
+./make.sh (assumes config file only makes for ARM)
+sudo ./make.sh install
+
+/* Setting Unicorn Library path for GCC */
+1.) Undefined References to pthread functions
+    - place lpthread after lunicorn
+2.) Can't find libunicorn.so.1 when running executable
+    - Run 'ldd a.out' to see what libraries are found and where
+    - Add the path of libunicorn.so.1 to GCC library path @ /etc/ld.so.conf.d/x86_64-linux-gnu.conf
+    - run sudo ldconfig to update library cache
+  
+/* Old method. We use files now */    
+Assembly to Hex String
+rasm2 -a arm -C -f arm.asm
+
+/* Manually Making binaries to emulate */
+Compiling C code to 32-bit ARM
+To Produce Assembly:
+	arm-none-eabi-gcc -marm -S (--specs=nosys.specs) SimplePollUart.c -o SimplePollUart.s
+    		  	               (optional, may want to try)
+To Assemble:
+	arm-none-eabi-as -o SimplePollUart.o SimplePollUart.s
+
+To Compile,assemble,link
+	arm-none-eabi-gcc -marm SimplePoll_uart.c
+
+To Print Opcode
+   - Radare2 to print out opcode. Add '00' to end of file to add terminator.
+      - Go to entry point with command
+         'p8 [N]' to print hexpair list for N bytes and remember to add '00' string terminator
+To Convert to Raw Binary
+    - 'xxd -r -p input.opcode output.bin' to get raw binary
+	  - Read this into Unicorn and store in char array.
+	  
+
+
+
+
+
+
+
+
+
+
+
+
+

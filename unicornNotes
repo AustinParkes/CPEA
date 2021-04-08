@@ -1,0 +1,66 @@
+How are the callbacks working?
+  - give our function pointer to uc_hook_add() to add it as a callback.
+    We also give an address access range for the callback to occur in.
+   - our function pointer is assigned to hook->callback
+    - hook->callback is typecasted by typedef void (*uc_cb_hookmem_t)(...)
+     - Should callback to the function you add since hook->callback points to our function
+      - I don't know what happens when we don't assign a function.
+       -> make your own callback! (maybe)
+       
+Write simple UART interface for Unicorn to read from
+  -> Make memory mapped data register that Unicorn execution will read from
+     - Could I make entire peripheral structures to model their registers?
+     - Can I assign a guest address to this register? Such as an actually MMIO address to make emulation more realistic
+     - How does memory mapping work in general?
+       - uc_mem_map adds a memory region that can be used by emulation
+       - uc_mem_map_ptr maps existing host memory to add memory region to be used in emulator
+         - How are these different exactly?
+       - uc_mem_regions retrieves all memory regions mapped by the two above functions
+     - Can we load in an actual firmware image? 
+       - I think this is a must, although raw assembly is also a nice feature.
+  - Give insight into:
+    - Useful features that I may want to adopt
+    - API ideas for the user interface
+    - How some Unicorn functions work
+    - How unicorn works overall and what it's intended for
+   
+       
+How does QEMU read from memory with "glue()"?
+  - typedef void (*uc_cb_hookmem_t)(...) is called in this area as memory read/write/fetch callback   
+   - calls io_mem_write/read()
+    - calls memory_region_dispatch_write/read() which are the primary memory read/write functions that memory accesses are directed to in QEMU.
+    
+API Notes
+   uc_mem_map <-> map memory in for emulation
+   |  - How does this interface with QEMU memory?
+   |  - What can the memory map contain?
+   |    - It can contain code
+   |    - MMIO?
+   |    - RAM?
+   |  - What must the memory map contain?
+   |    - Depends on firmware?
+   |    - Need to map memory for stack&heap, executable binary, MMIO. (What else?)
+   |    
+   |         
+   uc_mem_write/read <-> Write/read to a range of bytes in memory
+      - How does this interface with QEMU memory?
+        - Eventually calls memory_region_dispatch_write/read()
+          - But where are these bytes actually stored?
+      - If we can map MMIO with uc_mem_map, then we could write to that MMIO. (or read from while providing simple input)
+
+   UC_HOOK_MEM_UNMAPPED <-> Triggers callback anytime unmapped memory is accessed
+      - Can be used to detect addresses that we forget to map
+      - Can detect NULL pointer dereferences
+      
+      
+QEMU vs Unicorn
+   Unicorn
+      - Executes raw binary only
+      - Whatever memory is needed for emulation needs to be mapped
+        - Once mapped, can be written to
+      - Do we need to emulate anything other than peripherals?
+        - like the stack
+   QEMU (full-system emulation)
+      - Executes .ELF only
+      - Do we need to emulate anything other than peripherals?
+        - like the stack

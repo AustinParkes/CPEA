@@ -1,3 +1,4 @@
 Configurable Peripheral Emulator for ARM
 
-Setting up Environment for Unicorn :)
+Setting up Environment for Unicorn
+Need to point GCC to unicorn library

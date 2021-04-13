@@ -78,11 +78,10 @@ Bash Script Automation: Entry, End, Memory Map, Code file creation, Data file Cr
 
 
 /* Compiling the Emulators */
-gcc EmulateSimplePollUart.c -lunicorn -lpthread
+gcc EmulateSimpleUart.c -lunicorn -lpthread
 or
-gcc EmulatePollingUart.c -lunicorn -lpthread
-or
-gcc AdvancedUartEmulator.c -lunicorn -lpthread
+gcc EmulateUart.c -lunicorn -lpthread
+
 
 /* Compiling and Making Unicorn */        
 Command to install and compile Unicorn
@@ -97,11 +96,13 @@ sudo ./make.sh install
     - Add the path of libunicorn.so.1 to GCC library path @ /etc/ld.so.conf.d/x86_64-linux-gnu.conf
     - run sudo ldconfig to update library cache
   
-/* Old method. We use files now */    
+/* Deprecated methods */ 
+
+/* Producing Hex String from assembly */   
 Assembly to Hex String
 rasm2 -a arm -C -f arm.asm
 
-/* Manually Making binaries to emulate */
+/* Manually producing binaries to emulate */
 Compiling C code to 32-bit ARM
 To Produce Assembly:
 	arm-none-eabi-gcc -marm -S (--specs=nosys.specs) SimplePollUart.c -o SimplePollUart.s

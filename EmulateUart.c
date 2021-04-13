@@ -245,7 +245,7 @@ int main(int argc, char **argv, char **envp)
 	/* Read in ARM FW here */
 	
 	//int code_size;	
-	FILE *f = fopen("armSimplePollingUart.bin", "r");
+	FILE *f = fopen("SimpleUart.bin", "r");
 	//fseek(f, 0L, SEEK_END);  		// Seek to end of file
 	//code_size = ftell(f);    		// Get size of code from file
 	//fseek(f, 0L, SEEK_SET); 		// Reset to start of file

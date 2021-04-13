@@ -82,6 +82,10 @@ gcc EmulateSimpleUart.c -lunicorn -lpthread
 or
 gcc EmulateUart.c -lunicorn -lpthread
 
+/* Compiling the Source Code to emulate */
+arm-none-eabi-gcc -specs=nosys.specs SimpleUart.c -o SimpleUart.elf
+or
+arm-none-eabi-gcc -specs=nosys.specs PollingUart.c -o PollingUart.elf
 
 /* Compiling and Making Unicorn */        
 Command to install and compile Unicorn
@@ -117,6 +121,7 @@ To Print Opcode
    - Radare2 to print out opcode. Add '00' to end of file to add terminator.
       - Go to entry point with command
          'p8 [N]' to print hexpair list for N bytes and remember to add '00' string terminator
+         
 To Convert to Raw Binary
     - 'xxd -r -p input.opcode output.bin' to get raw binary
 	  - Read this into Unicorn and store in char array. :)

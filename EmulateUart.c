@@ -11,6 +11,7 @@ Currently: Have the code binary starting at main.
 */
 
 #include <unicorn/unicorn.h>
+#include <string.h>
 /* USART1 Emulation for stm32l4xx MCUs for ARM Cortex-M */
 
 /*** Memory Map ***/
@@ -19,7 +20,7 @@ Currently: Have the code binary starting at main.
 #define FLASH_ADDR   0x00000000
 #define FLASH_SIZE   0x00080000
 
-#define CODE_ADDR    0x000081e8        // works at 0x81e8 
+#define CODE_ADDR    0x00008018        // works at 0x81e8 
 //#define CODE_SIZE    0x00000000      // Code size determined by file at the moment
 
 #define MAIN_START   0x0000824c  
@@ -245,6 +246,21 @@ static void post_read_USART1();
 static void write_USART1();
 static void read_mem();
 
+/*** TEST FUNCTIONS ***/
+
+// Test opcode of binary file to see if it's correct
+static void read_op(char * code_ptr, uint32_t program_start, uint32_t code_bytes){
+	int index;
+	uint32_t start_addr=program_start;
+	char * arm_code;
+		
+	arm_code = code_ptr;	
+	for (index=0;index<code_bytes;index=index+4){
+		printf("0x%x: %02x%02x%02x%02x\n", start_addr, (uint8_t)arm_code[index], (uint8_t)arm_code[index+1], (uint8_t)arm_code[index+2], (uint8_t)arm_code[index+3]);
+		start_addr=start_addr+4;
+	}
+}
+
 
 int main(int argc, char **argv, char **envp)
 {
@@ -263,40 +279,53 @@ int main(int argc, char **argv, char **envp)
     	  -- Most likely. This also IS NOT a text file we are reading so NEED TO READ IT IN AS BINARY MOST LIKELY
     	  3) Perhaps read with 'fread()' since fgets expects char and not plain binary
     */
+    
 	/* Read in ARM code here */
-	int code_size;	
+	uint32_t code_bytes;
+	char *save_addr;
+	char *arm_code;
+	int byte;
+	  	
 	FILE *f = fopen("SimpleUart.code.bin", "rb");
 	fseek(f, 0L, SEEK_END);  		// Seek to end of file
-	code_size = ftell(f);    		// Get size of code from file
+	code_bytes = ftell(f);    	    // Get size (in bytes) of code from file
 	fseek(f, 0L, SEEK_SET); 		// Reset to start of file
-	char arm_code[code_size];       // Init to 0s + NULL byte at end        
-	if (fgets(arm_code, code_size, f) == NULL){  // Store code in buf
-		printf("Error reading from file\n");
+	arm_code = (char *) malloc(1*code_bytes);	// Code bytes to be stored
+	save_addr = arm_code;
+	
+	// Read byte at a time from binary file
+	for (byte=1; byte<=code_bytes; byte++){
+		fread(arm_code, 1, code_bytes, f);
+		arm_code++;
 	}
+	arm_code = save_addr;           // Reset start address	
 	fclose(f);
-	printf("code_size: 0x%x\n", code_size);
-	// printf("data: 0x%x\n", (uint8_t)arm_code[3]);
 	
-	// View opcode from code_addr to end of main
-	int index=0;
-	uint32_t start_addr=0x81f8;
-	for (index=0;index<=180;index=index+4){
-		printf("0x%x: %02x%02x%02x%02x\n", start_addr, (uint8_t)arm_code[index], (uint8_t)arm_code[index+1], (uint8_t)arm_code[index+2], (uint8_t)arm_code[index+3]);
-		start_addr=start_addr+4;
-	}
+	printf("code_size: 0x%x\n", code_bytes);
 	
+	/*** TEST: View opcode from file to check if it's correct ***/
+	read_op(arm_code, CODE_ADDR, code_bytes);
+
 	/* Read in ARM data here */
-	int data_size;
+	uint32_t data_bytes;
+	char *arm_data;
+	
 	FILE *g = fopen("SimpleUart.data.bin", "rb");
 	fseek(g, 0L, SEEK_END);  		// Seek to end of file
-	data_size = ftell(g);    		// Get size of code from file
+	data_bytes = ftell(g);    		// Get size (in bytes) of data from file
 	fseek(g, 0L, SEEK_SET); 		// Reset to start of file
-	char arm_data[data_size];   // Init to 0s + NULL byte at end        
-	if (fgets(arm_data, data_size, g) == NULL){  // Store code in buf
-		printf("Error reading from file\n");
+	arm_data = (char *) malloc(1*data_bytes);	// Data bytes to be stored
+	save_addr = arm_data;       
+	       
+	// Read byte at a time from binary file
+	for (byte=1; byte<=code_bytes; byte++){
+		fread(arm_data, 1, data_bytes, g);
+		arm_data++;
 	}
+	arm_data = save_addr;
 	fclose(g);
-	printf("data_size: 0x%x\n", data_size);
+	
+	printf("data_size: 0x%x\n", data_bytes);
 	
     /* ARM Core Registers */
 	uint32_t r_r0 = 0x0000;     // r0
@@ -339,17 +368,19 @@ int main(int argc, char **argv, char **envp)
 	
 	/*** Memory Init ***/
 	// Write code to flash!
-	if (uc_mem_write(uc, CODE_ADDR, arm_code, sizeof(arm_code)-1)){ // -1 because of null byte
+	if (uc_mem_write(uc, CODE_ADDR, arm_code, code_bytes)){ // -1 because of null byte
 		printf("Failed to write code to memory. Quit\n");
 		return -1;
 	}
 
 	// Write data to flash!
-	if (uc_mem_write(uc, DATA_ADDR, arm_data, sizeof(arm_data)-1)){ // -1 because of null byte
+	if (uc_mem_write(uc, DATA_ADDR, arm_data, data_bytes)){ // -1 because of null byte
 		printf("Failed to write code to memory. Quit\n");
 		return -1;
 	}
 
+	/*** UNMALLOC ARM_DATA AND ARM_CODE HERE ***/ 
+	
 	
 	/*
 		May do a batch write in the future to decrease code size, if possible

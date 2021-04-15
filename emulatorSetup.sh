@@ -61,8 +61,8 @@ emu_mem_sz=$(printf '0x%08x' $((fw_mem_sz+align_rem)))
 # Template for the binaries we will make
 fname=${ELF%.*}   # Gets rid of the .elf extension
 # File names for Text and Data binaries
-TextBin="$fname.bin.text"
-DataBin="$fname.bin.data"
+TextBin="$fname.code.bin"
+DataBin="$fname.data.bin"
 
 
 # Generate binary for .text section

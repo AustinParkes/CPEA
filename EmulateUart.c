@@ -1,6 +1,13 @@
 /*
 Compile with:
-gcc EmulatePollingUart.c -lunicorn -lpthread
+gcc EmulateUart.c -lunicorn -lpthread
+
+Current Goal: Manually get SimpleUart.elf working 
+Currently: Have the code binary starting at main.
+1) Code addr starts at main for mem map
+2) Calculating actual code size from the file 
+
+3) Need data section too
 */
 
 #include <unicorn/unicorn.h>
@@ -8,19 +15,28 @@ gcc EmulatePollingUart.c -lunicorn -lpthread
 
 /*** Memory Map ***/
 
-// Flash Memory (Code) 
-#define CODE_ADDR    0x00010000
-#define CODE_SIZE    0x80000      // (4*1024*128)
+/* Flash */
+#define FLASH_ADDR   0x00000000
+#define FLASH_SIZE   0x00080000
 
-// Start and End of main 
-#define MAIN_START   0x00010030  
-#define MAIN_END     0x0001005c  
+#define CODE_ADDR    0x000081e8        // works at 0x81e8 
+//#define CODE_SIZE    0x00000000      // Code size determined by file at the moment
+
+#define MAIN_START   0x0000824c  
+#define MAIN_END     0x00008278 
+
+#define DATA_ADDR	 0x00018730
+//#define DATA_SIZE                    // Data size determined by file at the moment
+
+/* SRAM */
+#define SRAM_ADDR    0x02000000
+#define SRAM_SIZE    0x02020000
 
 // Set SP and FP manually for now to some unused memory location
-#define FP_INIT      0x00050000
-#define SP_INIT      0x00050000
+#define FP_INIT      0x02002000
+#define SP_INIT      0x02002000
 
-// Address range for MMIO 0x40000000 - 0x5fffffff
+/* MMIO */
 #define MMIO_START   0x40000000
 #define MMIO_SIZE    0x20000000   // (4*1024*131072) 
 
@@ -163,7 +179,6 @@ enum USART1{
 	TDR_ADDR = USART1_ADDR + USART1_TDR
 };
 
-
 // Enumerate Different USART1 Configurations based on USART1 configuration registers
 /* 
 2) In future, user may be able to map these configuration checks to particular registers
@@ -241,21 +256,47 @@ int main(int argc, char **argv, char **envp)
 	uc_hook handle3;   // Used by uc_hook_add to give to uc_hook_del() API
 	uc_hook handle4;   // Used by uc_hook_add to give to uc_hook_del() API
 
-    
-	/* Read in ARM FW here */
-	
-	//int code_size;	
-	FILE *f = fopen("SimpleUart.bin", "r");
-	//fseek(f, 0L, SEEK_END);  		// Seek to end of file
-	//code_size = ftell(f);    		// Get size of code from file
-	//fseek(f, 0L, SEEK_SET); 		// Reset to start of file
-	char arm_code[104+1]={0}; // Init to 0s + NULL byte at end        
-	if (fgets(arm_code, 104+1, f) == NULL){  // Store code in buf
+    /*
+    	1) Is XXD not converting this hex to binary correctly?
+    	  -- Appears not because we can get a correct hex dump from the binary
+    	2) Am I reading it in incorrectly with c?
+    	  -- Most likely. This also IS NOT a text file we are reading so NEED TO READ IT IN AS BINARY MOST LIKELY
+    	  3) Perhaps read with 'fread()' since fgets expects char and not plain binary
+    */
+	/* Read in ARM code here */
+	int code_size;	
+	FILE *f = fopen("SimpleUart.code.bin", "rb");
+	fseek(f, 0L, SEEK_END);  		// Seek to end of file
+	code_size = ftell(f);    		// Get size of code from file
+	fseek(f, 0L, SEEK_SET); 		// Reset to start of file
+	char arm_code[code_size];       // Init to 0s + NULL byte at end        
+	if (fgets(arm_code, code_size, f) == NULL){  // Store code in buf
 		printf("Error reading from file\n");
 	}
 	fclose(f);
-	//printf("code_size: %d\n", code_size);
+	printf("code_size: 0x%x\n", code_size);
+	// printf("data: 0x%x\n", (uint8_t)arm_code[3]);
 	
+	// View opcode from code_addr to end of main
+	int index=0;
+	uint32_t start_addr=0x81f8;
+	for (index=0;index<=180;index=index+4){
+		printf("0x%x: %02x%02x%02x%02x\n", start_addr, (uint8_t)arm_code[index], (uint8_t)arm_code[index+1], (uint8_t)arm_code[index+2], (uint8_t)arm_code[index+3]);
+		start_addr=start_addr+4;
+	}
+	
+	/* Read in ARM data here */
+	int data_size;
+	FILE *g = fopen("SimpleUart.data.bin", "rb");
+	fseek(g, 0L, SEEK_END);  		// Seek to end of file
+	data_size = ftell(g);    		// Get size of code from file
+	fseek(g, 0L, SEEK_SET); 		// Reset to start of file
+	char arm_data[data_size];   // Init to 0s + NULL byte at end        
+	if (fgets(arm_data, data_size, g) == NULL){  // Store code in buf
+		printf("Error reading from file\n");
+	}
+	fclose(g);
+	printf("data_size: 0x%x\n", data_size);
 	
     /* ARM Core Registers */
 	uint32_t r_r0 = 0x0000;     // r0
@@ -283,23 +324,35 @@ int main(int argc, char **argv, char **envp)
 		return -1;
 	}
 	
-	// Map Code region
-	if (uc_mem_map(uc, CODE_ADDR, CODE_SIZE, UC_PROT_ALL))
-		printf("Failed to map code region to memory\n");
+	/*** Memory Map ***/
+	// Map Flash region
+	if (uc_mem_map(uc, FLASH_ADDR, FLASH_SIZE, UC_PROT_ALL))
+		printf("Failed to map flash region to memory\n");
 	
+	// Map SRAM region
+	if (uc_mem_map(uc, SRAM_ADDR, SRAM_SIZE, UC_PROT_ALL))
+		printf("Failed to map flash region to memory\n");
+			
 	// Map all MMIO from 0x40000000 - 0x5FFFFFFF
 	if (uc_mem_map(uc, MMIO_START, MMIO_SIZE, UC_PROT_ALL))
 		printf("Failed to map MMIO region to memory\n");
 	
-	
-	// Write machine code to memory!
-	if (uc_mem_write(uc, CODE_ADDR, arm_code, sizeof(arm_code)-1)){
+	/*** Memory Init ***/
+	// Write code to flash!
+	if (uc_mem_write(uc, CODE_ADDR, arm_code, sizeof(arm_code)-1)){ // -1 because of null byte
 		printf("Failed to write code to memory. Quit\n");
 		return -1;
 	}
+
+	// Write data to flash!
+	if (uc_mem_write(uc, DATA_ADDR, arm_data, sizeof(arm_data)-1)){ // -1 because of null byte
+		printf("Failed to write code to memory. Quit\n");
+		return -1;
+	}
+
 	
 	/*
-		May do a batch write in the future to decrease code size.
+		May do a batch write in the future to decrease code size, if possible
 	*/
 	// Initialize all UART registers to their reset values
 	if (uc_mem_write(uc, CR1_ADDR , &CR1_RESET, 4)){
@@ -357,7 +410,7 @@ int main(int argc, char **argv, char **envp)
 	uc_hook_add(uc, &handle3, UC_HOOK_MEM_WRITE, write_USART1, NULL, USART1_ADDR, USART1_ADDR + USART1_TDR);
 			
 	// Callback to check memory/debug at any code address (specific addresses can be defined in callback)
-	uc_hook_add(uc, &handle4, UC_HOOK_CODE, read_mem, NULL, CODE_ADDR, CODE_ADDR + CODE_SIZE);	
+	uc_hook_add(uc, &handle4, UC_HOOK_CODE, read_mem, NULL, FLASH_ADDR, FLASH_ADDR + FLASH_SIZE);	
 			
 	// Init registers that may be used by FW
 	uc_reg_write(uc, UC_ARM_REG_R0, &r_r0);		// r0
@@ -768,28 +821,27 @@ static void read_mem(uc_engine *uc, uint64_t address, uint32_t size, void *user_
 	uint32_t var1;
 	uint32_t var2;
 	
-	if (address == MAIN_START){
+	if (address < 0x821c || address > 0x8278)
+		printf("How did i make it here: 0x%lx\n", address);
+	
+	if (address == 0x824c){
 		printf("Function Entered: Main\n");
 	}
 
+	if (address == 0x8264){
+		printf("Made it to read_DR()\n");
+	}
+
 	// Check if we are branching
-    if (address == 0x10000){
+    if (address == 0x821c){
     	printf("Function Entered: read_DR()\n");
     }
 
-    if (address == 0x10028){
+    if (address == 0x826c){
     	printf("Function Leaving: read_DR()\n");
     }    
     
-	// End of code, check if DR and CR are correct in their values
-    if (address == 0x10058){
-    	//uc_mem_read(uc, RDR_ADDR, &var1, 4); 
-    	//printf("DR Value:0x%x\n", var1);
-    	
-    	//uc_mem_read(uc, CR1_ADDR, &var2, 4); 
-    	//printf("CR1 Value:0x%x\n", var2);
-    }      
-    
+
     
 }
 

@@ -1,17 +1,13 @@
 /*
+
 Compile with:
 gcc EmulateUart.c -lunicorn -lpthread
 
-Current Goal: Manually get SimpleUart.elf working 
-Currently: Have the code binary starting at main.
-1) Code addr starts at main for mem map
-2) Calculating actual code size from the file 
-
-3) Need data section too
 */
 
 #include <unicorn/unicorn.h>
 #include <string.h>
+
 /* USART1 Emulation for stm32l4xx MCUs for ARM Cortex-M */
 
 /*** Memory Map ***/
@@ -31,7 +27,7 @@ Currently: Have the code binary starting at main.
 
 /* SRAM */
 #define SRAM_ADDR    0x02000000
-#define SRAM_SIZE    0x02020000
+#define SRAM_SIZE    0x02020000		   
 
 // Set SP and FP manually for now to some unused memory location
 #define FP_INIT      0x02002000
@@ -327,7 +323,7 @@ int main(int argc, char **argv, char **envp)
 	
 	printf("data_size: 0x%x\n", data_bytes);
 	
-    /* ARM Core Registers */
+    /* ARM Core Registers */	
 	uint32_t r_r0 = 0x0000;     // r0
 	uint32_t r_r1 = 0x0001;     // r1
 	uint32_t r_r2 = 0x0002;     // r2 
@@ -342,7 +338,6 @@ int main(int argc, char **argv, char **envp)
 	uint32_t FP = FP_INIT;      // r11  
 	uint32_t r_r12 = 0x000C;    // r12
 	uint32_t SP = SP_INIT;      // r13  
-
 
 	printf("Emulate arm code\n");
 	
@@ -871,9 +866,7 @@ static void read_mem(uc_engine *uc, uint64_t address, uint32_t size, void *user_
     if (address == 0x826c){
     	printf("Function Leaving: read_DR()\n");
     }    
-    
-
-    
+ 
 }
 
 /*

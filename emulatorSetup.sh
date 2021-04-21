@@ -35,18 +35,18 @@ DataMSize=$(readelf -l $ELF | grep 'LOAD' | grep 'RW'| awk '{print $6;}')
 # Entry Point
 Entry=$(readelf -h $ELF | grep 'Entry' | awk '{print $4;}')
 # Main()
-Main="0x$(nm SimplePollUart.elf | grep -w main | awk '{print $1}')"
+Main="0x$(nm $ELF | grep -w main | awk '{print $1}')"
 # End (Emulator stops at this address)
 Exit="0x$(readelf -s $ELF | grep 'FUNC' | grep -w '_exit' | awk '{print $2}')"
 
 
 #.text Virtual Address and Size
-TextAddr="0x$(readelf -S SimplePollUart.elf | grep -w '.text' | cut -c 42-49)"
-TextSize="0x$(readelf -S SimplePollUart.elf | grep -w '.text' | cut -c 58-63)"
+TextAddr="0x$(readelf -S $ELF | grep -w '.text' | cut -c 42-49)"
+TextSize="0x$(readelf -S $ELF | grep -w '.text' | cut -c 58-63)"
 
 #.Data Virtual Address and Size
-DataAddr="0x$(readelf -S SimplePollUart.elf | grep -w '.data' | cut -c 42-49)"
-DataSize="0x$(readelf -S SimplePollUart.elf | grep -w '.data' | cut -c 58-63)"
+DataAddr="0x$(readelf -S $ELF | grep -w '.data' | cut -c 42-49)"
+DataSize="0x$(readelf -S $ELF | grep -w '.data' | cut -c 58-63)"
 
 
 ##### Unicorn Variables ####

@@ -17,19 +17,34 @@ sram_size 	= 0x00020000
 	
 		# map for generic uart
 		[mem_map.mmio.uart]
-		uart1.base 	= 0x40013800	# Base address for uart1
+		uart1.base_addr = 0x40013800	# Base address for uart1
 		# Define offsets for now. Allow for full addresses later?
-		uart1.CR1	= 0x00
-		uart1.CR2	= 0x04  
-		uart1.CR3	= 0x08       
-		uart1.BRR	= 0x0c        
-		uart1.GTPR	= 0x10
-		uart1.RTOR	= 0x14
-		uart1.RQR	= 0x18
-		uart1.ISR	= 0x1c
-		uart1.ICR	= 0x20
-		uart1.RDR	= 0x24
-		uart1.TDR	= 0x28
+		uart1.CR1_addr	= 0x00
+		uart1.CR2_addr	= 0x04  
+		uart1.CR3_addr	= 0x08       
+		uart1.BRR_addr	= 0x0c        
+		uart1.GTPR_addr	= 0x10
+		uart1.RTOR_addr	= 0x14
+		uart1.RQR_addr	= 0x18
+		uart1.ISR_addr	= 0x1c
+		uart1.ICR_addr	= 0x20
+		uart1.RDR_addr	= 0x24
+		uart1.TDR_addr	= 0x28
+		
+		# Register reset/init values 
+		uart1.CR1_reset	= 0x00
+		uart1.CR2_reset	= 0x00  
+		uart1.CR3_reset	= 0x00       
+		uart1.BRR_reset	= 0x00        
+		uart1.GTPR_reset= 0x00
+		uart1.RTOR_reset= 0x00
+		uart1.RQR_reset	= 0x00
+		uart1.ISR_reset	= 0x020000C0
+		uart1.ICR_reset	= 0x00
+		uart1.RDR_reset	= 0x00
+		uart1.TDR_reset	= 0x00
+		
+				
 		
 # Details code & data to be written to memory. Defines entry point
 [firmware]

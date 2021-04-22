@@ -179,6 +179,8 @@ void emuConfig(){
     	error("Cannot read execution.end", "");
     }
     END = (uint32_t)end.u.i;         	
+    
+    
     	            
     /*
     	Free Memory for the file

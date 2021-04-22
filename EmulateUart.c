@@ -10,25 +10,7 @@ gcc EmulateUart.c emulatorConfig.c toml.c -lunicorn -lpthread
 #include "emulatorConfig.h"
 
 /* USART1 Emulation for stm32l4xx MCUs for ARM Cortex-M */
-
-/*** Memory Map ***/
-
-/* Flash */
-//#define FLASH_ADDR   0x00000000
-//#define FLASH_SIZE   0x00019000
-
-//#define CODE_ADDR    0x00008018        // works at 0x81e8 
-//#define CODE_SIZE    0x00000000      // Code size determined by file at the moment
-
-//#define START   0x0000824c  
-//#define END     0x00008278 
-
-//#define DATA_ADDR	 0x00018730
-//#define DATA_SIZE                    // Data size determined by file at the moment
-
-/* SRAM */
-//#define SRAM_ADDR    0x02000000
-//#define SRAM_SIZE    0x00020000		   
+	   
 
 // Set SP and FP manually for now to some unused memory location
 #define FP_INIT      0x02002000
@@ -59,6 +41,8 @@ gcc EmulateUart.c emulatorConfig.c toml.c -lunicorn -lpthread
 #define USART1_ICR  0x20
 #define USART1_RDR  0x24
 #define USART1_TDR  0x28
+
+
 
 /*** USART1 Configuration Checks ***/
 /*
@@ -132,37 +116,9 @@ gcc EmulateUart.c emulatorConfig.c toml.c -lunicorn -lpthread
 // Clear kth bit in register (Clears the Transmission Complete Flag)
 #define CLEAR_TC(reg, k)	(reg &= ~(1<<k))
 
-/*** USART1 Reset Values ***/
-/*
-	In future, user will need to provide the reset values.
-	May get rid of Raw Hex values so user isn't entering two
-	sets of reset values.
-*/
 
-// User will easily be able to define these
-const uint32_t CR1_RESET = 0x0;
-const uint32_t CR2_RESET = 0x0;
-const uint32_t CR3_RESET = 0x0;
-const uint32_t BRR_RESET = 0x0;
-const uint32_t GTPR_RESET = 0x0;
-const uint32_t RTOR_RESET = 0x0;
-const uint32_t RQR_RESET = 0x0;
-const uint32_t ISR_RESET = 0x020000C0;
-const uint32_t ICR_RESET = 0x0;
-const uint32_t RDR_RESET = 0x0;
-const uint32_t TDR_RESET = 0x0;
 
 // Enumerate the addresses of the USART1 registers
-/*
-1)	In future, these registers should be more generic (CRx, SRx, DRx)
-	and the user will specifically map them individually to an address
-	from their reference manual. The addresses will almost certainly not
-	be in order due to the variance in register layouts among MCU reference
-	manuals.
-	
-	Once this is configured by user, can move onto 2) and the user can 
-	specifically map certain functionalities to certain registers.
-*/
 enum USART1{
 	CR1_ADDR = USART1_ADDR + USART1_CR1,
 	CR2_ADDR = USART1_ADDR + USART1_CR2,
@@ -176,6 +132,29 @@ enum USART1{
 	RDR_ADDR = USART1_ADDR + USART1_RDR,
 	TDR_ADDR = USART1_ADDR + USART1_TDR
 };
+
+/*** USART1 Reset Values ***/
+
+/*
+	In future, user will need to provide the reset values.
+	May get rid of Raw Hex values so user isn't entering two
+	sets of reset values.
+	WILL GO INTO emulatorConfig.h UART STRUCT
+*/
+
+	// User will need to define this in emulatorConfig.toml file
+	const uint32_t CR1_RESET = 0x0;
+	const uint32_t CR2_RESET = 0x0;
+	const uint32_t CR3_RESET = 0x0;
+	const uint32_t BRR_RESET = 0x0;
+	const uint32_t GTPR_RESET = 0x0;
+	const uint32_t RTOR_RESET = 0x0;
+	const uint32_t RQR_RESET = 0x0;
+	const uint32_t ISR_RESET = 0x020000C0;
+	const uint32_t ICR_RESET = 0x0;
+	const uint32_t RDR_RESET = 0x0;
+	const uint32_t TDR_RESET = 0x0;		
+
 
 // Enumerate Different USART1 Configurations based on USART1 configuration registers
 /* 
@@ -215,27 +194,7 @@ bool USART1_enable = false;   // Disabled by default (CR1)
 // Mask data to be 7, 8, 9 bits
 uint8_t Data_Mask = 0xFF;	  // 8 bits default
 
-// UART 32 bit periphal registers
-/* 
-	In future, May need to make these names for generic for later configuration.
-	May also need to add an 8 bit mode for 8 bit wide peripheral registers.
-*/ 
-typedef struct UART{
-	uint32_t CR1;
-	uint32_t CR2;
-	uint32_t CR3;
-	uint32_t BRR;
-	uint32_t GTPR;
-	uint32_t RTOR;
-	uint32_t RQR;
-	uint32_t ISR;
-	uint32_t ICR;
-	uint32_t RDR;
-	uint32_t TDR;
-} USART_handle;
 
-// Create an UART instance  
-USART_handle USART1;
 
 // Callback Declarations 
 static void pre_read_USART1();
@@ -286,14 +245,6 @@ int main(int argc, char **argv, char **envp)
 	uc_hook handle3;   // Used by uc_hook_add to give to uc_hook_del() API
 	uc_hook handle4;   // Used by uc_hook_add to give to uc_hook_del() API
 
-    /*
-    	1) Is XXD not converting this hex to binary correctly?
-    	  -- Appears not because we can get a correct hex dump from the binary
-    	2) Am I reading it in incorrectly with c?
-    	  -- Most likely. This also IS NOT a text file we are reading so NEED TO READ IT IN AS BINARY MOST LIKELY
-    	  3) Perhaps read with 'fread()' since fgets expects char and not plain binary
-    */
-    
     printf("Reading ARM code and data\n");
 	/* Read in ARM code here */
 	uint32_t code_bytes;
@@ -394,16 +345,15 @@ int main(int argc, char **argv, char **envp)
 		printf("Failed to write code to memory. Quit\n");
 		return -1;
 	}
-
+	free(arm_code);
+	
 	// Write data to flash!
 	if (uc_mem_write(uc, DATA_ADDR, arm_data, data_bytes)){ // -1 because of null byte
 		printf("Failed to write code to memory. Quit\n");
 		return -1;
 	}
+	free(arm_data);
 
-	/*** UNMALLOC ARM_DATA AND ARM_CODE HERE ***/ 
-	
-	
 	/*
 		May do a batch write in the future to decrease code size, if possible
 	*/
@@ -481,8 +431,6 @@ int main(int argc, char **argv, char **envp)
 	uc_reg_write(uc, UC_ARM_REG_R12, &r_r12);	// r12
 	uc_reg_write(uc, UC_ARM_REG_SP, &SP);		// r13
 
-		
-	
 		
 	err=uc_emu_start(uc, START, END, 0, 0);
 	if (err){

@@ -1,0 +1,48 @@
+# Much of this configuration is tailor made for the emulator under testing.
+# In future, much of the keys and comments would become more generic 
+
+
+# Define memory map for your MCU
+[mem_map]
+flash_addr 	= 0x00000000
+flash_size 	= 0x00019000
+
+sram_addr 	= 0x02000000
+sram_size 	= 0x00020000
+
+	# ARM mmio map 0x40000000 - 0x5fffffff
+	[mem_map.mmio]
+	mmio_start	= 0x40000000
+	mmio_size  	= 0x20000000
+	
+		# map for generic uart
+		[mem_map.mmio.uart]
+		uart1.base 	= 0x40013800	# Base address for uart1
+		# Define offsets for now. Allow for full addresses later?
+		uart1.CR1	= 0x00
+		uart1.CR2	= 0x04  
+		uart1.CR3	= 0x08       
+		uart1.BRR	= 0x0c        
+		uart1.GTPR	= 0x10
+		uart1.RTOR	= 0x14
+		uart1.RQR	= 0x18
+		uart1.ISR	= 0x1c
+		uart1.ICR	= 0x20
+		uart1.RDR	= 0x24
+		uart1.TDR	= 0x28
+		
+# Details code & data to be written to memory. Defines entry point
+[firmware]
+		
+	[firmware.code]
+	code_addr	= 0x00008018	# .text start
+	code_size	= "done"	    # .text size determined by file size at the moment
+
+	[firmware.data]
+	data_addr	= 0x00018730	# .data start
+	data_size	= "done"		# .data size determined by file size at the moment
+	
+	# Where firmware will begin and end execution
+	[firmware.execution]
+	entry		= 0x0000824c	# start of main
+	end  		= 0x00008278	# end of main

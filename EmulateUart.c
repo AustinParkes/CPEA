@@ -1,41 +1,42 @@
 /*
 
 Compile with:
-gcc EmulateUart.c -lunicorn -lpthread
+gcc EmulateUart.c emulatorConfig.c toml.c -lunicorn -lpthread
 
 */
 
 #include <unicorn/unicorn.h>
 #include <string.h>
+#include "emulatorConfig.h"
 
 /* USART1 Emulation for stm32l4xx MCUs for ARM Cortex-M */
 
 /*** Memory Map ***/
 
 /* Flash */
-#define FLASH_ADDR   0x00000000
-#define FLASH_SIZE   0x00080000
+//#define FLASH_ADDR   0x00000000
+//#define FLASH_SIZE   0x00019000
 
-#define CODE_ADDR    0x00008018        // works at 0x81e8 
+//#define CODE_ADDR    0x00008018        // works at 0x81e8 
 //#define CODE_SIZE    0x00000000      // Code size determined by file at the moment
 
-#define MAIN_START   0x0000824c  
-#define MAIN_END     0x00008278 
+//#define START   0x0000824c  
+//#define END     0x00008278 
 
-#define DATA_ADDR	 0x00018730
+//#define DATA_ADDR	 0x00018730
 //#define DATA_SIZE                    // Data size determined by file at the moment
 
 /* SRAM */
-#define SRAM_ADDR    0x02000000
-#define SRAM_SIZE    0x02020000		   
+//#define SRAM_ADDR    0x02000000
+//#define SRAM_SIZE    0x00020000		   
 
 // Set SP and FP manually for now to some unused memory location
 #define FP_INIT      0x02002000
 #define SP_INIT      0x02002000
 
 /* MMIO */
-#define MMIO_START   0x40000000
-#define MMIO_SIZE    0x20000000   // (4*1024*131072) 
+//#define MMIO_START   0x40000000
+//#define MMIO_SIZE    0x20000000   // (4*1024*131072) 
 
 // Start of USART1 registers. Offsets below
 #define USART1_ADDR  0x40013800 
@@ -257,6 +258,23 @@ static void read_op(char * code_ptr, uint32_t program_start, uint32_t code_bytes
 	}
 }
 
+// Test configuration values to see if they match emulatorConfig.toml
+static void show_config(){
+
+	printf("FLASH_ADDR: 0x%x\n", FLASH_ADDR);
+	printf("FLASH_SIZE: 0x%x\n", FLASH_SIZE);
+	printf("SRAM_ADDR:  0x%x\n", SRAM_ADDR);
+	printf("SRAM_SIZE:  0x%x\n", SRAM_SIZE);
+	printf("MMIO_START: 0x%x\n", MMIO_START);
+	printf("MMIO_SIZE:  0x%x\n", MMIO_SIZE);
+	printf("CODE_ADDR:  0x%x\n", CODE_ADDR);
+	//printf("CODE_SIZE:  0x%x\n", CODE_SIZE);
+	printf("DATA_ADDR:  0x%x\n", DATA_ADDR);
+	//printf("DATA_SIZE:  0x%x\n", DATA_SIZE);
+	printf("START:      0x%x\n", START);
+	printf("END:        0x%x\n", END);
+
+}
 
 int main(int argc, char **argv, char **envp)
 {
@@ -276,6 +294,7 @@ int main(int argc, char **argv, char **envp)
     	  3) Perhaps read with 'fread()' since fgets expects char and not plain binary
     */
     
+    printf("Reading ARM code and data\n");
 	/* Read in ARM code here */
 	uint32_t code_bytes;
 	char *save_addr;
@@ -297,10 +316,10 @@ int main(int argc, char **argv, char **envp)
 	arm_code = save_addr;           // Reset start address	
 	fclose(f);
 	
-	printf("code_size: 0x%x\n", code_bytes);
+	//printf("code_size: 0x%x\n", code_bytes);
 	
 	/*** TEST: View opcode from file to check if it's correct ***/
-	read_op(arm_code, CODE_ADDR, code_bytes);
+	//read_op(arm_code, CODE_ADDR, code_bytes);
 
 	/* Read in ARM data here */
 	uint32_t data_bytes;
@@ -321,7 +340,12 @@ int main(int argc, char **argv, char **envp)
 	arm_data = save_addr;
 	fclose(g);
 	
-	printf("data_size: 0x%x\n", data_bytes);
+	//printf("data_size: 0x%x\n", data_bytes);
+	
+	printf("Configure Emulator\n");
+	emuConfig();
+	/*** TEST: View config variables to check if they match emulatorConfig.toml ***/
+	//show_config();
 	
     /* ARM Core Registers */	
 	uint32_t r_r0 = 0x0000;     // r0
@@ -350,17 +374,20 @@ int main(int argc, char **argv, char **envp)
 	
 	/*** Memory Map ***/
 	// Map Flash region
-	if (uc_mem_map(uc, FLASH_ADDR, FLASH_SIZE, UC_PROT_ALL))
-		printf("Failed to map flash region to memory\n");
-	
+	if (uc_mem_map(uc, FLASH_ADDR, FLASH_SIZE, UC_PROT_ALL)){
+		printf("Failed to map flash region to memory. Quit\n");
+		return -1;
+	}
 	// Map SRAM region
-	if (uc_mem_map(uc, SRAM_ADDR, SRAM_SIZE, UC_PROT_ALL))
-		printf("Failed to map flash region to memory\n");
-			
+	if (uc_mem_map(uc, SRAM_ADDR, SRAM_SIZE, UC_PROT_ALL)){
+		printf("Failed to map sram region to memory. Quit\n");
+		return -1;	
+	}		
 	// Map all MMIO from 0x40000000 - 0x5FFFFFFF
-	if (uc_mem_map(uc, MMIO_START, MMIO_SIZE, UC_PROT_ALL))
-		printf("Failed to map MMIO region to memory\n");
-	
+	if (uc_mem_map(uc, MMIO_START, MMIO_SIZE, UC_PROT_ALL)){
+		printf("Failed to map MMIO region to memory. Quit\n");
+		return -1;
+	}
 	/*** Memory Init ***/
 	// Write code to flash!
 	if (uc_mem_write(uc, CODE_ADDR, arm_code, code_bytes)){ // -1 because of null byte
@@ -457,7 +484,7 @@ int main(int argc, char **argv, char **envp)
 		
 	
 		
-	err=uc_emu_start(uc, MAIN_START, MAIN_END, 0, 0);
+	err=uc_emu_start(uc, START, END, 0, 0);
 	if (err){
 		printf("Failed on uc_emu_start() with error returned %u: %s\n", err, uc_strerror(err));
 	}

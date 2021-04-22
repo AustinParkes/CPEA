@@ -215,11 +215,10 @@ void emuConfig(){
     		if (!key_data.ok){
     			error("Cannot read key data", "");
     		}    
-    		printf("%lx\n", key_data.u.i);
+    		//printf("0x%lx\n", key_data.u.i);
         }
    	}
-    	    
-    	            
+    	    	            
     /*
     	Free Memory for the file
     */

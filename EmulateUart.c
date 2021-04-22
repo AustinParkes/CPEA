@@ -43,7 +43,6 @@ gcc EmulateUart.c emulatorConfig.c toml.c -lunicorn -lpthread
 #define USART1_TDR  0x28
 
 
-
 /*** USART1 Configuration Checks ***/
 /*
 3)	In future, the user will just need to specify what bit needs to be 
@@ -453,11 +452,7 @@ int main(int argc, char **argv, char **envp)
 	uc_reg_read(uc, UC_ARM_REG_R12, &r_r12);	// r12
 	uc_reg_read(uc, UC_ARM_REG_SP, &SP);	    // r13
 
-
-
-	
 	// Needs changed to reflect new ending values
-	
 	printf("r0 = 0x%x \n",r_r0);
 	printf("r1 = 0x%x \n",r_r1);
 	printf("r2 = 0x%x \n",r_r2);

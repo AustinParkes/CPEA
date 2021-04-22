@@ -180,7 +180,45 @@ void emuConfig(){
     }
     END = (uint32_t)end.u.i;         	
     
+    /***********************************
+		Finish General Emulator configs.
+		Begin Peripheral Configs    
+    ************************************/
     
+    /*
+    	UART config
+    	Traverse to [mmio.uart]
+    */
+    toml_table_t* uart = toml_table_in(mmio, "uart");   // Use mmio pointer from earlier
+ 	if (!uart){
+ 		error("missing [mmio.uart]", "");
+ 	}
+ 	
+ 	// Check if UART module exists and how many
+ 	for (int tab_i=0; ; tab_i++){       
+    	const char* uart_module = toml_key_in(uart, tab_i);
+    	if (!uart_module) break;
+    	printf("uart_module: %d: %s\n", tab_i, uart_module); 
+    	toml_table_t* uartx = toml_table_in(uart, uart_module);
+    	if (!uartx){
+ 			error("missing [uart.uartx]", "");
+ 		}
+ 		
+    	// Fill UART struct with current UART module configuration values   
+    	for (int key_i=0; ; key_i++){
+    		const char* key = toml_key_in(uartx, key_i);
+    		if (!key) break;
+    		printf("key %d: %s: ", key_i, key);
+    		
+    		// Get data from the current key
+    		toml_datum_t key_data = toml_int_in(uartx, key);
+    		if (!key_data.ok){
+    			error("Cannot read key data", "");
+    		}    
+    		printf("%lx\n", key_data.u.i);
+        }
+   	}
+    	    
     	            
     /*
     	Free Memory for the file
@@ -188,6 +226,3 @@ void emuConfig(){
     toml_free(config);
     
 }
-
-
-

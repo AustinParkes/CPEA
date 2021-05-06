@@ -125,7 +125,16 @@ To Print Opcode
 To Convert to Raw Binary
     - 'xxd -r -p input.opcode output.bin' to get raw binary
 	  - Read this into Unicorn and store in char array. :)
-	  
+	 
+/* Getting TOML to work with CPEA */
+C Parser
+	1) Include toml.h and toml.c files.
+Python3 Parser
+    toml - PyPI (Doesn't preserve indentation)
+	1) pip install toml
+	   or
+	   sudo apt install python3-toml (untested)
+	tomlkit 
 
 
 

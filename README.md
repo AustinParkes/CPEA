@@ -12,6 +12,8 @@ TODO
 
 3) Add TOML config file and C file that can parse it and store variables
 
+4) Convert emulatorSetup.sh to Python script that can autofill some emulator configurations.
+
 Projects Referenced or Used
 ---------------------------
 1) Unicorn [Unicorn Github](https://github.com/unicorn-engine/unicorn)

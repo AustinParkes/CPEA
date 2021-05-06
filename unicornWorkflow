@@ -134,7 +134,8 @@ Python3 Parser
 	1) pip install toml
 	   or
 	   sudo apt install python3-toml (untested)
-	tomlkit 
+	tomlkit
+	1) pip install tomlkit 
 
 
 

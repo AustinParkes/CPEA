@@ -129,15 +129,14 @@ To Convert to Raw Binary
 /* Getting TOML to work with CPEA */
 C Parser
 	1) Include toml.h and toml.c files.
-Python3 Parser
-    toml - PyPI (Doesn't preserve indentation)
-	1) pip install toml
-	   or
-	   sudo apt install python3-toml (untested)
+Python3 TOML Parser
 	tomlkit
 	1) pip install tomlkit 
 
-
+/* Getting ELF Parsing to work with CPEA*/
+Python3 ELF Parser
+	pyelftools
+	1) pip install pyelftool
 
 
 

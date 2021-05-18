@@ -184,25 +184,70 @@ void emuConfig(){
 		Finish General Emulator configs.
 		Begin Peripheral Configs    
     ************************************/
-    
+
     /*
     	UART config
-    	Traverse to [mmio.uart]
+    	1) Generate UART struct for each module from [memory_map.mmio]
+    	2) Traverse to [mmio.uart] and extract config values to UART struct(s)
+    	TODO: Turn each periph config into a function.
     */
+    
+    /* 1) Generate UART struct for each UART module */
+    
+    // TODO: What if there are 0 modules entered. (If in function, we could just leave function)
+    // TODO: Put Limit of 99 on uart_count
+    // Get number of UART modules
+    int uart_count;
+    toml_datum_t num_uarts = toml_int_in(mmio, "uart_count");
+    if (!num_uarts.ok){
+    	error("Cannot read mmio.uart_count", "");
+    }
+    uart_count = (int)num_uarts.u.i;					// Number of UART modules the user specified.
+	
+	// Generate UART structs
+	//USART_handle *UART_test[uart_count];   				// Create array of pointers to structs
+	
+	// Allocate space for each struct. TODO: Must free these after emulation finished.
+	for (int i=0; i<uart_count; i++){
+    	UART_test[i] = (USART_handle *)malloc(sizeof(USART_handle));
+    	if (UART_test[i] == NULL)
+    		error("UART struct memory not allocated","");
+    }
+ 	
+ 	
+    /* 2) Extract UART config values to UART structs */
     toml_table_t* uart = toml_table_in(mmio, "uart");   // Use mmio pointer from earlier
  	if (!uart){
  		error("missing [mmio.uart]", "");
  	}
  	
- 	// Check if UART module exists and how many
- 	for (int tab_i=0; ; tab_i++){       
+ 	// Check if UART module exists and how many. "tab_i" keeps track of the number of modules.
+ 	/*
+ 		Eventually, may need to check for an 8-bit mode to use 8 bit structures instead. 
+ 	*/
+ 	/* Would need to generate a new UART struct for each module that exists.
+ 	   Could use malloc to generate enough structs for whatever the user specifies	
+ 	*/ 
+ 	for (int tab_i=0; ; tab_i++){   
+ 	
+ 		// Get the name of the current UART module    
     	const char* uart_module = toml_key_in(uart, tab_i);
-    	if (!uart_module) break;
+    	if (!uart_module){
+    		break;				
+    	} 
     	printf("uart_module: %d: %s\n", tab_i, uart_module); 
+    	
+    	// Get the current UART table from the name
     	toml_table_t* uartx = toml_table_in(uart, uart_module);
     	if (!uartx){
- 			error("missing [uart.uartx]", "");
+ 			error("Failed to get UART table from module %s", uart_module);
  		}
+ 		
+ 		// Get ptr to current UART struct
+ 		uint32_t *UART_ptr = (uint32_t *)UART_test[tab_i];
+ 		            	
+ 		if (!UART_ptr)
+ 			error("Failed to get pointer from current UART struct", "");
  		
     	// Fill UART struct with current UART module configuration values   
     	for (int key_i=0; ; key_i++){
@@ -214,10 +259,16 @@ void emuConfig(){
     		toml_datum_t key_data = toml_int_in(uartx, key);
     		if (!key_data.ok){
     			error("Cannot read key data", "");
-    		}    
-    		//printf("0x%lx\n", key_data.u.i);
+    		}
+    		
+    		// Store config data to current UART member
+    		*UART_ptr = (uint32_t)key_data.u.i;
+    		UART_ptr++;							// TODO: Make sure this doesn't go into another structs space or out of bounds
+    		printf("0x%lx\n", key_data.u.i);	
         }
-   	}
+        
+   	}	
+    	 
     	    	            
     /*
     	Free Memory for the file

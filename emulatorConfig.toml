@@ -14,13 +14,44 @@ sram_size 	= 0x00020000
 	[mem_map.mmio]
 	mmio_start	= 0x40000000
 	mmio_size  	= 0x20000000
+	### TODO: ### A python script WILL use this number to generate blank UART modules below.
+	uart_count	= 2								# Used to generate the emulators UART structs
+	
 	
 		# map for generic uart
 		# In future, would prefer a user to configure what peripherals they need
 		# and a python script could generate blank keys for them, allowing the user
 		# to just fill in the blanks. For now, uart1 is just hardcoded.
 		[mem_map.mmio.uart]
-		uart1.base_addr = 0x40013800	# Base address for uart1
+		uart0.base_addr = 0x40013800	# Base address for uart0
+		# Define offsets for now. Allow for full addresses later?
+		uart0.CR1_addr	= 0x00
+		uart0.CR2_addr	= 0x04  
+		uart0.CR3_addr	= 0x08       
+		uart0.BRR_addr	= 0x0c        
+		uart0.GTPR_addr	= 0x10
+		uart0.RTOR_addr	= 0x14
+		uart0.RQR_addr	= 0x18
+		uart0.ISR_addr	= 0x1c
+		uart0.ICR_addr	= 0x20
+		uart0.RDR_addr	= 0x24
+		uart0.TDR_addr	= 0x28
+		
+		# Register reset/init values 
+		uart0.CR1_reset	= 0x00
+		uart0.CR2_reset	= 0x00  
+		uart0.CR3_reset	= 0x00       
+		uart0.BRR_reset	= 0x00        
+		uart0.GTPR_reset= 0x00
+		uart0.RTOR_reset= 0x00
+		uart0.RQR_reset	= 0x00
+		uart0.ISR_reset	= 0x020000C0
+		uart0.ICR_reset	= 0x00
+		uart0.RDR_reset	= 0x00
+		uart0.TDR_reset	= 0x00
+		
+		# Choosing made up values for now
+		uart1.base_addr = 0x40014800	# Base address for uart1
 		# Define offsets for now. Allow for full addresses later?
 		uart1.CR1_addr	= 0x00
 		uart1.CR2_addr	= 0x04  
@@ -46,33 +77,6 @@ sram_size 	= 0x00020000
 		uart1.ICR_reset	= 0x00
 		uart1.RDR_reset	= 0x00
 		uart1.TDR_reset	= 0x00
-		
-		uart2.base_addr = 0x40013800	# Base address for uart1
-		# Define offsets for now. Allow for full addresses later?
-		uart2.CR1_addr	= 0x00
-		uart2.CR2_addr	= 0x04  
-		uart2.CR3_addr	= 0x08       
-		uart2.BRR_addr	= 0x0c        
-		uart2.GTPR_addr	= 0x10
-		uart2.RTOR_addr	= 0x14
-		uart2.RQR_addr	= 0x18
-		uart2.ISR_addr	= 0x1c
-		uart2.ICR_addr	= 0x20
-		uart2.RDR_addr	= 0x24
-		uart2.TDR_addr	= 0x28
-		
-		# Register reset/init values 
-		uart2.CR1_reset	= 0x00
-		uart2.CR2_reset	= 0x00  
-		uart2.CR3_reset	= 0x00       
-		uart2.BRR_reset	= 0x00        
-		uart2.GTPR_reset= 0x00
-		uart2.RTOR_reset= 0x00
-		uart2.RQR_reset	= 0x00
-		uart2.ISR_reset	= 0x020000C0
-		uart2.ICR_reset	= 0x00
-		uart2.RDR_reset	= 0x00
-		uart2.TDR_reset	= 0x00
 		
 # Details code & data to be written to memory. Defines entry point
 [firmware]

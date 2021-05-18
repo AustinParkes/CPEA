@@ -2,6 +2,8 @@
 
 void emuConfig();
 
+#define MAX_UART 99
+
 /* Memory Map */
 uint32_t FLASH_ADDR;
 uint32_t FLASH_SIZE;
@@ -49,9 +51,10 @@ typedef struct UART{
 	uint32_t RDR_ADDR;
 	uint32_t TDR_ADDR;
 	
-/* 
+    /* 
 	In future, May need to make these names for generic for later configuration.
 	May also need to add an 8 bit mode for 8 bit wide peripheral registers.
+	Would maybe need to create a new "UART8" struct entirely for that. Could call this one "UART32"
 */ 		
 	uint32_t CR1;
 	uint32_t CR2;
@@ -64,10 +67,13 @@ typedef struct UART{
 	uint32_t ICR;
 	uint32_t RDR;
 	uint32_t TDR;
+	
 } USART_handle;
 
 // Create an UART instance. Will make more generic handles if needed.
-// Will also maybe want to automate this? depending on how many UART modules the emulator needs.  
+// Will also maybe want to automate this? depending on how many UART modules the emulator needs. 
+
+USART_handle *UART_test[MAX_UART];		// TODO: Make emulator work with this handle 
 USART_handle USART1;
 
 

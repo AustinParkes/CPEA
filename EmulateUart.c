@@ -218,7 +218,7 @@ static void read_op(char * code_ptr, uint32_t program_start, uint32_t code_bytes
 
 // Test configuration values to see if they match emulatorConfig.toml
 static void show_config(){
-
+	printf("*** SHOW CONFIG ***\n\n");
 	printf("FLASH_ADDR: 0x%x\n", FLASH_ADDR);
 	printf("FLASH_SIZE: 0x%x\n", FLASH_SIZE);
 	printf("SRAM_ADDR:  0x%x\n", SRAM_ADDR);
@@ -231,6 +231,21 @@ static void show_config(){
 	//printf("DATA_SIZE:  0x%x\n", DATA_SIZE);
 	printf("START:      0x%x\n", START);
 	printf("END:        0x%x\n", END);
+	
+	uint32_t *UART_ptr0 = (uint32_t *)UART_test[0];
+	uint32_t *UART_ptr1 = (uint32_t *)UART_test[1];
+	
+	// Show uart struct config info for uart0
+	for (int i=0; i<23; i++){
+		printf("uart0: %x\n", *UART_ptr0);
+		UART_ptr0++;
+	}
+	
+	// Show uart struct config info for uart1
+	for (int i=0; i<23; i++){
+		printf("uart1: %x\n", *UART_ptr1);
+		UART_ptr1++;
+	}
 
 }
 
@@ -780,38 +795,7 @@ static void write_USART1(uc_engine *uc, uc_mem_type type,
 // Test code at particular execution addresses to read memory and debug
 static void read_mem(uc_engine *uc, uint64_t address, uint32_t size, void *user_data)
 {   
-    /*
-	uint32_t r_r2;
-	uint32_t r_r3;			
-	uint32_t var;	
-	*/
-	
-    /* 
-    	Function: 'USART_Init'
-    	CR1: Should be 0x1000000d at this point
-    */
-    /*
-    THIS IS ALL FOR THE COMPLICATED POLLINGUART
-    if (address == 0x100b4){
-    	// CR1 is in r2 at this point
-    	uc_reg_read(uc, UC_ARM_REG_R2, &r_r2);
-    	printf("CR1 in r2: 0x%x\n", r_r2);
-    }
-    if (address == MAIN_START)
-    	printf("Made it to Main\n");
-    	
-    if (address == 0x10000)
-    	printf("Made it inside USART_init\n");
-    	
-    if (address == 0x10258)
-    	printf("Made it after USART_init call\n");
-    
-    // Testing if register values match expected values
-    if (address == 0x10244){
-    	uc_reg_read(uc, UC_ARM_REG_R11, &var);
-    	printf("FP: 0x%x\n",var);				
-    }
-    */
+
     // All for simple polling
 	uint32_t r_r3;
 	uint32_t var1;

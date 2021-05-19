@@ -1,6 +1,8 @@
 #include <stdint.h>
 
 void emuConfig();
+int uartConfig();
+void uartInit();
 
 #define MAX_UART 99
 
@@ -25,7 +27,7 @@ uint32_t FP_INIT;
 /*****************/
 /*** UART MMIO ***/
 /*****************/
-
+int uart_count;			// number of uart modules
 // UART 32 bit peripheral registers
 typedef struct UART{
 /*
@@ -51,11 +53,31 @@ typedef struct UART{
 	uint32_t RDR_ADDR;
 	uint32_t TDR_ADDR;
 	
-    /* 
+	/* 
 	In future, May need to make these names for generic for later configuration.
 	May also need to add an 8 bit mode for 8 bit wide peripheral registers.
 	Would maybe need to create a new "UART8" struct entirely for that. Could call this one "UART32"
-*/ 		
+	*/ 	
+	
+	// Reset values to init memory with
+	uint32_t CR1_RESET;
+	uint32_t CR2_RESET;
+	uint32_t CR3_RESET;
+	uint32_t BRR_RESET;
+	uint32_t GTPR_RESET;
+	uint32_t RTOR_RESET;
+	uint32_t RQR_RESET;
+	uint32_t ISR_RESET;
+	uint32_t ICR_RESET;
+	uint32_t RDR_RESET;
+	uint32_t TDR_RESET;
+	
+/* 
+	In future, May need to make these names for generic for later configuration.
+	May also need to add an 8 bit mode for 8 bit wide peripheral registers.
+	Would maybe need to create a new "UART8" struct entirely for that. Could call this one "UART32"
+*/ 	
+	// UART regs to temporarily hold values
 	uint32_t CR1;
 	uint32_t CR2;
 	uint32_t CR3;
@@ -73,7 +95,9 @@ typedef struct UART{
 // Create an UART instance. Will make more generic handles if needed.
 // Will also maybe want to automate this? depending on how many UART modules the emulator needs. 
 
-USART_handle *UART_test[MAX_UART];		// TODO: Make emulator work with this handle 
+USART_handle *UART_test[MAX_UART];		// TODO: Keep for revisions
+USART_handle *UART;						// TODO: Make work with emulator
+USART_handle *UART_reset;				
 USART_handle USART1;
 
 

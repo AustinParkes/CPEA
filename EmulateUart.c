@@ -237,13 +237,13 @@ static void show_config(){
 	
 	// Show uart struct config info for uart0
 	for (int i=0; i<23; i++){
-		printf("uart0: %x\n", *UART_ptr0);
+		printf("uart0: 0x%x\n", *UART_ptr0);
 		UART_ptr0++;
 	}
 	
 	// Show uart struct config info for uart1
 	for (int i=0; i<23; i++){
-		printf("uart1: %x\n", *UART_ptr1);
+		printf("uart1: 0x%x\n", *UART_ptr1);
 		UART_ptr1++;
 	}
 
@@ -307,8 +307,8 @@ int main(int argc, char **argv, char **envp)
 	
 	//printf("data_size: 0x%x\n", data_bytes);
 	
-	printf("Configure Emulator\n");
-	emuConfig();
+
+	
 	/*** TEST: View config variables to check if they match emulatorConfig.toml ***/
 	//show_config();
 	
@@ -332,12 +332,16 @@ int main(int argc, char **argv, char **envp)
 	
 	// Create new instance of unicorn engine (Init the emulator)
 	err = uc_open(UC_ARCH_ARM, UC_MODE_ARM, &uc);
+	
 	if (err != UC_ERR_OK){
 		printf("Failed on uc_open() with error returned: %u\n", err);
 		return -1;
 	}
 	
-	/*** Memory Map ***/
+	printf("Configure Emulator\n");
+	emuConfig(uc);
+	/*
+	// Memory Map
 	// Map Flash region
 	if (uc_mem_map(uc, FLASH_ADDR, FLASH_SIZE, UC_PROT_ALL)){
 		printf("Failed to map flash region to memory. Quit\n");
@@ -353,6 +357,7 @@ int main(int argc, char **argv, char **envp)
 		printf("Failed to map MMIO region to memory. Quit\n");
 		return -1;
 	}
+	*/
 	/*** Memory Init ***/
 	// Write code to flash!
 	if (uc_mem_write(uc, CODE_ADDR, arm_code, code_bytes)){ // -1 because of null byte
@@ -368,10 +373,13 @@ int main(int argc, char **argv, char **envp)
 	}
 	free(arm_data);
 
-	/*
-		May do a batch write in the future to decrease code size, if possible
+	
+	/* 
+		Initialize all UART module registers to their reset values
+		Could write an entire range, but need the correct struct offset to start from.
+		TODO: Turn into function.	
 	*/
-	// Initialize all UART registers to their reset values
+	/*
 	if (uc_mem_write(uc, CR1_ADDR , &CR1_RESET, 4)){
 		printf("Failed to Initialize CR1. Quit\n");
 		return -1;
@@ -416,15 +424,17 @@ int main(int argc, char **argv, char **envp)
 		printf("Failed to Initialize TDR. Quit\n");
 		return -1;	
 	}
-		
+	*/
+
+	
+	// UART specific callbacks	
 	// Callback to handle FW reads before they happen. (Update values in memory before they are read)
 	uc_hook_add(uc, &handle1, UC_HOOK_MEM_READ, pre_read_USART1, NULL, USART1_ADDR, USART1_ADDR + USART1_TDR);
-	
 	// Callback to handle FW reads after they happen. (Update certain registers after reads)
 	uc_hook_add(uc, &handle2, UC_HOOK_MEM_READ_AFTER, post_read_USART1, NULL, USART1_ADDR, USART1_ADDR + USART1_TDR);	
-	
 	// Callback to handle when FW writes to any USART1 register (DR and CR. SR should change according to CR write.) 
 	uc_hook_add(uc, &handle3, UC_HOOK_MEM_WRITE, write_USART1, NULL, USART1_ADDR, USART1_ADDR + USART1_TDR);
+			
 			
 	// Callback to check memory/debug at any code address (specific addresses can be defined in callback)
 	uc_hook_add(uc, &handle4, UC_HOOK_CODE, read_mem, NULL, FLASH_ADDR, FLASH_ADDR + FLASH_SIZE);	

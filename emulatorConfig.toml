@@ -16,12 +16,11 @@ sram_size 	= 0x00020000
 	mmio_size  	= 0x20000000
 	### TODO: ### A python script WILL use this number to generate blank UART modules below.
 	uart_count	= 2								# Used to generate the emulators UART structs
-	
-	
-		# map for generic uart
-		# In future, would prefer a user to configure what peripherals they need
-		# and a python script could generate blank keys for them, allowing the user
-		# to just fill in the blanks. For now, uart1 is just hardcoded.
+		
+		# Map for generic uart
+		# In future, a python script could generate blank keys for them, allowing the user
+		# to just fill in the blanks. For now, uart is just hardcoded.
+		# also, register count will be predetermined, so it's fine to use register count as a delimeter.
 		[mem_map.mmio.uart]
 		uart0.base_addr = 0x40013800	# Base address for uart0
 		# Define offsets for now. Allow for full addresses later?
@@ -56,7 +55,7 @@ sram_size 	= 0x00020000
 		uart1.CR1_addr	= 0x00
 		uart1.CR2_addr	= 0x04  
 		uart1.CR3_addr	= 0x08       
-		uart1.BRR_addr	= 0x0c        
+		uart1.BRR_addr  = 0x0c        
 		uart1.GTPR_addr	= 0x10
 		uart1.RTOR_addr	= 0x14
 		uart1.RQR_addr	= 0x18

@@ -4,15 +4,18 @@ Configurable Peripheral Emulator for ARM
 TODO
 ----
 
-1) Modify emulatorSetup.sh
-   - Fix some of it's variables (they aren't outputting).
-   - Pass some of it's variables to EmulateUart.c to automate memory map better. (Can pass through files)
+1) Update emulatorSetup.py
+   - Get entry and exit points
+   - Auto generate mmio for emulatorConfig.toml
 
 2) Create Testing.c/Testing.h files to store functions that test parts of the emulator.
 
-3) Add TOML config file and C file that can parse it and store variables
+3) Sanity check my UART data structures when they write to memory.
+   - Look for other things to sanity check?
 
-4) Convert emulatorSetup.sh to Python script that can autofill some emulator configurations.
+4) Get callbacks to know which UART module they are reading.
+   - Can scan UART modules for a matching address within the callbacks.
+   - Any other ideas?
 
 Projects Referenced or Used
 ---------------------------

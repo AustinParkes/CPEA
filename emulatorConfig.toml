@@ -20,10 +20,10 @@ sram_size 	= 0x00020000
 		# Map for generic uart
 		# In future, a python script could generate blank keys for them, allowing the user
 		# to just fill in the blanks. For now, uart is just hardcoded.
-		# also, register count will be predetermined, so it's fine to use register count as a delimeter.
+		# also, register count will be predetermined, so it's fine to use register count as a delimeter.	
 		[mem_map.mmio.uart]
 		uart0.base_addr = 0x40013800	# Base address for uart0
-		# Define offsets for now. Allow for full addresses later?
+		# TODO, test absolute addresses to see if that functionality works.
 		uart0.CR1_addr	= 0x00
 		uart0.CR2_addr	= 0x04  
 		uart0.CR3_addr	= 0x08       
@@ -51,7 +51,7 @@ sram_size 	= 0x00020000
 		
 		# Choosing made up values for now
 		uart1.base_addr = 0x40014800	# Base address for uart1
-		# Define offsets for now. Allow for full addresses later?
+		# TODO, test absolute addresses to see if that functionality works.
 		uart1.CR1_addr	= 0x00
 		uart1.CR2_addr	= 0x04  
 		uart1.CR3_addr	= 0x08       

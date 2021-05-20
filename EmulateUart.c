@@ -132,6 +132,9 @@ enum USART1{
 	TDR_ADDR = USART1_ADDR + USART1_TDR
 };
 
+
+
+
 /*** USART1 Reset Values ***/
 
 /*
@@ -232,8 +235,8 @@ static void show_config(){
 	printf("START:      0x%x\n", START);
 	printf("END:        0x%x\n", END);
 	
-	uint32_t *UART_ptr0 = (uint32_t *)UART_test[0];
-	uint32_t *UART_ptr1 = (uint32_t *)UART_test[1];
+	uint32_t *UART_ptr0 = (uint32_t *)UART[0];
+	uint32_t *UART_ptr1 = (uint32_t *)UART[1];
 	
 	// Show uart struct config info for uart0
 	for (int i=0; i<23; i++){
@@ -338,10 +341,11 @@ int main(int argc, char **argv, char **envp)
 		return -1;
 	}
 	
+	
 	printf("Configure Emulator\n");
 	emuConfig(uc);
 	/*
-	// Memory Map
+	NOTE: Moved into emuConfig because this needs to be before UART configuration.
 	// Map Flash region
 	if (uc_mem_map(uc, FLASH_ADDR, FLASH_SIZE, UC_PROT_ALL)){
 		printf("Failed to map flash region to memory. Quit\n");
@@ -377,7 +381,7 @@ int main(int argc, char **argv, char **envp)
 	/* 
 		Initialize all UART module registers to their reset values
 		Could write an entire range, but need the correct struct offset to start from.
-		TODO: Turn into function.	
+		NOTE: Moved into emuConfig at the end of uart configuration.	
 	*/
 	/*
 	if (uc_mem_write(uc, CR1_ADDR , &CR1_RESET, 4)){
@@ -426,14 +430,18 @@ int main(int argc, char **argv, char **envp)
 	}
 	*/
 
-	
+	// TODO: Will likely move UART specific callbacks to the end of UART configuration in emuConfig().
+	/* 
+	TODO: Need to extend the callback range so that it extends to all UART modules.
+	      In other words, need to find the lowest address and highest address for UART regs since callback range is inclusive.
+	*/
 	// UART specific callbacks	
 	// Callback to handle FW reads before they happen. (Update values in memory before they are read)
-	uc_hook_add(uc, &handle1, UC_HOOK_MEM_READ, pre_read_USART1, NULL, USART1_ADDR, USART1_ADDR + USART1_TDR);
+	uc_hook_add(uc, &handle1, UC_HOOK_MEM_READ, pre_read_USART1, NULL, minUARTaddr, maxUARTaddr);
 	// Callback to handle FW reads after they happen. (Update certain registers after reads)
-	uc_hook_add(uc, &handle2, UC_HOOK_MEM_READ_AFTER, post_read_USART1, NULL, USART1_ADDR, USART1_ADDR + USART1_TDR);	
+	uc_hook_add(uc, &handle2, UC_HOOK_MEM_READ_AFTER, post_read_USART1, NULL, minUARTaddr, maxUARTaddr);	
 	// Callback to handle when FW writes to any USART1 register (DR and CR. SR should change according to CR write.) 
-	uc_hook_add(uc, &handle3, UC_HOOK_MEM_WRITE, write_USART1, NULL, USART1_ADDR, USART1_ADDR + USART1_TDR);
+	uc_hook_add(uc, &handle3, UC_HOOK_MEM_WRITE, write_USART1, NULL, minUARTaddr, maxUARTaddr);
 			
 			
 	// Callback to check memory/debug at any code address (specific addresses can be defined in callback)
@@ -496,12 +504,93 @@ int main(int argc, char **argv, char **envp)
 	return 0;
 }
 
+/* 
+	TODO: FOR ALL UART CALLBACKS, need to determine which UART module the address belongs to.
+	      Will scan each UART module and see if the address falls in any of their ranges.
+
+*/
+
 // When FW reads from RDR (Before successful read)
 static void pre_read_USART1(uc_engine *uc, uc_mem_type type,
         uint64_t address, int size, uint64_t value, void *user_data)
 {
+	uint32_t Data;  		// For RDR
+	uint32_t *UART_ptr;		// Points to any given UART module
+	USART_handle *UARTx;	// Points to the UART mmio accessed.
+	
 	printf("Made it to pre_read_USART1 callback\n");
-    uint32_t Data;  // For RDR
+    
+    // TODO: Turn this module search into a function.
+    // TODO: Add some checks to make sure that pointer isn't going out of bounds
+    // Determine which UART module this address belongs to.
+    for (int i=0; i < uart_count; i++){
+    	UART_ptr = (uint32_t *)UART[i];		// Serves as an init and reset for UART_ptr
+    	if (!UART_ptr){
+    		printf("Error accessing UART%d in pre_read_uartx callback", i);	
+    		exit(1);
+    	} 	 		
+    	*UART_ptr++;						// Skip the base address.
+    	
+    	// Cycle through each register address and look for a match.
+    	for (int addr_cnt=0; addr_cnt < 11; addr_cnt++){		// NOTE: 11 is the predetermined # of registers to go through
+    		if (*UART_ptr == (uint32_t)address)	
+    			UARTx = UART[i];			// Set to the start of the matching UART module
+    		else
+    			*UART_ptr++;	
+    	}
+    	
+    }
+    /*
+	if (address == (uint64_t)UARTx->CR1_ADDR)
+		;
+	else if	(address == (uint64_t)UARTx->CR1_ADDR)
+		;
+	else if	(address == (uint64_t)UARTx->CR2_ADDR)
+		;
+	else if	(address == (uint64_t)UARTx->CR3_ADDR)
+		;
+	else if	(address == (uint64_t)UARTx->BRR_ADDR)
+		;
+	else if	(address == (uint64_t)UARTx->GTPR_ADDR)
+		;
+	else if	(address == (uint64_t)UARTx->RTOR_ADDR)
+		;
+	else if	(address == (uint64_t)UARTx->RQR_ADDR)
+		;
+	else if	(address == (uint64_t)UARTx->ISR_ADDR){
+    		printf("	Update ISR\n");
+    */
+    		/*
+    			bits 25, 7, & 6 are set by default in ISR.
+    			25 is undetermined atm
+    			7 & 6 never change, since there is no logical reason to ever change them
+    		*/
+    		// Commit the current ISR value to memory before fw reads it
+    /*	
+    		uc_mem_write(uc, UARTx->ISR_ADDR, &UARTx->ISR, 4);
+    		// break;
+    	}
+		else if	(address == (uint64_t)UARTx->ICR_ADDR)
+			;
+		else if	(address == (uint64_t)UARTx->RDR_ADDR){
+    		printf("	Update Data Register\n") ;
+    		Data = 0xEE;		
+    		// Mask should be 7 bit in this test (Data == 0x6E)
+    		Data &= Data_Mask;		// Mask according to 7, 8, 9 bit data 
+    		UARTx->RDR = Data;
+    			printf("	DR val: 0x%x\n", Data);		
+    		uc_mem_write(uc, UARTx->RDR_ADDR, &UARTx->RDR, 4);
+    		// Data is loaded into DR at this point, so RXNE == 1
+    		SET_RXNE(UARTx->ISR, 5);   // Set bit 5 (RXNE)    		
+    		//break;
+    	}
+		else if	(address == (uint64_t)UARTx->TDR_ADDR)
+			;
+		else
+			printf("How did I get here\n");
+    */
+    
+  
     switch(address){
     	case (CR1_ADDR) :   		
     		break;
@@ -519,12 +608,14 @@ static void pre_read_USART1(uc_engine *uc, uc_mem_type type,
     		break;
     	case (ISR_ADDR) :
     		printf("	Update ISR\n");
+    	
     		/*
     			bits 25, 7, & 6 are set by default in ISR.
     			25 is undetermined atm
     			7 & 6 never change, since there is no logical reason to ever change them
     		*/
     		// Commit the current ISR value to memory before fw reads it
+    	
     		uc_mem_write(uc, ISR_ADDR, &USART1.ISR, 4);
     		break;
     	case (ICR_ADDR) :
@@ -543,7 +634,8 @@ static void pre_read_USART1(uc_engine *uc, uc_mem_type type,
     		break;
     	case (TDR_ADDR) :
     		break;	
-    }                                     
+    }
+                                         
 }
 
 // When FW reads from RDR (After successful read)

@@ -213,6 +213,13 @@ void emuConfig(uc_engine *uc){
 
 // Configure UART 
 int uartConfig(uc_engine *uc, toml_table_t* mmio){
+
+	uint32_t *UART_data;		// Points to any given UART struct, and is used to iterate through their data
+
+	// These keep track of the callback range for UART register accesses.
+	minUARTaddr = 0xFFFFFFFF;	// Chose a value that we know is larger than the greatest UART addr
+	maxUARTaddr = 0;					
+	
  	/*
     	UART config
     	1) Generate UART struct for each module from [memory_map.mmio]
@@ -230,24 +237,24 @@ int uartConfig(uc_engine *uc, toml_table_t* mmio){
     	error("Cannot read mmio.uart_count", "");
     }
     uart_count = (int)num_uarts.u.i;					// Number of UART modules the user specified.
-
-	// Generate UART structs
-	//USART_handle *UART_test[uart_count];   				// Create array of pointers to structs
 	
 	// Allocate space for each struct. TODO: Must free these after emulation finished.
-	/*
+	
 	for (int i=0; i<uart_count; i++){
-    	UART_test[i] = (USART_handle *)malloc(sizeof(USART_handle));
-    	if (UART_test[i] == NULL)
-    		error("UART struct memory not allocated","");
+    	UART[i] = (USART_handle *)malloc(sizeof(USART_handle));
+    	if (UART[i] == NULL){
+    		printf("UART struct memory not allocated for UART%d\n", i);
+    	}
     }
-	*/
+	
 	
 	// Allocate space for our UART struct
+	/*
 	UART = (USART_handle *)malloc(sizeof(USART_handle));
 	UART_reset = UART;
 	if (UART == NULL)
 		error("UART struct not allocated", "");
+ 	*/
  	
     /* 2) Extract UART config values to UART structs */
     toml_table_t* uart = toml_table_in(mmio, "uart");   // Use mmio pointer from earlier
@@ -278,13 +285,13 @@ int uartConfig(uc_engine *uc, toml_table_t* mmio){
  		}
  		
  		// Get ptr to current UART struct data. Also serves as a reset to reuse the struct.
- 		uint32_t *UART_data = (uint32_t *)UART;
+ 		//uint32_t *UART_data = (uint32_t *)UART;
  		
- 		// Get ptr to current UART struct
- 		//uint32_t *UART_ptr = (uint32_t *)UART_test[tab_i];
+ 		// Get ptr to current UART struct data. 
+ 		UART_data = (uint32_t *)UART[tab_i];
  		            	
- 		//if (!UART_ptr)
- 		//	error("Failed to get pointer from current UART struct", "");
+ 		if (!UART_data)
+ 			error("Failed to get pointer from current UART struct", "");
  		
     	// Fill UART struct with current UART module configuration values   
     	for (int key_i=0; ; key_i++){
@@ -292,7 +299,7 @@ int uartConfig(uc_engine *uc, toml_table_t* mmio){
     		if (!key) 
     			break;
     			
-    		//printf("key %d: %s: ", key_i, key);
+    		
     		
     		// Get data from the current key
     		toml_datum_t key_data = toml_int_in(uartx, key);
@@ -303,19 +310,30 @@ int uartConfig(uc_engine *uc, toml_table_t* mmio){
     		// Initialize UART structs with peripheral register addresses and reset values
     		uint32_t base_addr;
 			if (key_i == 0)
-    			base_addr = (uint32_t)key_data.u.i;				// Get Base Addr of this UART module
-    			
+    			base_addr = (uint32_t)key_data.u.i;				// Base ADDR should be the first key we access.
+    				
     		//*UART_ptr = (uint32_t)key_data.u.i;
     		*UART_data = (uint32_t)key_data.u.i;
     		
-			//if (*UART_ptr < base_addr && key_i <= 11)			// Convert addr offsets to full addresses. 11 registers pre-determined.
-			//	*UART_ptr = *UART_ptr + base_addr;
+			//if (*UART_data < base_addr && key_i <= 11)			// Convert addr offsets to full addresses. 11 registers pre-determined.
+			//	*UART_data = *UART_data + base_addr;
 			
-			if (*UART_data < base_addr && key_i <= 11)			// Convert addr offsets to full addresses. 11 registers pre-determined.
+			// Convert offset address to absolute address.
+			// NOTE: First 11 registers are the address registers.
+			if (*UART_data < base_addr && key_i <= 11){			// Convert addr offsets to full addresses. 11 registers pre-determined.
 				*UART_data = *UART_data + base_addr;
+			
+				// Keep track of lowest and highest UART addresses to determine callback range later.
+				if (*UART_data < minUARTaddr)
+					minUARTaddr = *UART_data;						// Update the lowest address thus far.
+				else if (*UART_data > maxUARTaddr)
+					maxUARTaddr = *UART_data;						// Update the highest address thus far.	
+			}	
+				
 				
 			UART_data++;
     		//UART_ptr++;							// TODO: Make sure this doesn't go into another structs space or out of bounds
+    		//printf("key %d: %s: ", key_i, key);
     		//printf("0x%lx\n", key_data.u.i);	
         }
         
@@ -324,6 +342,8 @@ int uartConfig(uc_engine *uc, toml_table_t* mmio){
              
    	}
    	
+   	// SANITY CHECK. Check if the min and max addresses for UART match.
+   	printf("minUARTaddr: 0x%x\nmaxUARTaddr: 0x%x\n", minUARTaddr, maxUARTaddr);
    	/* 
 		Initialize all UART module registers to their reset values
 		Could write an entire range, but need the correct struct offset to start from.
@@ -331,60 +351,62 @@ int uartConfig(uc_engine *uc, toml_table_t* mmio){
 		TODO: Sanity check these memory locations by reading back later
 	*/
 	/*
-	for (int i=0; i < uart_count; i++){
-	
-		if (uc_mem_write(uc, UART_test[i]->CR1_ADDR, &UART_test[i]->CR1_RESET, 4)){
-			printf("Failed to Initialize CR1 for UART%d. Quit\n", i);
-			exit(1);
-		}
-		if (uc_mem_write(uc, UART_test[i]->CR2_ADDR, &UART_test[i]->CR2_RESET, 4)){
-			printf("Failed to Initialize CR2 for UART%d. Quit\n", i);
-			exit(1);		
-		}
-		if (uc_mem_write(uc, UART_test[i]->CR3_ADDR, &UART_test[i]->CR3_RESET, 4)){
-			printf("Failed to Initialize CR3 for UART%d. Quit\n", i);
-			exit(1);	
-		}
-		if (uc_mem_write(uc, UART_test[i]->BRR_ADDR, &UART_test[i]->BRR_RESET, 4)){
-			printf("Failed to Initialize BRR for UART%d. Quit\n", i);
-			exit(1);	
-		}
-		if (uc_mem_write(uc, UART_test[i]->GTPR_ADDR, &UART_test[i]->GTPR_RESET, 4)){
-			printf("Failed to Initialize GTPR for UART%d. Quit\n", i);
-			exit(1);	
-		}
-		if (uc_mem_write(uc, UART_test[i]->RTOR_ADDR, &UART_test[i]->RTOR_RESET, 4)){
-			printf("Failed to Initialize RTOR for UART%d. Quit\n", i);
-			exit(1);	
-		}
-		if (uc_mem_write(uc, UART_test[i]->RQR_ADDR, &UART_test[i]->RQR_RESET, 4)){
-			printf("Failed to Initialize RQR for UART%d. Quit\n", i);
-			exit(1);	
-		}
-		if (uc_mem_write(uc, UART_test[i]->ISR_ADDR, &UART_test[i]->ISR_RESET, 4)){
-			printf("Failed to Initialize ISR for UART%d. Quit\n", i);
-			exit(1);	
-		}
-		if (uc_mem_write(uc, UART_test[i]->ICR_ADDR, &UART_test[i]->ICR_RESET, 4)){
-			printf("Failed to Initialize ICR for UART%d. Quit\n", i);
-			exit(1);	
-		}
-		if (uc_mem_write(uc, UART_test[i]->RDR_ADDR, &UART_test[i]->RDR_RESET, 4)){
-			printf("Failed to Initialize RDR for UART%d. Quit\n", i);
-			exit(1);	
-		}
-		if (uc_mem_write(uc, UART_test[i]->TDR_ADDR, &UART_test[i]->TDR_RESET, 4)){
-			printf("Failed to Initialize TDR for UART%d. Quit\n", i);
-			exit(1);	
-		}
-	}
+
    	*/	
    		
    	return 0;	  		
 }
 
-void uartInit(uc_engine *uc, int table){
+// Cycle through each UART module and initialize all of their registers.	
+void uartInit(uc_engine *uc, int i){
 
+	if (uc_mem_write(uc, UART[i]->CR1_ADDR, &UART[i]->CR1_RESET, 4)){
+		printf("Failed to Initialize CR1 for UART%d. Quit\n", i);
+		exit(1);
+	}
+	if (uc_mem_write(uc, UART[i]->CR2_ADDR, &UART[i]->CR2_RESET, 4)){
+		printf("Failed to Initialize CR2 for UART%d. Quit\n", i);
+		exit(1);		
+	}
+	if (uc_mem_write(uc, UART[i]->CR3_ADDR, &UART[i]->CR3_RESET, 4)){
+		printf("Failed to Initialize CR3 for UART%d. Quit\n", i);
+		exit(1);	
+	}
+	if (uc_mem_write(uc, UART[i]->BRR_ADDR, &UART[i]->BRR_RESET, 4)){
+		printf("Failed to Initialize BRR for UART%d. Quit\n", i);
+		exit(1);	
+	}
+	if (uc_mem_write(uc, UART[i]->GTPR_ADDR, &UART[i]->GTPR_RESET, 4)){
+		printf("Failed to Initialize GTPR for UART%d. Quit\n", i);
+		exit(1);	
+	}
+	if (uc_mem_write(uc, UART[i]->RTOR_ADDR, &UART[i]->RTOR_RESET, 4)){
+		printf("Failed to Initialize RTOR for UART%d. Quit\n", i);
+		exit(1);	
+	}
+	if (uc_mem_write(uc, UART[i]->RQR_ADDR, &UART[i]->RQR_RESET, 4)){
+		printf("Failed to Initialize RQR for UART%d. Quit\n", i);
+		exit(1);	
+	}
+	if (uc_mem_write(uc, UART[i]->ISR_ADDR, &UART[i]->ISR_RESET, 4)){
+		printf("Failed to Initialize ISR for UART%d. Quit\n", i);
+		exit(1);	
+	}
+	if (uc_mem_write(uc, UART[i]->ICR_ADDR, &UART[i]->ICR_RESET, 4)){
+		printf("Failed to Initialize ICR for UART%d. Quit\n", i);
+		exit(1);	
+	}
+	if (uc_mem_write(uc, UART[i]->RDR_ADDR, &UART[i]->RDR_RESET, 4)){
+		printf("Failed to Initialize RDR for UART%d. Quit\n", i);
+		exit(1);	
+	}
+	if (uc_mem_write(uc, UART[i]->TDR_ADDR, &UART[i]->TDR_RESET, 4)){
+		printf("Failed to Initialize TDR for UART%d. Quit\n", i);
+		exit(1);	
+	}
+
+	/*
+	NOTE: This block is used if we are using only a singular UART structure
 	if (uc_mem_write(uc, UART->CR1_ADDR, &UART->CR1_RESET, 4)){
 		printf("Failed to Initialize CR1 for UART%d. Quit\n", table);
 		exit(1);
@@ -429,5 +451,6 @@ void uartInit(uc_engine *uc, int table){
 		printf("Failed to Initialize TDR for UART%d. Quit\n", table);
 		exit(1);	
 	}
+	*/
 
 }

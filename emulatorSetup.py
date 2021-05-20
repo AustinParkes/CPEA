@@ -56,8 +56,7 @@ with open(elf, 'rb') as f:
 		elif header['sh_name'] == 98:
 			DataAddr = header['sh_addr']
 			DataSize = header['sh_size']
-		
-		
+			
 		
 """
 # Get Executables Virtual Address
@@ -268,6 +267,7 @@ print("   .text Size: " + hex(TextSize))
 print("   .data Addr: " + hex(DataAddr))
 print("   .data Size: " + hex(DataSize))
 """
+NOTE: Can use the function after main() as the stopping address
 print("Emulator Begin and Until Addresses")
 print("   Begin: " + MainAddrHex, end='')
 print("   Until: " + ExitAddrHex)

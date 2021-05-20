@@ -514,33 +514,41 @@ int main(int argc, char **argv, char **envp)
 static void pre_read_USART1(uc_engine *uc, uc_mem_type type,
         uint64_t address, int size, uint64_t value, void *user_data)
 {
-	uint32_t Data;  		// For RDR
-	uint32_t *UART_ptr;		// Points to any given UART module
-	USART_handle *UARTx;	// Points to the UART mmio accessed.
+	int uart_i;					// Index for UART modules
+	uint32_t Data;  			// For RDR
+	uint32_t *UART_ptr;			// Points to any given UART module
+	USART_handle *UARTx = NULL;	// Points to the UART mmio accessed.
 	
 	printf("Made it to pre_read_USART1 callback\n");
     
     // TODO: Turn this module search into a function.
     // TODO: Add some checks to make sure that pointer isn't going out of bounds
+    // TODO: Check for general correctness in semantics
     // Determine which UART module this address belongs to.
-    for (int i=0; i < uart_count; i++){
-    	UART_ptr = (uint32_t *)UART[i];		// Serves as an init and reset for UART_ptr
+    for (uart_i=0; uart_i < uart_count; uart_i++){
+    	UART_ptr = (uint32_t *)UART[uart_i];		// Serves as an init and reset for UART_ptr
     	if (!UART_ptr){
-    		printf("Error accessing UART%d in pre_read_uartx callback", i);	
+    		printf("Error accessing UART%d in pre_read_uartx callback", uart_i);	
     		exit(1);
     	} 	 		
-    	*UART_ptr++;						// Skip the base address.
+    	*UART_ptr++;								// Skip the base address.
     	
     	// Cycle through each register address and look for a match.
     	for (int addr_cnt=0; addr_cnt < 11; addr_cnt++){		// NOTE: 11 is the predetermined # of registers to go through
-    		if (*UART_ptr == (uint32_t)address)	
-    			UARTx = UART[i];			// Set to the start of the matching UART module
+    		if (*UART_ptr == (uint32_t)address){	
+    			UARTx = UART[uart_i];				// Set to the start of the matching UART module
+    			break;
+    		}
     		else
-    			*UART_ptr++;	
+    			*UART_ptr++;						// No match, move to next UART addr in struct
     	}
     	
+    	// Leave outer most loop if there is a match.
+    	if (UARTx == UART[uart_i])				
+    		break;	   		
     }
-    /*
+    
+    
 	if (address == (uint64_t)UARTx->CR1_ADDR)
 		;
 	else if	(address == (uint64_t)UARTx->CR1_ADDR)
@@ -559,89 +567,44 @@ static void pre_read_USART1(uc_engine *uc, uc_mem_type type,
 		;
 	else if	(address == (uint64_t)UARTx->ISR_ADDR){
     		printf("	Update ISR\n");
-    */
-    		/*
-    			bits 25, 7, & 6 are set by default in ISR.
-    			25 is undetermined atm
-    			7 & 6 never change, since there is no logical reason to ever change them
-    		*/
-    		// Commit the current ISR value to memory before fw reads it
-    /*	
-    		uc_mem_write(uc, UARTx->ISR_ADDR, &UARTx->ISR, 4);
-    		// break;
-    	}
-		else if	(address == (uint64_t)UARTx->ICR_ADDR)
-			;
-		else if	(address == (uint64_t)UARTx->RDR_ADDR){
-    		printf("	Update Data Register\n") ;
-    		Data = 0xEE;		
-    		// Mask should be 7 bit in this test (Data == 0x6E)
-    		Data &= Data_Mask;		// Mask according to 7, 8, 9 bit data 
-    		UARTx->RDR = Data;
-    			printf("	DR val: 0x%x\n", Data);		
-    		uc_mem_write(uc, UARTx->RDR_ADDR, &UARTx->RDR, 4);
-    		// Data is loaded into DR at this point, so RXNE == 1
-    		SET_RXNE(UARTx->ISR, 5);   // Set bit 5 (RXNE)    		
-    		//break;
-    	}
-		else if	(address == (uint64_t)UARTx->TDR_ADDR)
-			;
-		else
-			printf("How did I get here\n");
-    */
     
-  
-    switch(address){
-    	case (CR1_ADDR) :   		
-    		break;
-    	case (CR2_ADDR) :
-    		break;		
-    	case (CR3_ADDR) :
-    		break;
-    	case (BRR_ADDR) :
-    		break;
-    	case (GTPR_ADDR) :
-    		break;
-    	case (RTOR_ADDR) :
-    		break;
-    	case (RQR_ADDR) :
-    		break;
-    	case (ISR_ADDR) :
-    		printf("	Update ISR\n");
+    	/*
+    	bits 25, 7, & 6 are set by default in ISR.
+    	25 is undetermined atm
+    	7 & 6 never change, since there is no logical reason to ever change them
+    	*/
+    	// Commit the current ISR value to memory before fw reads it
     	
-    		/*
-    			bits 25, 7, & 6 are set by default in ISR.
-    			25 is undetermined atm
-    			7 & 6 never change, since there is no logical reason to ever change them
-    		*/
-    		// Commit the current ISR value to memory before fw reads it
-    	
-    		uc_mem_write(uc, ISR_ADDR, &USART1.ISR, 4);
-    		break;
-    	case (ICR_ADDR) :
-    		break; 		
-    	// (Preload data for now ... )
-    	case (RDR_ADDR) :
-    		printf("	Update Data Register\n") ;
-    		Data = 0xEE;		
-    		// Mask should be 7 bit in this test (Data == 0x6E)
-    		Data &= Data_Mask;		// Mask according to 7, 8, 9 bit data 
-    		USART1.RDR = Data;
-    			printf("	DR val: 0x%x\n", Data);		
-    		uc_mem_write(uc, RDR_ADDR, &USART1.RDR, 4);
-    		// Data is loaded into DR at this point, so RXNE == 1
-    		SET_RXNE(USART1.ISR, 5);   // Set bit 5 (RXNE)    		
-    		break;
-    	case (TDR_ADDR) :
-    		break;	
+    	uc_mem_write(uc, UARTx->ISR_ADDR, &UARTx->ISR, 4);
     }
-                                         
+	else if	(address == (uint64_t)UARTx->ICR_ADDR)
+		;
+	else if	(address == (uint64_t)UARTx->RDR_ADDR){
+    	printf("	Update Data Register\n") ;
+    	Data = 0xEE;		
+    	// Mask should be 7 bit in this test (Data == 0x6E)
+    	Data &= Data_Mask;		// Mask according to 7, 8, 9 bit data 
+    	UARTx->RDR = Data;
+    	printf("	DR val: 0x%x\n", Data);		
+    	uc_mem_write(uc, UARTx->RDR_ADDR, &UARTx->RDR, 4);
+    	// Data is loaded into DR at this point, so RXNE == 1
+    	SET_RXNE(UARTx->ISR, 5);   // Set bit 5 (RXNE)    		
+    }
+	else if	(address == (uint64_t)UARTx->TDR_ADDR)
+		;
+	else{
+		printf("Address does not match and of UART%d register addresses.\n", uart_i);
+		exit(1);
+    }
+                                 
 }
 
 // When FW reads from RDR (After successful read)
 static void post_read_USART1(uc_engine *uc, uc_mem_type type,
         uint64_t address, int size, uint64_t value, void *user_data)
 {
+
+
     printf("Made it to post_read_USART1 callback\n");
     switch(address){
     	case (CR1_ADDR) :   		

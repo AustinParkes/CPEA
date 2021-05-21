@@ -27,6 +27,7 @@ uint32_t FP_INIT;
 /*****************/
 /*** UART MMIO ***/
 /*****************/
+bool UART_enable;   		// Disabled by default (CR1)
 int uart_count;				// number of uart modules
 // These keep track of the callback range for UART register accesses. 
 uint32_t minUARTaddr;
@@ -93,15 +94,13 @@ typedef struct UART{
 	uint32_t RDR;
 	uint32_t TDR;
 	
-} USART_handle;
+} UART_handle;
 
 // Create an UART instance. Will make more generic handles if needed.
 // Will also maybe want to automate this? depending on how many UART modules the emulator needs. 
 
-USART_handle *UART[MAX_UART];		// TODO: Keep for revisions
-//USART_handle *UART;						// TODO: Make work with emulator
-//USART_handle *UART_reset;				
-USART_handle USART1;
+UART_handle *UART[MAX_UART];		// TODO: Keep for revisions			
+//UART_handle UART1;
 
 
 

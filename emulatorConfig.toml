@@ -7,12 +7,13 @@
 flash_addr 	= 0x00000000
 flash_size 	= 0x00019000
 
+# SP, FP init to 
 sram_addr 	= 0x02000000
 sram_size 	= 0x00020000
 
 	# ARM mmio map 0x40000000 - 0x5fffffff
 	[mem_map.mmio]
-	mmio_start	= 0x40000000
+	mmio_addr	= 0x40000000
 	mmio_size  	= 0x20000000
 	### TODO: ### A python script WILL use this number to generate blank UART modules below.
 	uart_count	= 2								# Used to generate the emulators UART structs

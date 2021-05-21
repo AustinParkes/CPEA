@@ -19,32 +19,62 @@ static void error(const char *msg, const char* msg1)
 }
 
 // Read config file, parse emulator configurations, and configure emulator
-void emuConfig(uc_engine *uc){
-	
-	FILE *fp;
+void emuConfig(uc_engine *uc, char *arm_code, char *arm_data){
+ 	
+ 	/***********************************
+		Parse Configuration File and Store configurations   
+    ************************************/ 	  
+    toml_table_t* mmio;		// mmio table from TOML file.    
+	FILE *fp;				
 	char errbuf[200];
 
-	/*
-		Read and Parse configuration file
-	*/
+	printf("Configure Emulator\n");	
 	
-	fp = fopen("emulatorConfig.toml", "r");
-	
+	fp = fopen("emulatorConfig.toml", "r");	
     if (!fp) {
         error("cannot open emulatorConfig.toml - ", strerror(errno));
     }
     
     // Root table 
-    toml_table_t* config = toml_parse_file(fp, errbuf, sizeof(errbuf));
+    toml_table_t* root_table = toml_parse_file(fp, errbuf, sizeof(errbuf));
     fclose(fp);
-   	if (!config){
+   	if (!root_table){
    		error("cannot parse emulatorConfig.toml - ", errbuf);
-   	}
-   	
+   	}    
+    
+    // Gather and Store data from emulatorConfig.toml     	
+    mmio = parseTOML(root_table);
+    
+    
+    /***********************************
+		General Emulator Configurations.   
+    ************************************/
+    
+    // Memory Map for Emulator
+    map_memory(uc);
+    
+    // Init ARM Registers (includes SP, LR)
+    // TODO: See if there is a more legitimate way to init SP.
+    reg_init(uc);
+    
+    /***********************************
+		Peripheral Configurations   
+    ************************************/
+	uartConfig(uc, mmio);
+       	     	    	            
+    /*** Free Memory for config file ***/
+    free(root_table); 
+      
+    printf("   - Complete\n");         
+}
+
+
+toml_table_t* parseTOML(toml_table_t* root_table){
+	
     /*
     	Traverse to [mem_map] table
     */
- 	toml_table_t* mem_map = toml_table_in(config, "mem_map");
+ 	toml_table_t* mem_map = toml_table_in(root_table, "mem_map");
  	if (!mem_map){
  		error("missing [mem_map]", "");
  	} 
@@ -93,11 +123,11 @@ void emuConfig(uc_engine *uc){
  	}
     
     // mmio start
-    toml_datum_t mmio_start = toml_int_in(mmio, "mmio_start");
-    if (!mmio_start.ok){
-    	error("Cannot read mmio.mmio_start", "");
+    toml_datum_t mmio_addr = toml_int_in(mmio, "mmio_addr");
+    if (!mmio_addr.ok){
+    	error("Cannot read mmio.mmio_addr", "");
     }
-    MMIO_START = (uint32_t)mmio_start.u.i; 
+    MMIO_ADDR = (uint32_t)mmio_addr.u.i; 
     
     // mmio size
     toml_datum_t mmio_size = toml_int_in(mmio, "mmio_size");
@@ -112,7 +142,7 @@ void emuConfig(uc_engine *uc){
     */
     
 	
- 	toml_table_t* firmware = toml_table_in(config, "firmware");
+ 	toml_table_t* firmware = toml_table_in(root_table, "firmware");
  	if (!firmware){
  		error("missing [firmware]", "");
  	} 
@@ -179,41 +209,55 @@ void emuConfig(uc_engine *uc){
     if (!end.ok){
     	error("Cannot read execution.end", "");
     }
-    END = (uint32_t)end.u.i;         	
+    END = (uint32_t)end.u.i;
     
-    // TODO: Turn into function
-    // Note moved from EmulateUart.c after emuConfig() and before writing to memory.
-    /*** Memory Map ***/
+    return mmio;
+
+}
+
+void map_memory(uc_engine *uc){
+
 	// Map Flash region
 	if (uc_mem_map(uc, FLASH_ADDR, FLASH_SIZE, UC_PROT_ALL)){
 		printf("Failed to map flash region to memory. Quit\n");
 		exit(1);
 	}
+	
 	// Map SRAM region
 	if (uc_mem_map(uc, SRAM_ADDR, SRAM_SIZE, UC_PROT_ALL)){
 		printf("Failed to map sram region to memory. Quit\n");
 		exit(1);	
-	}		
+	}	
+		
 	// Map all MMIO from 0x40000000 - 0x5FFFFFFF
-	if (uc_mem_map(uc, MMIO_START, MMIO_SIZE, UC_PROT_ALL)){
+	if (uc_mem_map(uc, MMIO_ADDR, MMIO_SIZE, UC_PROT_ALL)){
 		printf("Failed to map MMIO region to memory. Quit\n");
 		exit(1);
 	}
-    
-    /***********************************
-		Finish General Emulator configs.
-		Begin Peripheral Configs    
-    ************************************/
-	uartConfig(uc, mmio);
-       	     	    	            
-    /*
-    	Free Memory for the file
-    */
-    toml_free(config);   
+	
 }
 
+void reg_init(){
 
-// Configure UART 
+	/* ARM Core Registers */	
+	r_r0 = 0x0000;     	// r0
+	r_r1 = 0x0001;     	// r1
+	r_r2 = 0x0002;     	// r2 
+	r_r3 = 0x0003;     	// r3
+	r_r4 = 0x0004;     	// r4
+	r_r5 = 0x0005;     	// r5
+	r_r6 = 0x0006;     	// r6
+	r_r7 = 0x0007;     	// r7 
+	r_r8 = 0x0008;     	// r8
+	r_r9 = 0x0009;     	// r9
+	r_r10 = 0x000A;    	// r10
+	FP = SRAM_ADDR + SRAM_SIZE - 0x1000;	// r11  
+	r_r12 = 0x000C;    	// r12
+	SP = FP;      		// r13 
+	 
+}
+
+// Configure UART emulation
 int uartConfig(uc_engine *uc, toml_table_t* mmio){
 
 	uint32_t *UART_data;		// Points to any given UART struct, and is used to iterate through their data
@@ -221,6 +265,8 @@ int uartConfig(uc_engine *uc, toml_table_t* mmio){
 	// These keep track of the callback range for UART register accesses.
 	minUARTaddr = 0xFFFFFFFF;	// Chose a value that we know is larger than the greatest UART addr
 	maxUARTaddr = 0;					
+	
+	UART_enable = false;   			// UART is disabled by default
 	
  	/*
     	UART config
@@ -234,12 +280,13 @@ int uartConfig(uc_engine *uc, toml_table_t* mmio){
     // TODO: What if there are 0 modules entered. (If in function, we could just leave function)
     // TODO: Put Limit of 99 on uart_count
     // Get number of UART modules
+
     toml_datum_t num_uarts = toml_int_in(mmio, "uart_count");
     if (!num_uarts.ok){
     	error("Cannot read mmio.uart_count", "");
     }
     uart_count = (int)num_uarts.u.i;					// Number of UART modules the user specified.
-	
+
 	// Allocate space for each struct. TODO: Must free these after emulation finished.
 	
 	for (int i=0; i<uart_count; i++){
@@ -270,7 +317,7 @@ int uartConfig(uc_engine *uc, toml_table_t* mmio){
     	if (!uart_module) 
     		break;
     						
-    	printf("uart_module: %d: %s\n", tab_i, uart_module); 
+    	//printf("uart_module: %d: %s\n", tab_i, uart_module); 
     	
     	// Get the current UART table from the name
     	toml_table_t* uartx = toml_table_in(uart, uart_module);
@@ -337,24 +384,25 @@ int uartConfig(uc_engine *uc, toml_table_t* mmio){
    	}
    	
    	// SANITY CHECK. Check if the min and max addresses for UART match.
-   	printf("minUARTaddr: 0x%x\nmaxUARTaddr: 0x%x\n", minUARTaddr, maxUARTaddr);
-   	/* 
-		Initialize all UART module registers to their reset values
-		Could write an entire range, but need the correct struct offset to start from.
-		TODO: Turn into function. (uartInit())
-		TODO: Sanity check these memory locations by reading back later
-	*/
-	/*
+   	//printf("minUARTaddr: 0x%x\nmaxUARTaddr: 0x%x\n", minUARTaddr, maxUARTaddr);
 
-   	*/	
+
+	// UART specific callbacks	
+	// Callback to handle FW reads before they happen. (Update values in memory before they are read)
+	uc_hook_add(uc, &handle1, UC_HOOK_MEM_READ, pre_read_UART, NULL, minUARTaddr, maxUARTaddr);
+	// Callback to handle FW reads after they happen. (Update certain registers after reads)
+	uc_hook_add(uc, &handle2, UC_HOOK_MEM_READ_AFTER, post_read_UART, NULL, minUARTaddr, maxUARTaddr);	
+	// Callback to handle when FW writes to any UART register (DR and CR. SR should change according to CR write.) 
+	uc_hook_add(uc, &handle3, UC_HOOK_MEM_WRITE, write_UART, NULL, minUARTaddr, maxUARTaddr);
+   	
    		
    	return 0;	  		
 }
 
 // Cycle through each UART module and initialize all of their registers.	
 void uartInit(uc_engine *uc, int i){
-	UART_enable = false;   			// Disabled by default (CR1)
 
+	// TODO: Sanity check these memory locations by reading back later.
 	if (uc_mem_write(uc, UART[i]->CR1_ADDR, &UART[i]->CR1_RESET, 4)){
 		printf("Failed to Initialize CR1 for UART%d. Quit\n", i);
 		exit(1);

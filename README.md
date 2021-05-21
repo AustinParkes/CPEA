@@ -4,18 +4,14 @@ Configurable Peripheral Emulator for ARM
 TODO
 ----
 
-1) Update emulatorSetup.py
-   - Get entry and exit points
-   - Auto generate mmio for emulatorConfig.toml
+1) Create Testing.c/Testing.h files to store functions that test parts of the emulator.
 
-2) Create Testing.c/Testing.h files to store functions that test parts of the emulator.
-
-3) Sanity check my UART data structures when they write to memory.
+2) Sanity check my UART data structures when they write to memory.
    - Look for other things to sanity check?
 
-4) Get callbacks to know which UART module they are reading.
-   - Can scan UART modules for a matching address within the callbacks.
-   - Any other ideas?
+3) Update emulatorSetup.py
+   - Get entry and exit points (exit point can be the function after main() )
+   - Auto generate mmio for emulatorConfig.toml
 
 Projects Referenced or Used
 ---------------------------

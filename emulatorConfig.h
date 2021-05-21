@@ -1,8 +1,13 @@
+#include <unicorn/unicorn.h>
 #include <stdint.h>
+#include "toml.h"
 
-void emuConfig();
-int uartConfig();
-void uartInit();
+void emuConfig();				// Configure Emulator.
+toml_table_t* parseTOML();		// Gather data from TOML file.
+void map_memory();				// Create memory map for the emulator.
+void reg_init();				// Initialize all ARM registers.
+int uartConfig();				// Configure UART emulation.
+void uartInit();				// Initiliazes UART mmio registers.
 
 #define MAX_UART 99
 
@@ -11,7 +16,7 @@ uint32_t FLASH_ADDR;
 uint32_t FLASH_SIZE;
 uint32_t SRAM_ADDR;
 uint32_t SRAM_SIZE;
-uint32_t MMIO_START;
+uint32_t MMIO_ADDR;
 uint32_t MMIO_SIZE;
 
 /* Firmware */
@@ -21,17 +26,75 @@ uint32_t DATA_ADDR;
 //uint32_t DATA_SIZE;   Determine by file at the moment
 uint32_t START;
 uint32_t END;
-uint32_t SP_INIT;
-uint32_t FP_INIT;
+
+/* ARM Core Registers */	
+uint32_t r_r0;     		// r0
+uint32_t r_r1;     		// r1
+uint32_t r_r2;     		// r2 
+uint32_t r_r3;     		// r3
+uint32_t r_r4;     		// r4
+uint32_t r_r5;     		// r5
+uint32_t r_r6;     		// r6
+uint32_t r_r7;     		// r7 
+uint32_t r_r8;     		// r8
+uint32_t r_r9;     		// r9
+uint32_t r_r10;    		// r10
+uint32_t FP;      		// r11  
+uint32_t r_r12;    		// r12
+uint32_t SP;      		// r13
+uint32_t LR;			// r14
+
 
 /*****************/
-/*** UART MMIO ***/
+/*** UART Config ***/
 /*****************/
 bool UART_enable;   		// Disabled by default (CR1)
 int uart_count;				// number of uart modules
 // These keep track of the callback range for UART register accesses. 
 uint32_t minUARTaddr;
 uint32_t maxUARTaddr;
+
+// UART Callback Declarations 
+void pre_read_UART();	// Before an UART register is read
+void post_read_UART();	// After an UART register is read
+void write_UART();		// After an UART register is written to
+
+uc_hook handle1;			// Used by uc_hook_add to give to uc_hook_del() API
+uc_hook handle2;
+uc_hook handle3;
+
+
+// Enumerate Different UART Configurations based on UART configuration registers
+/* 
+2) In future, user may be able to map these configuration checks to particular registers
+   instead of hardcoding them for a particular configuration register.
+   
+   In fact, could have a function that specifically checks the configuration mappings
+   and disables certain cases underneath registers that those cases should not be there for
+   and enables those congifuration cases for the registers they are mapped to.
+   
+   In this idea, we would have a copy of the enumerations below for each configuration register
+   and just write 0 to the enumerations that are disabled.
+   
+   If statements might be better for this because 'if(0)' for disabled enumerations would not execute
+   but case(0) would execute still.
+   
+   Once this is configured by user, can move to 3) and user can specifically
+   say which bits need to be checked for certain functionality.         
+*/
+enum UART_Config{
+	ENABLE, 		// Check UART enabled/disabled
+	WORDLENGTH,     // Check the word length of UART Data (Only possible when UART Disabled)
+	STOP_BITS,      // Check number of stop bits 			(Only possible when UART Disabled) (Ignored   :'(   )
+	PARITY_ENABLE, 	// Check if Parity Enabled	   			(Only possible when UART Disabled) (Ignored   :'(   )    
+	OVERSAMPLE,     // Check oversampling mode				(Only possible when UART Disabled)
+	BAUDRATE,		// Check baudRate						(Ignored    :'(                    ) 
+	TxENABLE,       // Check transmission enable
+	RxENABLE,       // Check reception enable
+	TCCF			// Check Transmission Complete Clear Flag
+};
+
+
 // UART 32 bit peripheral registers
 typedef struct UART{
 /*
@@ -97,15 +160,6 @@ typedef struct UART{
 } UART_handle;
 
 // Create an UART instance. Will make more generic handles if needed.
-// Will also maybe want to automate this? depending on how many UART modules the emulator needs. 
-
-UART_handle *UART[MAX_UART];		// TODO: Keep for revisions			
-//UART_handle UART1;
-
-
-
-
-
-
+UART_handle *UART[MAX_UART];		// Holds pointers to different instances of UART modules.		
 
 

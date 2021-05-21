@@ -1,49 +1,19 @@
 /*
 
 Compile with:
-gcc EmulateUart.c emulatorConfig.c toml.c -lunicorn -lpthread
+gcc EmulateUart.c emulatorConfig.c toml.c tester.c -lunicorn -lpthread
 
 */
 
 #include <unicorn/unicorn.h>
 #include <string.h>
 #include "emulatorConfig.h"
+#include "tester.h"
 
 /* UART Emulation for stm32l4xx MCUs for ARM Cortex-M */
-	   
-
-// Set SP and FP manually for now to some unused memory location
-#define FP_INIT      0x02002000
-#define SP_INIT      0x02002000
-
-/* MMIO */
-//#define MMIO_START   0x40000000
-//#define MMIO_SIZE    0x20000000   // (4*1024*131072) 
-
-// Start of UART registers. Offsets below
-#define UART1_ADDR  0x40013800 
-  
-// Offsets for UART Registers. Easily found in reference manual.
-/* 
-	In future, offsets may be something the user provides
-   	so that we can calculate and use the absolute address below
-   	in the enumerated type which is needed for switch-cases.
-*/
-
-#define UART1_CR1  0x00
-#define UART1_CR2  0x04
-#define UART1_CR3  0x08
-#define UART1_BRR  0x0C
-#define UART1_GTPR 0x10
-#define UART1_RTOR 0x14
-#define UART1_RQR  0x18
-#define UART1_ISR  0x1C
-#define UART1_ICR  0x20
-#define UART1_RDR  0x24
-#define UART1_TDR  0x28
 
 
-/*** UART Configuration Checks ***/
+/*** UART Bit Configuration Checks ***/
 /*
 3)	In future, the user will just need to specify what bit needs to be 
     checked. The register that it's checked for is already pre-configured from 
@@ -116,265 +86,85 @@ gcc EmulateUart.c emulatorConfig.c toml.c -lunicorn -lpthread
 #define CLEAR_TC(reg, k)	(reg &= ~(1<<k))
 
 
-/*
-// Enumerate the addresses of the UART registers
-enum UART{
-	CR1_ADDR = USART1_ADDR + USART1_CR1,
-	CR2_ADDR = USART1_ADDR + USART1_CR2,
-	CR3_ADDR = USART1_ADDR + USART1_CR3,
-	BRR_ADDR = USART1_ADDR + USART1_BRR,
-	GTPR_ADDR = USART1_ADDR + USART1_GTPR,
-	RTOR_ADDR = USART1_ADDR + USART1_RTOR,
-	RQR_ADDR = USART1_ADDR + USART1_RQR,
-	ISR_ADDR = USART1_ADDR + USART1_ISR,
-	ICR_ADDR = USART1_ADDR + USART1_ICR,
-	RDR_ADDR = USART1_ADDR + USART1_RDR,
-	TDR_ADDR = USART1_ADDR + USART1_TDR
-};
-*/
-
-
-
-/*** UART Reset Values ***/
-
-/*
-	In future, user will need to provide the reset values.
-	May get rid of Raw Hex values so user isn't entering two
-	sets of reset values.
-	WILL GO INTO emulatorConfig.h UART STRUCT
-*/
-
-	// User will need to define this in emulatorConfig.toml file
-	/*
-	const uint32_t CR1_RESET = 0x0;
-	const uint32_t CR2_RESET = 0x0;
-	const uint32_t CR3_RESET = 0x0;
-	const uint32_t BRR_RESET = 0x0;
-	const uint32_t GTPR_RESET = 0x0;
-	const uint32_t RTOR_RESET = 0x0;
-	const uint32_t RQR_RESET = 0x0;
-	const uint32_t ISR_RESET = 0x020000C0;
-	const uint32_t ICR_RESET = 0x0;
-	const uint32_t RDR_RESET = 0x0;
-	const uint32_t TDR_RESET = 0x0;		
-	*/
-
-// Enumerate Different UART Configurations based on UART configuration registers
-/* 
-2) In future, user may be able to map these configuration checks to particular registers
-   instead of hardcoding them for a particular configuration register.
-   
-   In fact, could have a function that specifically checks the configuration mappings
-   and disables certain cases underneath registers that those cases should not be there for
-   and enables those congifuration cases for the registers they are mapped to.
-   
-   In this idea, we would have a copy of the enumerations below for each configuration register
-   and just write 0 to the enumerations that are disabled.
-   
-   If statements might be better for this because 'if(0)' for disabled enumerations would not execute
-   but case(0) would execute still.
-   
-   Once this is configured by user, can move to 3) and user can specifically
-   say which bits need to be checked for certain functionality.         
-*/
-enum UART_Config{
-	ENABLE, 		// Check UART enabled/disabled
-	WORDLENGTH,     // Check the word length of UART Data (Only possible when UART Disabled)
-	STOP_BITS,      // Check number of stop bits 			(Only possible when UART Disabled) (Ignored   :'(   )
-	PARITY_ENABLE, 	// Check if Parity Enabled	   			(Only possible when UART Disabled) (Ignored   :'(   )    
-	OVERSAMPLE,     // Check oversampling mode				(Only possible when UART Disabled)
-	BAUDRATE,		// Check baudRate						(Ignored    :'(                    ) 
-	TxENABLE,       // Check transmission enable
-	RxENABLE,       // Check reception enable
-	TCCF			// Check Transmission Complete Clear Flag
-};
-
 /*** UART Hardware Flags and Masks***/
 /* These flags aren't actually available in UART registers, so we declare them here */
 
 // Mask data to be 7, 8, 9 bits
-uint8_t Data_Mask = 0xFF;	  // 8 bits default
+uint8_t Data_Mask = 0xFF;	  	// 8 bits default
 
 
-
-// Callback Declarations 
-static void pre_read_UART();
-static void post_read_UART();
-static void write_UART();
-static void read_mem();
-
-/*** TEST FUNCTIONS ***/
-
-// Test opcode of binary file to see if it's correct
-static void read_op(char * code_ptr, uint32_t program_start, uint32_t code_bytes){
-	int index;
-	uint32_t start_addr=program_start;
-	char * arm_code;
-		
-	arm_code = code_ptr;	
-	for (index=0;index<code_bytes;index=index+4){
-		printf("0x%x: %02x%02x%02x%02x\n", start_addr, (uint8_t)arm_code[index], (uint8_t)arm_code[index+1], (uint8_t)arm_code[index+2], (uint8_t)arm_code[index+3]);
-		start_addr=start_addr+4;
-	}
-}
-
-// Test configuration values to see if they match emulatorConfig.toml
-static void show_config(){
-	printf("*** SHOW CONFIG ***\n\n");
-	printf("FLASH_ADDR: 0x%x\n", FLASH_ADDR);
-	printf("FLASH_SIZE: 0x%x\n", FLASH_SIZE);
-	printf("SRAM_ADDR:  0x%x\n", SRAM_ADDR);
-	printf("SRAM_SIZE:  0x%x\n", SRAM_SIZE);
-	printf("MMIO_START: 0x%x\n", MMIO_START);
-	printf("MMIO_SIZE:  0x%x\n", MMIO_SIZE);
-	printf("CODE_ADDR:  0x%x\n", CODE_ADDR);
-	//printf("CODE_SIZE:  0x%x\n", CODE_SIZE);
-	printf("DATA_ADDR:  0x%x\n", DATA_ADDR);
-	//printf("DATA_SIZE:  0x%x\n", DATA_SIZE);
-	printf("START:      0x%x\n", START);
-	printf("END:        0x%x\n", END);
-	
-	uint32_t *UART_ptr0 = (uint32_t *)UART[0];
-	uint32_t *UART_ptr1 = (uint32_t *)UART[1];
-	
-	// Show uart struct config info for uart0
-	for (int i=0; i<23; i++){
-		printf("uart0: 0x%x\n", *UART_ptr0);
-		UART_ptr0++;
-	}
-	
-	// Show uart struct config info for uart1
-	for (int i=0; i<23; i++){
-		printf("uart1: 0x%x\n", *UART_ptr1);
-		UART_ptr1++;
-	}
-
-}
+static void read_mem();			// Callback declaration.
+static void readBinFile();		// Read data from binary file
 
 int main(int argc, char **argv, char **envp)
 {
+	// TODO: Place these in a header file?
 	/* Unicorn Initialization */
 	uc_engine *uc;
 	uc_err err;
-	uc_hook handle1;   // Used by uc_hook_add to give to uc_hook_del() API
-	uc_hook handle2;   // Used by uc_hook_add to give to uc_hook_del() API
-	uc_hook handle3;   // Used by uc_hook_add to give to uc_hook_del() API
-	uc_hook handle4;   // Used by uc_hook_add to give to uc_hook_del() API
+ 
+	uc_hook handle4;   
 
-    printf("Reading ARM code and data\n");
-	/* Read in ARM code here */
-	uint32_t code_bytes;
 	char *save_addr;
-	char *arm_code;
 	int byte;
-	  	
+	int code_size;			// Size of code
+	int data_size;			// Size of code data
+
+	char *arm_code;			// ptr to code
+	char *arm_data;			// ptr to data
+  	
+	printf("Read ARM code and data\n");
+
+	// Read ARM code
 	FILE *f = fopen("SimpleUart.code.bin", "rb");
-	fseek(f, 0L, SEEK_END);  		// Seek to end of file
-	code_bytes = ftell(f);    	    // Get size (in bytes) of code from file
-	fseek(f, 0L, SEEK_SET); 		// Reset to start of file
-	arm_code = (char *) malloc(1*code_bytes);	// Code bytes to be stored
-	save_addr = arm_code;
+	readBinFile(f, &arm_code, &code_size);
 	
-	// Read byte at a time from binary file
-	for (byte=1; byte<=code_bytes; byte++){
-		fread(arm_code, 1, code_bytes, f);
-		arm_code++;
-	}
-	arm_code = save_addr;           // Reset start address	
-	fclose(f);
-	
-	/*** TEST: View opcode from file to check if it's correct ***/
-	//read_op(arm_code, CODE_ADDR, code_bytes);
-
-	/* Read in ARM data here */
-	uint32_t data_bytes;
-	char *arm_data;
-	
+	// Read ARM data
 	FILE *g = fopen("SimpleUart.data.bin", "rb");
-	fseek(g, 0L, SEEK_END);  		// Seek to end of file
-	data_bytes = ftell(g);    		// Get size (in bytes) of data from file
-	fseek(g, 0L, SEEK_SET); 		// Reset to start of file
-	arm_data = (char *) malloc(1*data_bytes);	// Data bytes to be stored
-	save_addr = arm_data;       
-	       
-	// Read byte at a time from binary file
-	for (byte=1; byte<=code_bytes; byte++){
-		fread(arm_data, 1, data_bytes, g);
-		arm_data++;
-	}
-	arm_data = save_addr;
-	fclose(g);
+	readBinFile(g, &arm_data, &data_size);
 	
-	/*** TEST: View config variables to check if they match emulatorConfig.toml ***/
-	//show_config();
+	/*** TEST ***/
+	//View opcode or data from file to check if it's correct ***/
 	
-    /* ARM Core Registers */	
-	uint32_t r_r0 = 0x0000;     // r0
-	uint32_t r_r1 = 0x0001;     // r1
-	uint32_t r_r2 = 0x0002;     // r2 
-	uint32_t r_r3 = 0x0003;     // r3
-	uint32_t r_r4 = 0x0004;     // r4
-	uint32_t r_r5 = 0x0005;     // r5
-	uint32_t r_r6 = 0x0006;     // r6
-	uint32_t r_r7 = 0x0007;     // r7 
-	uint32_t r_r8 = 0x0008;     // r8
-	uint32_t r_r9 = 0x0009;     // r9
-	uint32_t r_r10 = 0x000A;    // r10
-	uint32_t FP = FP_INIT;      // r11  
-	uint32_t r_r12 = 0x000C;    // r12
-	uint32_t SP = SP_INIT;      // r13  
+	//read_op(arm_code, CODE_ADDR, code_size);			// code
+	//read_op(arm_data, DATA_ADDR, data_size);			// data
 
-	printf("Emulate arm code\n");
-	
+	printf("   - Complete\n");
+
 	// Create new instance of unicorn engine (Init the emulator)
-	err = uc_open(UC_ARCH_ARM, UC_MODE_ARM, &uc);
-	
+	err = uc_open(UC_ARCH_ARM, UC_MODE_ARM, &uc);	
 	if (err != UC_ERR_OK){
 		printf("Failed on uc_open() with error returned: %u\n", err);
 		return -1;
 	}
 	
+	// Configure emulator and emulator's peripherals.
+	emuConfig(uc, arm_code, arm_data);
 	
-	printf("Configure Emulator\n");
-	emuConfig(uc);
+	/*** TEST: View config variables to check if they match emulatorConfig.toml ***/
+	//show_config();
 
-	// NOTE: General Memory Map used to be here.
-
-	/*** Memory Init ***/
-	// Write code to flash!
-	if (uc_mem_write(uc, CODE_ADDR, arm_code, code_bytes)){ // -1 because of null byte
+	
+	/*** Memory Init ***/	
+	// Write code to flash!	
+	if (uc_mem_write(uc, CODE_ADDR, arm_code, code_size)){ 
 		printf("Failed to write code to memory. Quit\n");
 		return -1;
 	}
 	free(arm_code);
 	
 	// Write data to flash!
-	if (uc_mem_write(uc, DATA_ADDR, arm_data, data_bytes)){ // -1 because of null byte
+	if (uc_mem_write(uc, DATA_ADDR, arm_data, data_size)){ 
 		printf("Failed to write code to memory. Quit\n");
 		return -1;
 	}
 	free(arm_data);
-
-	//NOTE: UART register init Moved into emuConfig at the end of uart configuration.	
-
-	// TODO: Will likely move UART specific callbacks to the end of UART configuration in emuConfig().
-	/* 
-	TODO: Need to extend the callback range so that it extends to all UART modules.
-	      In other words, need to find the lowest address and highest address for UART regs since callback range is inclusive.
-	*/
-	// UART specific callbacks	
-	// Callback to handle FW reads before they happen. (Update values in memory before they are read)
-	uc_hook_add(uc, &handle1, UC_HOOK_MEM_READ, pre_read_UART, NULL, minUARTaddr, maxUARTaddr);
-	// Callback to handle FW reads after they happen. (Update certain registers after reads)
-	uc_hook_add(uc, &handle2, UC_HOOK_MEM_READ_AFTER, post_read_UART, NULL, minUARTaddr, maxUARTaddr);	
-	// Callback to handle when FW writes to any UART register (DR and CR. SR should change according to CR write.) 
-	uc_hook_add(uc, &handle3, UC_HOOK_MEM_WRITE, write_UART, NULL, minUARTaddr, maxUARTaddr);
-			
+		
 			
 	// Callback to check memory/debug at any code address (specific addresses can be defined in callback)
 	uc_hook_add(uc, &handle4, UC_HOOK_CODE, read_mem, NULL, FLASH_ADDR, FLASH_ADDR + FLASH_SIZE);	
-			
-	// Init registers that may be used by FW
+					
+	// Commit register variables to emulator.
 	uc_reg_write(uc, UC_ARM_REG_R0, &r_r0);		// r0
 	uc_reg_write(uc, UC_ARM_REG_R1, &r_r1);     // r1
 	uc_reg_write(uc, UC_ARM_REG_R2, &r_r2);     // r2
@@ -390,7 +180,7 @@ int main(int argc, char **argv, char **envp)
 	uc_reg_write(uc, UC_ARM_REG_R12, &r_r12);	// r12
 	uc_reg_write(uc, UC_ARM_REG_SP, &SP);		// r13
 
-		
+	printf("Emulate arm code\n");	
 	err=uc_emu_start(uc, START, END, 0, 0);
 	if (err){
 		printf("Failed on uc_emu_start() with error returned %u: %s\n", err, uc_strerror(err));
@@ -431,14 +221,8 @@ int main(int argc, char **argv, char **envp)
 	return 0;
 }
 
-/* 
-	TODO: FOR ALL UART CALLBACKS, need to determine which UART module the address belongs to.
-	      Will scan each UART module and see if the address falls in any of their ranges.
-
-*/
-
 // When FW reads from RDR (Before successful read)
-static void pre_read_UART(uc_engine *uc, uc_mem_type type,
+void pre_read_UART(uc_engine *uc, uc_mem_type type,
         uint64_t address, int size, uint64_t value, void *user_data)
 {
 	int uart_i;					// Index for UART modules
@@ -526,7 +310,7 @@ static void pre_read_UART(uc_engine *uc, uc_mem_type type,
 }
 
 // When FW reads from RDR (After successful read)
-static void post_read_UART(uc_engine *uc, uc_mem_type type,
+void post_read_UART(uc_engine *uc, uc_mem_type type,
         uint64_t address, int size, uint64_t value, void *user_data)
 {
 
@@ -598,7 +382,7 @@ static void post_read_UART(uc_engine *uc, uc_mem_type type,
 }
 
 // When FW writes writes to UART MMIO (Data and Control Registers) 
-static void write_UART(uc_engine *uc, uc_mem_type type,
+void write_UART(uc_engine *uc, uc_mem_type type,
         uint64_t address, int size, uint64_t value, void *user_data)
 {
 
@@ -830,6 +614,33 @@ static void write_UART(uc_engine *uc, uc_mem_type type,
 
 }
 
+// Read binary data from a file. 
+static void readBinFile(FILE *f, char **fdata, int *fsize){
+
+	int byte;								// Used as index
+	char *data;								// File Data
+	int size;								// Size of file.
+	
+	// Get size of file and data buffer	
+	fseek(f, 0L, SEEK_END);  				// Seek to end of file
+	size = ftell(f);    	    			// Get size (in bytes) of code from file
+	fseek(f, 0L, SEEK_SET); 				// Reset to start of file
+	data = (char *) malloc(1*size);			// Data to be stored
+	
+	// Save size and data buffer outside of function 
+	*fsize = size;
+	*fdata = data;
+	
+	// Read byte at a time from binary file
+	for (byte=1; byte<=size; byte++){
+		fread(data, 1, size, f);
+		data++;
+	}
+	
+	fclose(f);		
+
+}
+
 // Test code at particular execution addresses to read memory and debug
 static void read_mem(uc_engine *uc, uint64_t address, uint32_t size, void *user_data)
 {   
@@ -860,17 +671,6 @@ static void read_mem(uc_engine *uc, uint64_t address, uint32_t size, void *user_
     }    
  
 }
-
-/*
-	CR1 bits that can only be written to when UART is Disabled.
-	xWordLength	 				 	[28,12]
-	Driver Enable Assertion time 	[25:21]
-	Driver Enable de-assertion time [20:16]
-	xOversampling Mode 				[15]
-	Receiver Wakeup Method			[11]
-	xParity Control enable			[10]
-	Parity Selection				[9]	
-*/
 
 /* 
 	Compile Command: gcc SimpleUart.c -lunicorn -lpthread

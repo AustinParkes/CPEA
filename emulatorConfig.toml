@@ -77,6 +77,7 @@ sram_size 	= 0x00020000
 		uart1.ICR_reset	= 0x00
 		uart1.RDR_reset	= 0x00
 		uart1.TDR_reset	= 0x00
+
 		
 # Details code & data to be written to memory. Defines entry point
 [firmware]

@@ -42,7 +42,7 @@ void show_structures(){
 }
 
 // Test opcode (or data) of binary file to see if it's correct
-void read_op(char * code_ptr, uint32_t program_start, uint32_t code_bytes){
+void read_fbin(char * code_ptr, uint32_t program_start, uint32_t code_bytes){
 	int index;
 	uint32_t start_addr=program_start;
 	char * arm_code;
@@ -52,4 +52,78 @@ void read_op(char * code_ptr, uint32_t program_start, uint32_t code_bytes){
 		printf("0x%x: %02x%02x%02x%02x\n", start_addr, (uint8_t)arm_code[index], (uint8_t)arm_code[index+1], (uint8_t)arm_code[index+2], (uint8_t)arm_code[index+3]);
 		start_addr=start_addr+4;
 	}
+}
+
+// Show registers r0-r14
+void show_regs(){
+
+	printf("\n*** Registers ***\n");
+	// Needs changed to reflect new ending values
+	printf("r0 = 0x%x \n",r_r0);
+	printf("r1 = 0x%x \n",r_r1);
+	printf("r2 = 0x%x \n",r_r2);
+	printf("r3 = 0x%x \n",r_r3);
+	printf("r4 = 0x%x \n",r_r4);
+	printf("r5 = 0x%x \n",r_r5);
+	printf("r6 = 0x%x \n",r_r6);
+	printf("r7 = 0x%x \n",r_r7);
+	printf("r8 = 0x%x \n",r_r8);
+	printf("r9 = 0x%x \n",r_r9);
+	printf("r10 = 0x%x \n",r_r10);
+	printf("FP = 0x%x \n",FP);
+	printf("r12 = 0x%x \n",r_r12);
+	printf("SP = 0x%x \n",SP);
+	printf("LR = 0x%x \n",LR);
+}
+
+// Show memory contents of mmio
+void show_mmio(uc_engine *uc){
+	show_UART(uc);
+}
+
+// Show memory contents of UART mmio.
+void show_UART(uc_engine *uc){
+	
+	int i;		// Iterate through UART modules.
+	
+	// Save mmio register contents to these variables. 
+	uint32_t CR1;
+	uint32_t CR2;
+	uint32_t CR3;
+	uint32_t BRR;
+	uint32_t GTPR;
+	uint32_t RTOR;
+	uint32_t RQR;
+	uint32_t ISR;
+	uint32_t ICR;
+	uint32_t RDR;
+	uint32_t TDR;
+	
+	printf("\n*** Show UART mmio contents ***\n");
+
+	for (i=0; i<uart_count; i++){
+		uc_mem_read(uc, UART[i]->CR1_ADDR, &CR1, 4);
+		uc_mem_read(uc, UART[i]->CR2_ADDR, &CR2, 4);
+		uc_mem_read(uc, UART[i]->CR3_ADDR, &CR3, 4);
+		uc_mem_read(uc, UART[i]->BRR_ADDR, &BRR, 4);
+		uc_mem_read(uc, UART[i]->GTPR_ADDR, &GTPR, 4);
+		uc_mem_read(uc, UART[i]->RTOR_ADDR, &RTOR, 4);
+		uc_mem_read(uc, UART[i]->RQR_ADDR, &RQR, 4);
+		uc_mem_read(uc, UART[i]->ISR_ADDR, &ISR, 4);
+		uc_mem_read(uc, UART[i]->ICR_ADDR, &ICR, 4);
+		uc_mem_read(uc, UART[i]->RDR_ADDR, &RDR, 4);
+		uc_mem_read(uc, UART[i]->TDR_ADDR, &TDR, 4);
+		printf("UART%d CR1:  0x%x\n", i, CR1);
+		printf("UART%d CR2:  0x%x\n", i, CR2);
+		printf("UART%d CR3:  0x%x\n", i, CR3);
+		printf("UART%d BRR:  0x%x\n", i, BRR);
+		printf("UART%d GTPR: 0x%x\n", i, GTPR);
+		printf("UART%d RTOR: 0x%x\n", i, RTOR);
+		printf("UART%d RQR:  0x%x\n", i, RQR);
+		printf("UART%d ISR:  0x%x\n", i, ISR);
+		printf("UART%d ICR:  0x%x\n", i, ICR);
+		printf("UART%d RDR:  0x%x\n", i, RDR);
+		printf("UART%d TDR:  0x%x\n", i, TDR);	
+	}
+	
 }

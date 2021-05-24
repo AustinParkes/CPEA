@@ -2,6 +2,7 @@
 #include <stdint.h>
 #include "toml.h"
 
+void error();					// Prints Error Messages in parsing
 void emuConfig();				// Configure Emulator.
 toml_table_t* parseTOML();		// Gather data from TOML file.
 void map_memory();				// Create memory map for the emulator.
@@ -54,20 +55,22 @@ int uart_count;				// number of uart modules
 uint32_t minUARTaddr;
 uint32_t maxUARTaddr;
 
+uc_hook handle1;			// Used by uc_hook_add to give to uc_hook_del() API
+uc_hook handle2;
+uc_hook handle3;
+
 // UART Callback Declarations 
 void pre_read_UART();	// Before an UART register is read
 void post_read_UART();	// After an UART register is read
 void write_UART();		// After an UART register is written to
 
-uc_hook handle1;			// Used by uc_hook_add to give to uc_hook_del() API
-uc_hook handle2;
-uc_hook handle3;
-
 
 // Enumerate Different UART Configurations based on UART configuration registers
 /* 
-2) In future, user may be able to map these configuration checks to particular registers
+2) TODO: In future, user may be able to map these configuration checks to particular registers
    instead of hardcoding them for a particular configuration register.
+   
+   NOTE: (Can likely merge this with step 3)
    
    In fact, could have a function that specifically checks the configuration mappings
    and disables certain cases underneath registers that those cases should not be there for
@@ -84,11 +87,11 @@ uc_hook handle3;
 */
 enum UART_Config{
 	ENABLE, 		// Check UART enabled/disabled
-	WORDLENGTH,     // Check the word length of UART Data (Only possible when UART Disabled)
+	WORDLENGTH,     // Check the word length of UART Data   (Only possible when UART Disabled)
 	STOP_BITS,      // Check number of stop bits 			(Only possible when UART Disabled) (Ignored   :'(   )
 	PARITY_ENABLE, 	// Check if Parity Enabled	   			(Only possible when UART Disabled) (Ignored   :'(   )    
 	OVERSAMPLE,     // Check oversampling mode				(Only possible when UART Disabled)
-	BAUDRATE,		// Check baudRate						(Ignored    :'(                    ) 
+	BAUDRATE,		// Check baudRate														   (Ignored   :'(   ) 
 	TxENABLE,       // Check transmission enable
 	RxENABLE,       // Check reception enable
 	TCCF			// Check Transmission Complete Clear Flag

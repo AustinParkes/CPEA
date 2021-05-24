@@ -98,7 +98,6 @@ static void readBinFile();		// Read data from binary file
 
 int main(int argc, char **argv, char **envp)
 {
-	// TODO: Place these in a header file?
 	/* Unicorn Initialization */
 	uc_engine *uc;
 	uc_err err;
@@ -117,49 +116,63 @@ int main(int argc, char **argv, char **envp)
 
 	// Read ARM code
 	FILE *f = fopen("SimpleUart.code.bin", "rb");
+	if (f == NULL){
+		printf("Error opening SimpleUart.code.bin");
+		exit(1);	
+	}	
 	readBinFile(f, &arm_code, &code_size);
 	
 	// Read ARM data
 	FILE *g = fopen("SimpleUart.data.bin", "rb");
+	if (g == NULL){
+		printf("Error opening SimpleUart.data.bin");
+		exit(1);	
+	}	
 	readBinFile(g, &arm_data, &data_size);
 	
-	/*** TEST ***/
-	//View opcode or data from file to check if it's correct ***/
-	
-	//read_op(arm_code, CODE_ADDR, code_size);			// code
-	//read_op(arm_data, DATA_ADDR, data_size);			// data
-
+	// 
 	printf("   - Complete\n");
+	
+	/*** SANITY CHECK ***/
+	/*** View binary from file to check if it's correct ***/	
+	//read_fbin(arm_code, CODE_ADDR, code_size);			// code
+	//read_fbin(arm_data, DATA_ADDR, data_size);			// data
 
+	
 	// Create new instance of unicorn engine (Init the emulator)
 	err = uc_open(UC_ARCH_ARM, UC_MODE_ARM, &uc);	
 	if (err != UC_ERR_OK){
 		printf("Failed on uc_open() with error returned: %u\n", err);
-		return -1;
+		exit(1);
 	}
 	
 	// Configure emulator and emulator's peripherals.
 	emuConfig(uc, arm_code, arm_data);
 	
-	/*** TEST: View config variables to check if they match emulatorConfig.toml ***/
+	/*** SANITY CHECKS ***/
+	
+	/* View config variables to check if they match emulatorConfig.toml */
 	//show_config();
-
+	
+	/* Show memory contents of mmio to check if they match reset values.*/
+	//show_mmio(uc);
 	
 	/*** Memory Init ***/	
 	// Write code to flash!	
 	if (uc_mem_write(uc, CODE_ADDR, arm_code, code_size)){ 
 		printf("Failed to write code to memory. Quit\n");
-		return -1;
+		exit(1);
 	}
 	free(arm_code);
+	arm_code = NULL;
 	
 	// Write data to flash!
 	if (uc_mem_write(uc, DATA_ADDR, arm_data, data_size)){ 
 		printf("Failed to write code to memory. Quit\n");
-		return -1;
+		exit(1);
 	}
 	free(arm_data);
-		
+	arm_data = NULL;	
 			
 	// Callback to check memory/debug at any code address (specific addresses can be defined in callback)
 	uc_hook_add(uc, &handle4, UC_HOOK_CODE, read_mem, NULL, FLASH_ADDR, FLASH_ADDR + FLASH_SIZE);	
@@ -179,13 +192,24 @@ int main(int argc, char **argv, char **envp)
 	uc_reg_write(uc, UC_ARM_REG_FP, &FP);		// r11
 	uc_reg_write(uc, UC_ARM_REG_R12, &r_r12);	// r12
 	uc_reg_write(uc, UC_ARM_REG_SP, &SP);		// r13
+	uc_reg_write(uc, UC_ARM_REG_LR, &LR);		// r14
 
 	printf("Emulate arm code\n");	
 	err=uc_emu_start(uc, START, END, 0, 0);
 	if (err){
 		printf("Failed on uc_emu_start() with error returned %u: %s\n", err, uc_strerror(err));
+		exit(1);
 	}
+	printf("   - Complete\n");
 	
+	// Free all of the allocated UART structures.
+	for (int i=0; i<uart_count; i++){
+    	if (UART[i] == NULL){
+    		printf("Accessed a peripheral module that shouldn't exist: UART%d\n", i);
+    	}
+    	free(UART[i]);
+    }
+    
 	// Read end results in registers 
 	uc_reg_read(uc, UC_ARM_REG_R0, &r_r0);		// r0
 	uc_reg_read(uc, UC_ARM_REG_R1, &r_r1);		// r1
@@ -201,22 +225,10 @@ int main(int argc, char **argv, char **envp)
 	uc_reg_read(uc, UC_ARM_REG_FP, &FP);	    // r11	
 	uc_reg_read(uc, UC_ARM_REG_R12, &r_r12);	// r12
 	uc_reg_read(uc, UC_ARM_REG_SP, &SP);	    // r13
+	uc_reg_read(uc, UC_ARM_REG_LR, &LR);	    // r14
 
-	// Needs changed to reflect new ending values
-	printf("r0 = 0x%x \n",r_r0);
-	printf("r1 = 0x%x \n",r_r1);
-	printf("r2 = 0x%x \n",r_r2);
-	printf("r3 = 0x%x \n",r_r3);
-	printf("r4 = 0x%x \n",r_r4);
-	printf("r5 = 0x%x \n",r_r5);
-	printf("r6 = 0x%x \n",r_r6);
-	printf("r7 = 0x%x \n",r_r7);
-	printf("r8 = 0x%x \n",r_r8);
-	printf("r9 = 0x%x \n",r_r9);
-	printf("r10 = 0x%x \n",r_r10);
-	printf("FP = 0x%x \n",FP);
-	printf("r12 = 0x%x \n",r_r12);
-	printf("SP = 0x%x \n",SP);
+	// Show registers R0 - R13
+	show_regs();
 	
 	return 0;
 }
@@ -225,17 +237,19 @@ int main(int argc, char **argv, char **envp)
 void pre_read_UART(uc_engine *uc, uc_mem_type type,
         uint64_t address, int size, uint64_t value, void *user_data)
 {
-	int uart_i;					// Index for UART modules
+
 	uint32_t Data;  			// For RDR
-	uint32_t *UART_ptr;			// Points to any given UART module
+	uint32_t *UART_ptr;			// Used to iterate through UART modules.
+	int uart_i;					// Index for UART module
 	UART_handle *UARTx = NULL;	// Points to the UART mmio accessed.
 	
 	printf("Made it to pre_read_UART callback\n");
     
-    // TODO: Turn this module search into a function AND make more generic for OTHER Peripherals.
+    // TODO: Make more generic for OTHER Peripherals.
     // TODO: Add some checks to make sure that pointer isn't going out of bounds
     // TODO: Check for general correctness in semantics
-    // Determine which UART module this address belongs to.
+    
+    // Determine which UART module the accessed address belongs to. 
     for (uart_i=0; uart_i < uart_count; uart_i++){
     	UART_ptr = (uint32_t *)UART[uart_i];		// Serves as an init and reset for UART_ptr
     	if (!UART_ptr){
@@ -252,13 +266,13 @@ void pre_read_UART(uc_engine *uc, uc_mem_type type,
     		}
     		else
     			*UART_ptr++;						// No match, move to next UART addr in struct
-    	}
-    	
+    	}   	
     	// Leave outer most loop if there is a match.
     	if (UARTx == UART[uart_i])				
     		break;	   		
     }
     
+
     // TODO, in future, may not need to even check all of these registers.
     // Determine which UART register is going to be accessed.
 	if	(address == (uint64_t)UARTx->CR1_ADDR)
@@ -303,7 +317,7 @@ void pre_read_UART(uc_engine *uc, uc_mem_type type,
 	else if	(address == (uint64_t)UARTx->TDR_ADDR)
 		;
 	else{
-		printf("Address does not match and of UART%d register addresses.\n", uart_i);
+		printf("Address does not match any UART%d register addresses.\n", uart_i);
 		exit(1);
     }
                                  
@@ -617,7 +631,6 @@ void write_UART(uc_engine *uc, uc_mem_type type,
 // Read binary data from a file. 
 static void readBinFile(FILE *f, char **fdata, int *fsize){
 
-	int byte;								// Used as index
 	char *data;								// File Data
 	int size;								// Size of file.
 	
@@ -625,18 +638,15 @@ static void readBinFile(FILE *f, char **fdata, int *fsize){
 	fseek(f, 0L, SEEK_END);  				// Seek to end of file
 	size = ftell(f);    	    			// Get size (in bytes) of code from file
 	fseek(f, 0L, SEEK_SET); 				// Reset to start of file
-	data = (char *) malloc(1*size);			// Data to be stored
+	data = (char *) malloc(1*size);			// Data to be stored. Freed after committing to emulator memory.
 	
 	// Save size and data buffer outside of function 
 	*fsize = size;
 	*fdata = data;
 	
 	// Read byte at a time from binary file
-	for (byte=1; byte<=size; byte++){
-		fread(data, 1, size, f);
-		data++;
-	}
-	
+	while (fread(data, 1, size, f) == 1);
+
 	fclose(f);		
 
 }

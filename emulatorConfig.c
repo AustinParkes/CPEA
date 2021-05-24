@@ -12,12 +12,6 @@
 #include "emulatorConfig.h"
 #include "toml.h"
 
-static void error(const char *msg, const char* msg1)
-{
-	fprintf(stderr, "ERROR: %s%s\n", msg, msg1?msg1:"");
-	exit(1);
-}
-
 // Read config file, parse emulator configurations, and configure emulator
 void emuConfig(uc_engine *uc, char *arm_code, char *arm_data){
  	
@@ -31,20 +25,17 @@ void emuConfig(uc_engine *uc, char *arm_code, char *arm_data){
 	printf("Configure Emulator\n");	
 	
 	fp = fopen("emulatorConfig.toml", "r");	
-    if (!fp) {
+    if (!fp)
         error("cannot open emulatorConfig.toml - ", strerror(errno));
-    }
-    
+ 
     // Root table 
     toml_table_t* root_table = toml_parse_file(fp, errbuf, sizeof(errbuf));
     fclose(fp);
-   	if (!root_table){
+   	if (!root_table)
    		error("cannot parse emulatorConfig.toml - ", errbuf);
-   	}    
     
     // Gather and Store data from emulatorConfig.toml     	
     mmio = parseTOML(root_table);
-    
     
     /***********************************
 		General Emulator Configurations.   
@@ -55,6 +46,7 @@ void emuConfig(uc_engine *uc, char *arm_code, char *arm_data){
     
     // Init ARM Registers (includes SP, LR)
     // TODO: See if there is a more legitimate way to init SP.
+    // TODO: Init LR to function after main(). 
     reg_init(uc);
     
     /***********************************
@@ -68,7 +60,7 @@ void emuConfig(uc_engine *uc, char *arm_code, char *arm_data){
     printf("   - Complete\n");         
 }
 
-
+// Gather and Store configurations from TOML.
 toml_table_t* parseTOML(toml_table_t* root_table){
 	
     /*
@@ -223,14 +215,14 @@ void map_memory(uc_engine *uc){
 		exit(1);
 	}
 	
-	// Map SRAM region
-	if (uc_mem_map(uc, SRAM_ADDR, SRAM_SIZE, UC_PROT_ALL)){
+	// Map SRAM region (Not executable)
+	if (uc_mem_map(uc, SRAM_ADDR, SRAM_SIZE, UC_PROT_READ | UC_PROT_WRITE )){
 		printf("Failed to map sram region to memory. Quit\n");
 		exit(1);	
 	}	
 		
-	// Map all MMIO from 0x40000000 - 0x5FFFFFFF
-	if (uc_mem_map(uc, MMIO_ADDR, MMIO_SIZE, UC_PROT_ALL)){
+	// Map MMIO region 0x40000000 - 0x5FFFFFFF (Not exectuable)
+	if (uc_mem_map(uc, MMIO_ADDR, MMIO_SIZE, UC_PROT_READ | UC_PROT_WRITE )){
 		printf("Failed to map MMIO region to memory. Quit\n");
 		exit(1);
 	}
@@ -253,42 +245,49 @@ void reg_init(){
 	r_r10 = 0x000A;    	// r10
 	FP = SRAM_ADDR + SRAM_SIZE - 0x1000;	// r11  
 	r_r12 = 0x000C;    	// r12
-	SP = FP;      		// r13 
+	SP = FP;      		// r13	// TODO:	Find better way to init SP and FP
+	LR = 0;				// r14	// TODO: 	Set to function after main(). 
 	 
 }
 
-// Configure UART emulation
+// Configure UART emulation. 
 int uartConfig(uc_engine *uc, toml_table_t* mmio){
 
 	uint32_t *UART_data;		// Points to any given UART struct, and is used to iterate through their data
+	int tab_i;					// Iterates through TOML peripheral tables
+	
+	
 
 	// These keep track of the callback range for UART register accesses.
-	minUARTaddr = 0xFFFFFFFF;	// Chose a value that we know is larger than the greatest UART addr
+	minUARTaddr = 0xFFFFFFFF;	// Chose a value that we know is larger than the smallest UART addr
 	maxUARTaddr = 0;					
 	
 	UART_enable = false;   			// UART is disabled by default
 	
  	/*
-    	UART config
     	1) Generate UART struct for each module from [memory_map.mmio]
     	2) Traverse to [mmio.uart] and extract config values to UART struct(s)
-    	TODO: Turn each periph config into a function.
     */
     
-    /* 1) Generate UART struct for each UART module */
     
-    // TODO: What if there are 0 modules entered. (If in function, we could just leave function)
-    // TODO: Put Limit of 99 on uart_count
     // Get number of UART modules
-
     toml_datum_t num_uarts = toml_int_in(mmio, "uart_count");
     if (!num_uarts.ok){
     	error("Cannot read mmio.uart_count", "");
     }
     uart_count = (int)num_uarts.u.i;					// Number of UART modules the user specified.
+    
+    // No UART modules specified.
+    // TODO: Anything else we need to set when count is 0? 
+	if (uart_count <= 0)
+		return 0;
+	else if (uart_count > 98){
+		printf("WARNING: UART count set to %d, but cannot exceed 98. ", uart_count);
+		printf("Setting to 98.");	
+		uart_count = 98;	
+	}
 
-	// Allocate space for each struct. TODO: Must free these after emulation finished.
-	
+	// Allocate space for each struct. Freed after emulation is complete. 	
 	for (int i=0; i<uart_count; i++){
     	UART[i] = (UART_handle *)malloc(sizeof(UART_handle));
     	if (UART[i] == NULL){
@@ -303,30 +302,25 @@ int uartConfig(uc_engine *uc, toml_table_t* mmio){
  		error("missing [mmio.uart]", "");
  	}
  	
+ 	// TODO: Add 8-bit register mode after full configuration finished.
  	// Check if UART module exists and how many. "tab_i" keeps track of the number of modules.
- 	/*
- 		Eventually, may need to check for an 8-bit mode to use 8 bit structures instead. 
- 	*/
- 	/* Would need to generate a new UART struct for each module that exists.
- 	   Could use malloc to generate enough structs for whatever the user specifies	
- 	*/ 
- 	for (int tab_i=0; ; tab_i++){   
- 	
- 		// Get the name of the current UART module    
+ 	for (tab_i=0; ; tab_i++){   
+ 		 	
+ 		// Check if table exists.    
     	const char* uart_module = toml_key_in(uart, tab_i);
     	if (!uart_module) 
     		break;
-    						
-    	//printf("uart_module: %d: %s\n", tab_i, uart_module); 
     	
-    	// Get the current UART table from the name
-    	toml_table_t* uartx = toml_table_in(uart, uart_module);
-    	if (!uartx){
- 			error("Failed to get UART table from module %s", uart_module);
+    	// Check if more tables than modules specified.
+ 		else if (tab_i > (uart_count - 1)){
+ 			printf("ERROR: %d UART tables, but only %d modules were specified.", tab_i + 1, uart_count);
+ 			exit(1);
  		}
- 		
- 		// Get ptr to current UART struct data. Also serves as a reset to reuse the struct.
- 		//uint32_t *UART_data = (uint32_t *)UART;
+    	
+    	// Get the current UART table ptr from the name
+    	toml_table_t* uartx = toml_table_in(uart, uart_module);
+    	if (!uartx)
+ 			error("Failed to get UART table from module %s", uart_module);		
  		
  		// Get ptr to current UART struct data. 
  		UART_data = (uint32_t *)UART[tab_i];
@@ -334,48 +328,37 @@ int uartConfig(uc_engine *uc, toml_table_t* mmio){
  		if (!UART_data)
  			error("Failed to get pointer from current UART struct", "");
  		
+ 		// TODO: Get number of registers for UART from python autoscript. (# is hardcoded rn)
     	// Fill UART struct with current UART module configuration values   
     	for (int key_i=0; ; key_i++){
     		const char* key = toml_key_in(uartx, key_i);
     		if (!key) 
     			break;
-    			
-    		
-    		
+    				
     		// Get data from the current key
     		toml_datum_t key_data = toml_int_in(uartx, key);
-    		if (!key_data.ok){
+    		if (!key_data.ok)
     			error("Cannot read key data", "");
-    		}
-    		
+
     		// Initialize UART structs with peripheral register addresses and reset values
     		uint32_t base_addr;
 			if (key_i == 0)
     			base_addr = (uint32_t)key_data.u.i;				// Base ADDR should be the first key we access.
     				
-    		//*UART_ptr = (uint32_t)key_data.u.i;
     		*UART_data = (uint32_t)key_data.u.i;
-    		
-			//if (*UART_data < base_addr && key_i <= 11)			// Convert addr offsets to full addresses. 11 registers pre-determined.
-			//	*UART_data = *UART_data + base_addr;
 			
 			// Convert offset address to absolute address.
 			// NOTE: First 11 registers are the address registers.
-			if (*UART_data < base_addr && key_i <= 11){			// Convert addr offsets to full addresses. 11 registers pre-determined.
+			if (*UART_data < base_addr && key_i <= 11){
 				*UART_data = *UART_data + base_addr;
 			
 				// Keep track of lowest and highest UART addresses to determine callback range later.
 				if (*UART_data < minUARTaddr)
-					minUARTaddr = *UART_data;						// Update the lowest address thus far.
+					minUARTaddr = *UART_data;						
 				else if (*UART_data > maxUARTaddr)
-					maxUARTaddr = *UART_data;						// Update the highest address thus far.	
-			}	
-				
-				
+					maxUARTaddr = *UART_data;						
+			}
 			UART_data++;
-    		//UART_ptr++;							// TODO: Make sure this doesn't go into another structs space or out of bounds
-    		//printf("key %d: %s: ", key_i, key);
-    		//printf("0x%lx\n", key_data.u.i);	
         }
         
         // Init UART peripheral registers with their reset values
@@ -387,7 +370,8 @@ int uartConfig(uc_engine *uc, toml_table_t* mmio){
    	//printf("minUARTaddr: 0x%x\nmaxUARTaddr: 0x%x\n", minUARTaddr, maxUARTaddr);
 
 
-	// UART specific callbacks	
+	// UART specific callbacks
+		
 	// Callback to handle FW reads before they happen. (Update values in memory before they are read)
 	uc_hook_add(uc, &handle1, UC_HOOK_MEM_READ, pre_read_UART, NULL, minUARTaddr, maxUARTaddr);
 	// Callback to handle FW reads after they happen. (Update certain registers after reads)
@@ -402,7 +386,6 @@ int uartConfig(uc_engine *uc, toml_table_t* mmio){
 // Cycle through each UART module and initialize all of their registers.	
 void uartInit(uc_engine *uc, int i){
 
-	// TODO: Sanity check these memory locations by reading back later.
 	if (uc_mem_write(uc, UART[i]->CR1_ADDR, &UART[i]->CR1_RESET, 4)){
 		printf("Failed to Initialize CR1 for UART%d. Quit\n", i);
 		exit(1);
@@ -447,5 +430,10 @@ void uartInit(uc_engine *uc, int i){
 		printf("Failed to Initialize TDR for UART%d. Quit\n", i);
 		exit(1);	
 	}
+}
 
+void error(const char *msg, const char* msg1)
+{
+	fprintf(stderr, "ERROR: %s%s\n", msg, msg1?msg1:"");
+	exit(1);
 }

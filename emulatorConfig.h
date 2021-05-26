@@ -50,7 +50,9 @@ uint32_t LR;			// r14
 /*** UART Config ***/
 /*****************/
 bool UART_enable;   		// Disabled by default (CR1)
-int uart_count;				// number of uart modules
+int uart_count;				// Number of uart modules		TODO: Generate from python program
+int reg_count;				// Number of UART registers		TODO: Generate from python program
+
 // These keep track of the callback range for UART register accesses. 
 uint32_t minUARTaddr;
 uint32_t maxUARTaddr;
@@ -111,17 +113,19 @@ typedef struct UART{
 	specifically map certain functionalities to certain registers.
 */
 	uint32_t BASE_ADDR;
-	uint32_t CR1_ADDR;
-	uint32_t CR2_ADDR;
-	uint32_t CR3_ADDR;
-	uint32_t BRR_ADDR;
-	uint32_t GTPR_ADDR;
-	uint32_t RTOR_ADDR;
-	uint32_t RQR_ADDR;
-	uint32_t ISR_ADDR;
-	uint32_t ICR_ADDR;
-	uint32_t RDR_ADDR;
-	uint32_t TDR_ADDR;
+	uint32_t CR1_ADDR;		// CR1
+	uint32_t CR2_ADDR;		// CR2
+	uint32_t CR3_ADDR;		// CR3
+	uint32_t CR4_ADDR;
+	uint32_t CR5_ADDR;		// BRR
+	uint32_t CR6_ADDR;		// GTPR
+	uint32_t CR7_ADDR;		// RTOR
+	uint32_t CR8_ADDR;		// RQR
+	uint32_t CR9_ADDR;		// ICR	flipped with ISR
+	uint32_t SR1_ADDR;		// ISR	flipped with ICR
+	uint32_t SR2_ADDR;		
+	uint32_t DR1_ADDR;		// RDR
+	uint32_t DR2_ADDR;		// TDR
 	
 	/* 
 	In future, May need to make these names for generic for later configuration.
@@ -130,17 +134,19 @@ typedef struct UART{
 	*/ 	
 	
 	// Reset values to init memory with
-	uint32_t CR1_RESET;
-	uint32_t CR2_RESET;
-	uint32_t CR3_RESET;
-	uint32_t BRR_RESET;
-	uint32_t GTPR_RESET;
-	uint32_t RTOR_RESET;
-	uint32_t RQR_RESET;
-	uint32_t ISR_RESET;
-	uint32_t ICR_RESET;
-	uint32_t RDR_RESET;
-	uint32_t TDR_RESET;
+	uint32_t CR1_RESET;		// CR1
+	uint32_t CR2_RESET;		// CR2
+	uint32_t CR3_RESET;		// CR3
+	uint32_t CR4_RESET;
+	uint32_t CR5_RESET;		// BRR
+	uint32_t CR6_RESET;		// GTPR
+	uint32_t CR7_RESET;		// RTOR
+	uint32_t CR8_RESET;		// RQR
+	uint32_t CR9_RESET;		// ICR
+	uint32_t SR1_RESET;		// ISR
+	uint32_t SR2_RESET;
+	uint32_t DR1_RESET;		// RDR
+	uint32_t DR2_RESET;		// TDR
 	
 /* 
 	In future, May need to make these names for generic for later configuration.
@@ -148,17 +154,19 @@ typedef struct UART{
 	Would maybe need to create a new "UART8" struct entirely for that. Could call this one "UART32"
 */ 	
 	// UART regs to temporarily hold values
-	uint32_t CR1;
-	uint32_t CR2;
-	uint32_t CR3;
-	uint32_t BRR;
-	uint32_t GTPR;
-	uint32_t RTOR;
-	uint32_t RQR;
-	uint32_t ISR;
-	uint32_t ICR;
-	uint32_t RDR;
-	uint32_t TDR;
+	uint32_t CR1;		// CR1
+	uint32_t CR2;		// CR2
+	uint32_t CR3;		// CR3
+	uint32_t CR4;
+	uint32_t CR5;		// BRR
+	uint32_t CR6;		// GTPR
+	uint32_t CR7;		// RTOR
+	uint32_t CR8;		// RQR
+	uint32_t CR9;		// ICR
+	uint32_t SR1;		// ISR
+	uint32_t SR2;
+	uint32_t DR1;		// RDR
+	uint32_t DR2;		// TDR
 	
 } UART_handle;
 

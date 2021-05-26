@@ -90,40 +90,61 @@ void show_UART(uc_engine *uc){
 	uint32_t CR1;
 	uint32_t CR2;
 	uint32_t CR3;
-	uint32_t BRR;
-	uint32_t GTPR;
-	uint32_t RTOR;
-	uint32_t RQR;
-	uint32_t ISR;
-	uint32_t ICR;
-	uint32_t RDR;
-	uint32_t TDR;
+	uint32_t CR4;
+	uint32_t CR5;
+	uint32_t CR6;
+	uint32_t CR7;
+	uint32_t CR8;
+	uint32_t CR9;
+	uint32_t SR1;
+	uint32_t SR2;
+	uint32_t DR1;
+	uint32_t DR2;
 	
 	printf("\n*** Show UART mmio contents ***\n");
 
 	for (i=0; i<uart_count; i++){
-		uc_mem_read(uc, UART[i]->CR1_ADDR, &CR1, 4);
-		uc_mem_read(uc, UART[i]->CR2_ADDR, &CR2, 4);
-		uc_mem_read(uc, UART[i]->CR3_ADDR, &CR3, 4);
-		uc_mem_read(uc, UART[i]->BRR_ADDR, &BRR, 4);
-		uc_mem_read(uc, UART[i]->GTPR_ADDR, &GTPR, 4);
-		uc_mem_read(uc, UART[i]->RTOR_ADDR, &RTOR, 4);
-		uc_mem_read(uc, UART[i]->RQR_ADDR, &RQR, 4);
-		uc_mem_read(uc, UART[i]->ISR_ADDR, &ISR, 4);
-		uc_mem_read(uc, UART[i]->ICR_ADDR, &ICR, 4);
-		uc_mem_read(uc, UART[i]->RDR_ADDR, &RDR, 4);
-		uc_mem_read(uc, UART[i]->TDR_ADDR, &TDR, 4);
+	
+		if ((UART[i]->CR1_ADDR >= minUARTaddr) && (UART[i]->CR1_ADDR <= maxUARTaddr))
+			uc_mem_read(uc, UART[i]->CR1_ADDR, &CR1, 4);
+		if ((UART[i]->CR2_ADDR >= minUARTaddr) && (UART[i]->CR2_ADDR <= maxUARTaddr))
+			uc_mem_read(uc, UART[i]->CR2_ADDR, &CR2, 4);
+		if ((UART[i]->CR3_ADDR >= minUARTaddr) && (UART[i]->CR3_ADDR <= maxUARTaddr))
+			uc_mem_read(uc, UART[i]->CR3_ADDR, &CR3, 4);
+		if ((UART[i]->CR4_ADDR >= minUARTaddr) && (UART[i]->CR4_ADDR <= maxUARTaddr))
+			uc_mem_read(uc, UART[i]->CR4_ADDR, &CR4, 4);
+		if ((UART[i]->CR5_ADDR >= minUARTaddr) && (UART[i]->CR5_ADDR <= maxUARTaddr))
+			uc_mem_read(uc, UART[i]->CR5_ADDR, &CR5, 4);
+		if ((UART[i]->CR6_ADDR >= minUARTaddr) && (UART[i]->CR6_ADDR <= maxUARTaddr))
+			uc_mem_read(uc, UART[i]->CR6_ADDR, &CR6, 4);
+		if ((UART[i]->CR7_ADDR >= minUARTaddr) && (UART[i]->CR7_ADDR <= maxUARTaddr))
+			uc_mem_read(uc, UART[i]->CR7_ADDR, &CR7, 4);
+		if ((UART[i]->CR8_ADDR >= minUARTaddr) && (UART[i]->CR8_ADDR <= maxUARTaddr))
+			uc_mem_read(uc, UART[i]->CR8_ADDR, &CR8, 4);
+		if ((UART[i]->CR9_ADDR >= minUARTaddr) && (UART[i]->CR9_ADDR <= maxUARTaddr))
+			uc_mem_read(uc, UART[i]->CR9_ADDR, &CR9, 4);
+		if ((UART[i]->SR1_ADDR >= minUARTaddr) && (UART[i]->SR1_ADDR <= maxUARTaddr))
+			uc_mem_read(uc, UART[i]->SR1_ADDR, &SR1, 4);
+		if ((UART[i]->SR2_ADDR >= minUARTaddr) && (UART[i]->SR2_ADDR <= maxUARTaddr))
+			uc_mem_read(uc, UART[i]->SR2_ADDR, &SR2, 4);
+		if ((UART[i]->DR1_ADDR >= minUARTaddr) && (UART[i]->DR1_ADDR <= maxUARTaddr))
+			uc_mem_read(uc, UART[i]->DR1_ADDR, &DR1, 4);
+		if ((UART[i]->DR2_ADDR >= minUARTaddr) && (UART[i]->DR2_ADDR <= maxUARTaddr))
+			uc_mem_read(uc, UART[i]->DR2_ADDR, &DR2, 4);
+		
 		printf("UART%d CR1:  0x%x\n", i, CR1);
 		printf("UART%d CR2:  0x%x\n", i, CR2);
 		printf("UART%d CR3:  0x%x\n", i, CR3);
-		printf("UART%d BRR:  0x%x\n", i, BRR);
-		printf("UART%d GTPR: 0x%x\n", i, GTPR);
-		printf("UART%d RTOR: 0x%x\n", i, RTOR);
-		printf("UART%d RQR:  0x%x\n", i, RQR);
-		printf("UART%d ISR:  0x%x\n", i, ISR);
-		printf("UART%d ICR:  0x%x\n", i, ICR);
-		printf("UART%d RDR:  0x%x\n", i, RDR);
-		printf("UART%d TDR:  0x%x\n", i, TDR);	
+		printf("UART%d CR4:  0x%x\n", i, CR4);
+		printf("UART%d CR5:  0x%x\n", i, CR5);
+		printf("UART%d CR6:  0x%x\n", i, CR6);
+		printf("UART%d CR7:  0x%x\n", i, CR7);
+		printf("UART%d CR8:  0x%x\n", i, CR8);
+		printf("UART%d CR9:  0x%x\n", i, CR9);
+		printf("UART%d SR1:  0x%x\n", i, SR1);
+		printf("UART%d SR2:  0x%x\n", i, SR2);
+		printf("UART%d DR1:  0x%x\n", i, DR1);
+		printf("UART%d DR2:  0x%x\n", i, DR2);	
 	}
 	
 }

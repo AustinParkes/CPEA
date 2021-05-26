@@ -57,184 +57,7 @@ with open(elf, 'rb') as f:
 			DataAddr = header['sh_addr']
 			DataSize = header['sh_size']
 			
-		
-"""
-# Get Executables Virtual Address
-proc1 = subprocess.run(['readelf', '-l', elf],
-						stdout=subprocess.PIPE,	# Pipe to stdout object
-						text=True)	   			# Use text and not binary		   
-					   					   				
-proc2 = subprocess.run(['grep', 'LOAD'],
-						input=proc1.stdout,		# Get output from prev stdout
-						stdout=subprocess.PIPE,
-						text=True)
 
-proc3 = subprocess.run(['grep', 'R E'],
-						input=proc2.stdout,
-						stdout=subprocess.PIPE,
-						text=True)
-					
-proc4 = subprocess.run(['awk', '{print $3;}'],
-						input=proc3.stdout,
-						stdout=subprocess.PIPE,
-						text=True)	
-ExecVAddr = int(proc4.stdout, 16)
-
-
-# Get Data Virtual Address
-proc1 = subprocess.run(['readelf', '-l', elf],
-					   stdout=subprocess.PIPE,	# Pipe to stdout object
-					   text=True)	   			# Use text and not binary		   
-					   					   				
-proc2 = subprocess.run(['grep', 'LOAD'],
-						input=proc1.stdout,		# Get output from prev stdout
-						stdout=subprocess.PIPE,
-						text=True)
-
-proc3 = subprocess.run(['grep', 'RW'],
-						input=proc2.stdout,
-						stdout=subprocess.PIPE,
-						text=True)
-					
-proc4 = subprocess.run(['awk', '{print $3;}'],
-						input=proc3.stdout,
-						stdout=subprocess.PIPE,
-						text=True)	
-DataVAddr = int(proc4.stdout, 16)
-
-# Get Data Section Size
-proc1 = subprocess.run(['readelf', '-l', elf],
-					   stdout=subprocess.PIPE,	# Pipe to stdout object
-					   text=True)	   			# Use text and not binary		   
-					   					   				
-proc2 = subprocess.run(['grep', 'LOAD'],
-						input=proc1.stdout,		# Get output from prev stdout
-						stdout=subprocess.PIPE,
-						text=True)
-
-proc3 = subprocess.run(['grep', 'RW'],
-						input=proc2.stdout,
-						stdout=subprocess.PIPE,
-						text=True)
-					
-proc4 = subprocess.run(['awk', '{print $6;}'],
-						input=proc3.stdout,
-						stdout=subprocess.PIPE,
-						text=True)				
-DataSize = int(proc4.stdout, 16)
-														
-# Calculate Total Memory Size for emulator
-fw_mem_size = ExecVAddr + DataVAddr + DataSize	# Total Size
-align = 4096 - (fw_mem_size%4096)				# Align to 4096 for unicorn
-emu_mem_size = fw_mem_size + align				# Total Emulator Memory
-
-# Get .text Address
-proc1 = subprocess.run(['readelf', '-S', elf],
-					   stdout=subprocess.PIPE,	# Pipe to stdout object
-					   text=True)	   			# Use text and not binary		   
-					   					   				
-proc2 = subprocess.run(['grep', '-w', '.text'],
-						input=proc1.stdout,		# Get output from prev stdout
-						stdout=subprocess.PIPE,
-						text=True)
-
-proc3 = subprocess.run(['cut', '-c', '42-49'],
-						input=proc2.stdout,
-						stdout=subprocess.PIPE,
-						text=True)
-TextAddrHex = "0x" + proc3.stdout
-TextAddr = int(TextAddrHex, 16)
-
-# Get .text Size
-proc1 = subprocess.run(['readelf', '-S', elf],
-					   stdout=subprocess.PIPE,	# Pipe to stdout object
-					   text=True)	   			# Use text and not binary		   
-					   					   				
-proc2 = subprocess.run(['grep', '-w', '.text'],
-						input=proc1.stdout,		# Get output from prev stdout
-						stdout=subprocess.PIPE,
-						text=True)
-
-proc3 = subprocess.run(['cut', '-c', '58-63'],
-						input=proc2.stdout,
-						stdout=subprocess.PIPE,
-						text=True)
-TextSizeHex = "0x" + proc3.stdout
-TextSize = int(TextSizeHex, 16)
-
-# Get .data Address
-proc1 = subprocess.run(['readelf', '-S', elf],
-					   stdout=subprocess.PIPE,	# Pipe to stdout object
-					   text=True)	   			# Use text and not binary		   
-					   					   				
-proc2 = subprocess.run(['grep', '-w', '.data'],
-						input=proc1.stdout,		# Get output from prev stdout
-						stdout=subprocess.PIPE,
-						text=True)
-
-proc3 = subprocess.run(['cut', '-c', '42-49'],
-						input=proc2.stdout,
-						stdout=subprocess.PIPE,
-						text=True)
-DataAddrHex = "0x" + proc3.stdout
-DataAddr = int(DataAddrHex, 16)
-
-# Get .data Size
-proc1 = subprocess.run(['readelf', '-S', elf],
-					   stdout=subprocess.PIPE,	# Pipe to stdout object
-					   text=True)	   			# Use text and not binary		   
-					   					   				
-proc2 = subprocess.run(['grep', '-w', '.data'],
-						input=proc1.stdout,		# Get output from prev stdout
-						stdout=subprocess.PIPE,
-						text=True)
-
-proc3 = subprocess.run(['cut', '-c', '58-63'],
-						input=proc2.stdout,
-						stdout=subprocess.PIPE,
-						text=True)
-DataSizeHex = "0x" + proc3.stdout
-DataSize = int(DataSizeHex, 16)
-
-# Get Main Addr
-proc1 = subprocess.run(['nm', elf],
-					   stdout=subprocess.PIPE,	# Pipe to stdout object
-					   text=True)	   			# Use text and not binary		   
-					   					   				
-proc2 = subprocess.run(['grep', '-w', 'main'],
-						input=proc1.stdout,		# Get output from prev stdout
-						stdout=subprocess.PIPE,
-						text=True)
-
-proc3 = subprocess.run(['awk', '{print $1}'],
-						input=proc2.stdout,
-						stdout=subprocess.PIPE,
-						text=True)
-MainAddrHex = "0x" + proc3.stdout
-MainAddr = int(MainAddrHex, 16)
-
-# Get End Addr
-proc1 = subprocess.run(['readelf', '-s', elf],
-					   stdout=subprocess.PIPE,	# Pipe to stdout object
-					   text=True)	   			# Use text and not binary		   
-					   					   				
-proc2 = subprocess.run(['grep', 'FUNC'],
-						input=proc1.stdout,		# Get output from prev stdout
-						stdout=subprocess.PIPE,
-						text=True)
-
-proc3 = subprocess.run(['grep', '-w', '_exit'],
-						input=proc2.stdout,
-						stdout=subprocess.PIPE,
-						text=True)
-					
-proc4 = subprocess.run(['awk', '{print $2}'],
-						input=proc3.stdout,
-						stdout=subprocess.PIPE,
-						text=True)
-ExitAddrHex = "0x" + proc4.stdout
-ExitAddr = int(ExitAddrHex, 16)
-"""
 						
 # Generate .text and .data binary files for Unicorn
 elf_name = elf.split('.')				# Remove ".elf" extension from elf file
@@ -277,55 +100,65 @@ print("   " + TextBin)
 print("   " + DataBin)
 
 
-"""
 # Update toml dictionary with ELF data
 
 # Load entire TOML as a dictionary
 config = parse(open('emulatorConfig.toml').read())
 
 # Update flash addr
-config['mem_map']['flash_addr'] = ExecVAddr
-config['mem_map']['flash_addr'].comment(hex(ExecVAddr) + ", Generated by emulatorSetup.py")
+config['mem_map']['flash_addr'] = hex(ExecVAddr)
+config['mem_map']['flash_addr'].comment(" Generated by emulatorSetup.py")
 
 # Update flash size
-config['mem_map']['flash_size'] = emu_mem_size
-config['mem_map']['flash_size'].comment(hex(emu_mem_size) + ", Generated by emulatorSetup.py")
+config['mem_map']['flash_size'] = hex(emu_mem_size)
+config['mem_map']['flash_size'].comment(" Generated by emulatorSetup.py")
+
+config['mem_map']['mmio']['reg_count'] = 13
 
 # Update .text start
-config['firmware']['code']['code_addr'] = TextAddr
-config['firmware']['code']['code_addr'].comment(hex(TextAddr) + ", Generated by emulatorSetup.py")
+config['firmware']['code']['code_addr'] = hex(TextAddr)
+config['firmware']['code']['code_addr'].comment(" Generated by emulatorSetup.py")
 
 # .text size determine by emulator at the moment.
-#config['firmware']['code']['code_size'] = TextSize
-#config['firmware']['code']['code_size'].comment(TextSizeHex + ", Generated by emulatorSetup.py")
+config['firmware']['code']['code_size'] = hex(TextSize)
+config['firmware']['code']['code_size'].comment(" Generated by emulatorSetup.py")
 
 # Update .data start
-config['firmware']['data']['data_addr'] = DataAddr
-config['firmware']['data']['data_addr'].comment(hex(DataAddr) + ", Generated by emulatorSetup.py")
+config['firmware']['data']['data_addr'] = hex(DataAddr)
+config['firmware']['data']['data_addr'].comment(" Generated by emulatorSetup.py")
 
 # .data size determine by emulator at the moment.
-#config['firmware']['data']['data_size'] = DataSize
-#config['firmware']['data']['data_size'].comment(DataSizeHex + ", Generated by emulatorSetup.py")
+config['firmware']['data']['data_size'] = hex(DataSize)
+config['firmware']['data']['data_size'].comment(" Generated by emulatorSetup.py")
 
 # Update entry point
-config['firmware']['execution']['entry'] = MainAddr
-config['firmware']['execution']['entry'].comment(hex(MainAddr) + ", Generated by emulatorSetup.py")
+#config['firmware']['execution']['entry'] = hex(MainAddr)
+#config['firmware']['execution']['entry'].comment(" Generated by emulatorSetup.py")
 
 # Update exit point (NOT updating since this hasn't been tested to work)
-#config['firmware']['execution']['end'] = ExitAddr
-#config['firmware']['execution']['end'].comment(hex(ExitAddr) + ", Generated by emulatorSetup.py")
-"""
+#config['firmware']['execution']['end'] = hex(ExitAddr)
+#config['firmware']['execution']['end'].comment(" Generated by emulatorSetup.py")
 
-"""
 # Write new configurations to a test TOML file
 
 # Dumps the .toml file as a string while preserving formatting
-string = dumps(config)
-#print(string)
-#with open('testConfig.toml', 'w') as f:
-#	f.write(string)
-"""
+config = dumps(config)
+print(config)
+
+stop_index = config.find("mem_map.mmio.uart")
+
+parsed_config = ""
+
+for i in range(0, len(config)):
+	if (config[i] != "\"") and (i < stop_index):
+		parsed_config = parsed_config + config[i]
+
+# Concatenate the remaining, uneditted string
+parsed_config = parsed_config + config[stop_index:]
+print(parsed_config)
 
 
+with open('testConfig.toml', 'w') as f:
+	f.write(parsed_config)
 
 

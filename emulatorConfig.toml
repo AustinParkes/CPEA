@@ -1,6 +1,17 @@
-# Much of this configuration is tailor made for the emulator under testing.
-# In future, much of the keys and comments would become more generic 
+# Details code & data to be written to memory. Defines entry/exit points.
+[firmware]
+	[firmware.code]
+	code_addr	= 0x00008018	# .text start
+	code_size	= "done"	    # .text size determined by file size at the moment
 
+	[firmware.data]
+	data_addr	= 0x00018730	# .data start
+	data_size	= "done"		# .data size determined by file size at the moment
+	
+	# Where firmware will begin and end execution
+	[firmware.execution]
+	entry		= 0x0000824c	# start of main
+	end  		= 0x00008278	# end of main
 
 # Define memory map for your MCU
 [mem_map]
@@ -13,8 +24,8 @@ sram_size 	= 0x00020000
 
 	# ARM mmio map 0x40000000 - 0x5fffffff
 	[mem_map.mmio]
-	mmio_addr	= 0x40000000
-	mmio_size  	= 0x20000000
+	mmio_addr	= 0x40000000		# Hard coded. Don't change this.
+	mmio_size  	= 0x20000000		# Hard coded. Don't change this.
 	### TODO: ### A python script WILL use this number to generate UART modules below.
 	uart_count	= 1								# Used to generate the emulators UART structs
 	reg_count   = 13
@@ -52,23 +63,3 @@ sram_size 	= 0x00020000
 		uart0.SR2_reset	= 0x00			# SKIP
 		uart0.DR1_reset	= 0x00
 		uart0.DR2_reset	= 0x00
-		
-		
-
-
-		
-# Details code & data to be written to memory. Defines entry point
-[firmware]
-		
-	[firmware.code]
-	code_addr	= 0x00008018	# .text start
-	code_size	= "done"	    # .text size determined by file size at the moment
-
-	[firmware.data]
-	data_addr	= 0x00018730	# .data start
-	data_size	= "done"		# .data size determined by file size at the moment
-	
-	# Where firmware will begin and end execution
-	[firmware.execution]
-	entry		= 0x0000824c	# start of main
-	end  		= 0x00008278	# end of main

@@ -105,28 +105,15 @@ toml_table_t* parseTOML(toml_table_t* root_table){
     
     /*
     	Done reading general memory map information
-    	Traverse to [mem_map.mmio] table
+    	Store ptr to [mmio] table for peripheral configurations
     */
     
 	// mmio == mem_map.mmio
- 	toml_table_t* mmio = toml_table_in(mem_map, "mmio");
+	// NOTE: This is used in individual peripheral config functions.
+ 	toml_table_t* mmio = toml_table_in(root_table, "mmio");
  	if (!mmio){
  		error("missing [mem_map.mmio]", "");
  	}
-    
-    // mmio start
-    toml_datum_t mmio_addr = toml_int_in(mmio, "mmio_addr");
-    if (!mmio_addr.ok){
-    	error("Cannot read mmio.mmio_addr", "");
-    }
-    MMIO_ADDR = (uint32_t)mmio_addr.u.i; 
-    
-    // mmio size
-    toml_datum_t mmio_size = toml_int_in(mmio, "mmio_size");
-    if (!mmio_size.ok){
-    	error("Cannot read mmio.mmio_size", "");
-    }
-    MMIO_SIZE = (uint32_t)mmio_size.u.i;  
        
     /*
     	Done reading mmio information
@@ -209,6 +196,10 @@ toml_table_t* parseTOML(toml_table_t* root_table){
 
 void map_memory(uc_engine *uc){
 
+	// MMIO range for all Cortex-M Devices
+	MMIO_ADDR = 0x40000000;
+	MMIO_SIZE = 0x20000000;
+
 	// Map Flash region
 	if (uc_mem_map(uc, FLASH_ADDR, FLASH_SIZE, UC_PROT_ALL)){
 		printf("Failed to map flash region to memory. Quit\n");
@@ -256,7 +247,7 @@ int uartConfig(uc_engine *uc, toml_table_t* mmio){
 	uint32_t *UART_data;		// Points to any given UART struct, and is used to iterate through their data
 	int tab_i;					// Iterates through TOML peripheral tables
 	
-	reg_count = 13;				// TODO: Generate from python program
+	reg_count = 13;				// TODO: Generate from python program or configuration file somehow
 
 	// These keep track of the callback range for UART register accesses.
 	minUARTaddr = 0xFFFFFFFF;	// Chose a value that we know is larger than the smallest UART addr
@@ -295,21 +286,20 @@ int uartConfig(uc_engine *uc, toml_table_t* mmio){
     	}
     }
 	
- 	
     /* 2) Extract UART config values to UART structs */
     toml_table_t* uart = toml_table_in(mmio, "uart");   // Use mmio pointer from earlier
  	if (!uart){
  		error("missing [mmio.uart]", "");
  	}
  	
- 	// TODO: Add 8-bit register mode after full configuration finished.
+ 	// TODO: Add 8-bit/16-bit register mode after full configuration finished.
  	// Check if UART module exists and how many. "tab_i" keeps track of the number of modules.
  	for (tab_i=0; ; tab_i++){   
  		 	
  		// Check if table exists.    
     	const char* uart_module = toml_key_in(uart, tab_i);
     	if (!uart_module) 
-    		break;
+    		break;		
     	
     	// Check if more tables than modules specified.
  		else if (tab_i > (uart_count - 1)){
@@ -401,13 +391,16 @@ int uartConfig(uc_engine *uc, toml_table_t* mmio){
 
 /* 
 	TODO: Better way to check if a register is used by emulator?
-		  Currently checking if it's address falls within the expected range which looks ugly.
+		  Currently checking if it's address falls within the expected range.
 
 */
-// Cycle through each UART module and initialize mmio registers.	
+
+
+// Cycle through each UART module and initialize mmio registers.
+// (Only initializes mmio registers that are used.)	
 void uartInit(uc_engine *uc, int i){
 
-	// Check to see if the register's address falls into the expected range.
+	// Check to see if the register's address falls into the expected range. AKA is register used or not?
 	if ((UART[i]->CR1_ADDR >= minUARTaddr) && (UART[i]->CR1_ADDR <= maxUARTaddr)){
 		if (uc_mem_write(uc, UART[i]->CR1_ADDR, &UART[i]->CR1_RESET, 4)){
 			printf("Failed to Initialize CR1 for UART%d. Quit\n", i);

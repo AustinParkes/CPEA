@@ -50,8 +50,8 @@ uint32_t LR;			// r14
 /*** UART Config ***/
 /*****************/
 bool UART_enable;   		// Disabled by default (CR1)
-int uart_count;				// Number of uart modules		TODO: Generate from python program
-int reg_count;				// Number of UART registers		TODO: Generate from python program
+int uart_count;				// Number of uart modules		TODO: Generate from python program/configuration
+int reg_count;				// Number of UART registers		TODO: Generate from python program/configuration
 
 // These keep track of the callback range for UART register accesses. 
 uint32_t minUARTaddr;

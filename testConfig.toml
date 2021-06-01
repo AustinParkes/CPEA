@@ -63,3 +63,5 @@ sram_size 	= 0x00020000
 		uart0.SR2_reset	= 0x00			# SKIP
 		uart0.DR1_reset	= 0x00
 		uart0.DR2_reset	= 0x00
+		
+		

@@ -1,21 +1,22 @@
 Configurable Peripheral Emulator for ARM
 ========================================
 
-TODO
-----
+Version0.0 Details
+------------------
 
-1) Format UART and bit functionalities in config file.
-   - Get a format for configurating the bit mapping.
-
-2) Create generic emulator.
-
-3) Automation
-   - 
-   - Auto generate mmio for emulatorConfig.toml
-
-Projects Referenced or Used
----------------------------
-1) Unicorn [Unicorn Github](https://github.com/unicorn-engine/unicorn)
-2) P2IM [P2IM Github](https://github.com/RiS3-Lab/p2im)
-3) QEMU [QEMU Github](https://github.com/qemu/qemu)
-4) TOML [TOML](https://toml.io/en/)  
+1) Automation
+   - Python Program does extract ELF info to config file
+   - Python Program does NOT automate UART configuration
+   
+2) Configuration
+   - Configuration DOES contain configuration, status, and data registers.
+   - Configuration reads firmware, and UART register information.
+   - Configuration does NOT read bit configurations or uart_config info.
+ 
+3) Data Structures 
+   - Structures DO contain configuration, status, and data registers
+   - A structure is setup to contain flag enable information for configuration & status registers.
+   
+4) Emulation
+   - Emulation does NOT generically emulate configuration, status, or data registers.
+   - Emulation DOES contain configuration registers.

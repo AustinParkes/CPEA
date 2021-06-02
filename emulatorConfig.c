@@ -218,6 +218,24 @@ void map_memory(uc_engine *uc){
 		exit(1);
 	}
 	
+	/* 
+		SANITY CHECK - See if we can read from a mapped region AND check if that region is filled with 0s 
+		INDEED, the mapped memory region is autofilled with 0s.
+	*/
+	
+	/*
+	uint32_t var1, var2, var3;
+	
+	if (uc_mem_read(uc, 0x40000000, &var1, 4))
+		printf("Failed to read.\n");
+	if (uc_mem_read(uc, 0x40013800, &var2, 4))
+		printf("Failed to read.\n");
+	if (uc_mem_read(uc, 0x40013810, &var3, 4))
+		printf("Failed to read.\n");
+	printf("var1:%d\nvar2:%d\nvar3:%d\n", var1, var2, var3);
+	*/
+	
+	
 }
 
 void reg_init(){

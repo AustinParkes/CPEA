@@ -41,16 +41,15 @@ gpio_count 	= 0								# Example for what another disabled peripheral may look l
 	CR_SR_count = 0
 	
 	# Status bit config (Enable '1' / Disable '0')
-	TX_data_reg_empty = 1
-	TX_data_reg_full = 0
-	RX_data_reg_full = 1
-	RX_data_reg_empty = 0
-
-	TX_Complete = 1
-	Busy = 0
+	TX_data_empty = 1								
+	RX_data_full = 1
+	TX_data_full = 0				
+	RX_data_empty = 0				
 	
-	RX_enable_acknowledge = 0
-	TX_enable_acknowledge = 0
+	TX_Complete = 1					
+		
+	RX_enable_ack = 1				# RX Enable Acknowledge
+	TX_enable_ack = 1				# TX Enable Acknowledge
 
 	# UART register initializations
 	[mmio.uart]
@@ -84,8 +83,19 @@ gpio_count 	= 0								# Example for what another disabled peripheral may look l
 	uart0.DR1_reset	= 0x00
 	uart0.DR2_reset	= 0x00
 	
-	[mmio.uart_bitmap]
-		
+	[mmio.uart_flags.SR]
+	TX_data_empty = {reg = "reg", bit = 0}	
+	RX_data_full  = {reg = "reg", bit = 0}
+	TX_Complete   = {reg = "reg", bit = 0}
+	RX_enable_ack = {reg = "reg", bit = 0}
+	TX_enable_ack = {reg = "reg", bit = 0}
+	
+
+	
+	
+	
+	
+	
 		
 		
 		

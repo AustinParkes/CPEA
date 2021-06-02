@@ -10,7 +10,7 @@ void reg_init();				// Initialize all ARM registers.
 int uartConfig();				// Configure UART emulation.
 void uartInit();				// Initiliazes UART mmio registers.
 
-#define MAX_UART 99
+#define MAX_UART 99				// TODO: Find a better max number (16?)
 
 /* Memory Map */
 uint32_t FLASH_ADDR;
@@ -88,12 +88,11 @@ void write_UART();		// After an UART register is written to
    say which bits need to be checked for certain functionality.         
 */
 enum UART_Config{
+	WORDLENGTH,
+	PARITY_ENABLE,
+	OVERSAMPLE,
+	STOP_BITS,
 	ENABLE, 		// Check UART enabled/disabled
-	WORDLENGTH,     // Check the word length of UART Data   (Only possible when UART Disabled)
-	STOP_BITS,      // Check number of stop bits 			(Only possible when UART Disabled) (Ignored   :'(   )
-	PARITY_ENABLE, 	// Check if Parity Enabled	   			(Only possible when UART Disabled) (Ignored   :'(   )    
-	OVERSAMPLE,     // Check oversampling mode				(Only possible when UART Disabled)
-	BAUDRATE,		// Check baudRate														   (Ignored   :'(   ) 
 	TxENABLE,       // Check transmission enable
 	RxENABLE,       // Check reception enable
 	TCCF			// Check Transmission Complete Clear Flag
@@ -172,5 +171,30 @@ typedef struct UART{
 
 // Create an UART instance. Will make more generic handles if needed.
 UART_handle *UART[MAX_UART];		// Holds pointers to different instances of UART modules.		
+
+
+// Store enabled/disabled bit functionalities 
+typedef struct UART_flags{
+
+	bool CR1_en[32];
+	bool CR2_en[32];
+	bool CR3_en[32];
+	bool CR4_en[32];
+	bool CR5_en[32];
+	bool CR6_en[32];
+	bool CR7_en[32];
+	bool CR8_en[32];
+	bool CR9_en[32];
+	bool SR1_en[32];
+	bool SR2_en[32];
+	
+
+} UART_flag_handle;
+
+// Create multiple instances incase multiple UART modules differ in their bits that are enabled/disabled
+UART_flag_handle *UART_flags[MAX_UART];
+
+
+
 
 

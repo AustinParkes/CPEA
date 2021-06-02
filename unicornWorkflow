@@ -1,14 +1,9 @@
 /* Emulating Firmware */
 Write a Unicorn program that executes a firmware
    Memory Mapping
-      -> Need to read up on CPU intialization and Start-up files
-         to see if a startup file will even be used.
-         If not, user will have to specify a few things manually.
-        
       - ARM defines a standardized address space of 4GB
          - Code area starts at 0x00000000 and aliases 0x08000000 (routine at 0x080016DC and be accessed from 0x000016DC)
             - Includes SP, Reset, Vector Table
-            - Start up file will usually initialize SP,FP, entry point, but we are doing this MANUALLY for now.
             -> Refer to Ghidra/Radare2 to get address ranges for now. May be able to automate this later
          - MMIO ranges 0x40000000 - 0x5fffffff 
          - Stack / Heap (0x200xx000 - 0x20000000)
@@ -16,20 +11,12 @@ Write a Unicorn program that executes a firmware
          - 	
          	
    MMIO Callbacks 
-      - Issue a FSM for checking configurations and providing the functionality
-        according to the register accessed and bits set.
-         - May be a flowchart/diagram in actual UART hardware that helps from reference manual
-           which will detail flow for before/after DR reads/writes.    
+      - Currently issued between the min and max UART register addresses specified by the user.  
    
    User Configurations
       - Think about what needs to be configured by the user specifically to configure their emulator
-      Code
-      	 -> User needs to
-      	    1)
-      	    2)
-      	    3)
       Peripherals
-         -> User needs to
+         -> User gives
             1) Give address of a peripheral (e.g. USART1)
             2) Give the register address a particular bit functionality (e.g. USART1->CR1 mapped to USART1 enable)
             3) Give the specific bit in that register that triggers that functionality
@@ -40,49 +27,16 @@ Write a Unicorn program that executes a firmware
                      (May very well need an 8 bit mode.)
                      - How do 32 bit UARTs compare to each other and how do 8 bit  UARTS compare to each other
 
-/* Bash Automation */   
-Bash Script Automation: Entry, End, Memory Map, Code file creation, Data file Creation
-(NEED TO UPDATE THIS)  
-       Program Begin and Program End
-	   Program Sections: readelf -l SimplePollUart.elf
-	      (VirtAddr column verified with: readelf -l SimplePollUart.elf | grep 'Type' | awk '{print $3;}') 
-	      (MemSize column verified with: readelf -l SimplePollUart.elf | grep 'Type' | awk '{print $6;}')
-	   
-	      Executable Sections: readelf -l SimplePollUart.elf | grep 'LOAD' | grep 'R E'     
-		     VirtAddr: readelf -l SimplePollUart.elf | grep 'LOAD' | grep 'R E'| awk '{print $3;}'  
-		     MemSiz:   readelf -l SimplePollUart.elf | grep 'LOAD' | grep 'R E'| awk '{print $6;}'
-		       
-	      Data Sections: readelf -l SimplePollUart.elf | grep 'LOAD' | grep 'RW'
-	         VirtAddr: readelf -l SimplePollUart.elf | grep 'LOAD' | grep 'RW'| awk '{print $3;}'
-	         MemSiz:   readelf -l SimplePollUart.elf | grep 'LOAD' | grep 'RW'| awk '{print $6;}'
-	      
-	      - File start addr, File end addr (file size)
-	      - Also gives information on segments and permissions (RWE)
-	      	
-	   Executable entry (_start) and _exit:
-	   (the _exit method of searching symbol table does not work with stripped elf files so we need a work around for that)
-	   _start   	
-          Entry Point: readelf -h SimplePollUart.elf | grep 'Entry' | awk '{print $4;}'
-       May be a better way of doing this than reading the symbol table   
-       _exit   
-          End Point address: readelf -s SimplePollUart.elf | grep 'FUNC' | grep -w '_exit' | awk '{print $2}'     
-    /* Making binary to emulate */   
-	objcopy notes (arm version)
-	Process:
-		1) Copy .text section into instruction file. Will need to know start/end addresses of .text section from .elf to know how many bytes to write
-		2) Copy .data section into data file         Will need to know start/end addresses of .data section from .elf to know how many bytes to write
-		3) These files can be read into emulator and written to their respective virtual addresses
-	Commands: arm-none-eabi-objcopy -O binary -j .text SimplePollUart.elf SimplePollUart.bin.text
-	 		  arm-none-eabi-objcopy -O binary -j .data SimplePollUart.elf SimplePollUart.bin.data	
+
 
 
 
 /* Compiling the Emulators */
-gcc EmulateSimpleUart.c -lunicorn -lpthread
-or
-gcc EmulateUart.c -lunicorn -lpthread
+// TODO: Eventually want to make my added files apart of the unicorn library
+gcc EmulateUart.c emulatorConfig.c toml.c tester.c -lunicorn -lpthread
 
-/* Compiling the Source Code to emulate */
+
+/* Generating ELF file: Compiling the Source Code to emulate */
 arm-none-eabi-gcc -specs=nosys.specs SimpleUart.c -o SimpleUart.elf
 or
 arm-none-eabi-gcc -specs=nosys.specs PollingUart.c -o PollingUart.elf
@@ -100,7 +54,20 @@ sudo ./make.sh install
     - Add the path of libunicorn.so.1 to GCC library path @ /etc/ld.so.conf.d/x86_64-linux-gnu.conf
     - run sudo ldconfig to update library cache
   
-/* Deprecated methods */ 
+/* Getting TOML to work with CPEA */
+C Parser
+	1) Include toml.h and toml.c files.
+Python3 TOML Parser
+	tomlkit
+	1) pip install tomlkit 
+
+/* Getting ELF Parsing to work with CPEA */
+Python3 ELF Parser
+	pyelftools
+	1) pip install pyelftool  
+  
+  
+/* Deprecated methods for getting Raw Binary to execute */ 
 
 /* Producing Hex String from assembly */   
 Assembly to Hex String
@@ -126,22 +93,6 @@ To Convert to Raw Binary
     - 'xxd -r -p input.opcode output.bin' to get raw binary
 	  - Read this into Unicorn and store in char array. :)
 	 
-/* Getting TOML to work with CPEA */
-C Parser
-	1) Include toml.h and toml.c files.
-Python3 TOML Parser
-	tomlkit
-	1) pip install tomlkit 
-
-/* Getting ELF Parsing to work with CPEA*/
-Python3 ELF Parser
-	pyelftools
-	1) pip install pyelftool
-
-
-
-
-
 
 
 

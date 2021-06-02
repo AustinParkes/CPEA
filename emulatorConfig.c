@@ -22,7 +22,7 @@ void emuConfig(uc_engine *uc, char *arm_code, char *arm_data){
 	FILE *fp;				
 	char errbuf[200];
 
-	printf("Configure Emulator\n");	
+	printf("***Configure Emulator***\n");	
 	
 	fp = fopen("emulatorConfig.toml", "r");	
     if (!fp)
@@ -57,7 +57,7 @@ void emuConfig(uc_engine *uc, char *arm_code, char *arm_data){
     /*** Free Memory for config file ***/
     free(root_table); 
       
-    printf("   - Complete\n");         
+    printf("   - Complete\n\n");         
 }
 
 // Gather and Store configurations from TOML.
@@ -275,7 +275,8 @@ int uartConfig(uc_engine *uc, toml_table_t* mmio){
 	
  	/*
     	1) Generate UART struct for each module from [memory_map.mmio]
-    	2) Traverse to [mmio.uart] and extract config values to UART struct(s)
+    	2) Traverse to [mmio.uart] and extract register values to UART struct(s)
+    	3) Traverse to [mmio.uart_flags] and initialize status registers in mmio.
     */
     
     
@@ -304,13 +305,14 @@ int uartConfig(uc_engine *uc, toml_table_t* mmio){
     	}
     }
 	
-    /* 2) Extract UART config values to UART structs */
+    /* 2) Extract UART register config values to UART structs */
     toml_table_t* uart = toml_table_in(mmio, "uart");   // Use mmio pointer from earlier
  	if (!uart){
  		error("missing [mmio.uart]", "");
  	}
  	
  	// TODO: Add 8-bit/16-bit register mode after full configuration finished.
+ 	// TODO: Turn these nested for-loops into a function.
  	// Check if UART module exists and how many. "tab_i" keeps track of the number of modules.
  	for (tab_i=0; ; tab_i++){   
  		 	
@@ -383,15 +385,28 @@ int uartConfig(uc_engine *uc, toml_table_t* mmio){
 				UART_data++;				// Move to next structure member
 				
 			}
-        }
-        
+        }       
         // Init UART peripheral registers with their reset values
-        uartInit(uc, tab_i);
-             
+        uartInit(uc, tab_i);	         
    	}
    	
    	// SANITY CHECK. Check if the min and max addresses for UART match.
    	//printf("minUARTaddr: 0x%x\nmaxUARTaddr: 0x%x\n", minUARTaddr, maxUARTaddr);
+   	
+   	
+	/* 3) Initialize Status registers' expected flag values based on config */
+	
+    toml_table_t* flags = toml_table_in(mmio, "uart_flags");   
+ 	if (!uart){
+ 		error("missing [mmio.uart_flags]", "");
+ 	}	
+	
+	// Set SR flags based on user configuration.
+	setFlags(uc, flags);
+	
+	
+		
+
 
 
 	// UART specific callbacks
@@ -510,8 +525,90 @@ void uartInit(uc_engine *uc, int i){
 	}
 }
 
-void error(const char *msg, const char* msg1)
+void setFlags(uc_engine *uc, toml_table_t* flag_tab){
+	int i;						// UART module index
+	int tab_i;					// Table Index
+	int flag_bit;				// Bit location that flag belongs to
+	const char* flag_name;		// Name of current flag
+	const char* flag_reg;		// Name of register flag belongs to
+	toml_table_t* flag_ptr;		// ptr to flag table
+	toml_datum_t flag_key;		// Holds a key value from flag table
+	
+	for (tab_i = 0; ;tab_i++){
+	
+ 		// Check if table exists.    
+    	flag_name = toml_key_in(flag_tab, tab_i);
+    	if (!flag_name) 
+    		break;			
+		printf("%s\n", flag_name);
+		
+			
+		// Get the current Flag table ptr from its name
+    	flag_ptr = toml_table_in(flag_tab, flag_name);
+    	if (!flag_ptr)
+ 			error("Failed to get Flag table: %s", flag_name);
+ 			
+ 		// Get the register the flag belongs to 
+    	flag_key = toml_string_in(flag_ptr, "reg");
+    	if (!flag_key.ok)
+    		error("Failed to get flag register from: %s", flag_name);
+    	flag_reg = flag_key.u.s;
+	
+ 		// Get the bit location the flag belongs to		
+		flag_key = toml_int_in(flag_ptr, "bit");
+    	if (!flag_key.ok)
+    		error("Failed to get flag bit location from: %s", flag_name);	
+    	flag_bit = flag_key.u.i;
+    	
+    	/* SANITY CHECK - Check register and bit */
+    	//printf("reg: %s\nbit: %d\n",flag_reg, flag_bit);
+    	
+    	/* 
+    		Write current flag to the appropriate SR and bit location
+    		for all UART modules
+    	*/
+    	if (!strcmp(flag_reg, "SR1") || !strcmp(flag_reg, "sr1")){
+    		for (i=0; i<uart_count; i++){
+    			SET_BIT(UART[i]->SR1, flag_bit);	
+    			if (uc_mem_write(uc, UART[i]->SR1_ADDR, &UART[i]->SR1, 4)){
+					printf("Failed to set bit for SR1 at UART%d. Quit\n", i);
+					exit(1);
+				}
+    		}
+    	}
+    	else if (!strcmp(flag_reg, "SR2") || !strcmp(flag_reg, "sr2")){
+    		for (i=0; i<uart_count; i++){
+    			SET_BIT(UART[i]->SR2, flag_bit);
+    			if (uc_mem_write(uc, UART[i]->SR2_ADDR, &UART[i]->SR2, 4)){
+					printf("Failed to set bit for SR2 at UART%d. Quit\n", i);
+					exit(1);
+				}    			
+    		}
+    	}
+    	/*
+    	else if (!strcmp(flag_reg, "SR3") || !strcmp(flag_reg, "sr3")){
+    		for (uart_i=0; uart_i<uart_count; uart_i++){
+    			SET_BIT(UART[uart_i]->SR3, flag_bit);
+    		}
+    	}
+    	else if (!strcmp(flag_reg, "SR4") || !strcmp(flag_reg, "sr4")){
+    		for (uart_i=0; uart_i<uart_count; uart_i++){
+    			SET_BIT(UART[uart_i]->SR4, flag_bit);
+    		}
+    	}  
+    	*/  	    	    	
+    	else if (!strcmp(flag_reg, "reg"))
+    		;
+    	else
+    		error("Please give \"reg\" name in formats SRx or srx. You gave: ", flag_reg, "");
+    	
+
+	}	
+
+}
+
+void error(const char *msg, const char* msg1, const char* msg2)
 {
-	fprintf(stderr, "ERROR: %s%s\n", msg, msg1?msg1:"");
+	fprintf(stderr, "ERROR: %s%s%s\n", msg, msg1?msg1:"", msg2?msg2:"");
 	exit(1);
 }

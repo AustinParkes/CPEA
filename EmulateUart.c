@@ -85,6 +85,9 @@ gcc EmulateUart.c emulatorConfig.c toml.c tester.c -lunicorn -lpthread
 // Clear kth bit in register (Clears the Transmission Complete Flag)
 #define CLEAR_TC(reg, k)	(reg &= ~(1<<k))
 
+// Set kth bit in a register
+#define SET_BIT(reg, k)		(reg |= (1<<k))	
+
 
 /*** UART Hardware Flags and Masks***/
 /* These flags aren't actually available in UART registers, so we declare them here */
@@ -112,7 +115,7 @@ int main(int argc, char **argv, char **envp)
 	char *arm_code;			// ptr to code
 	char *arm_data;			// ptr to data
   	
-	printf("Read ARM code and data\n");
+	printf("***Read ARM code and data***\n");
 
 	// Read ARM code
 	FILE *f = fopen("SimpleUart.code.bin", "rb");
@@ -131,7 +134,7 @@ int main(int argc, char **argv, char **envp)
 	readBinFile(g, &arm_data, &data_size);
 	
 	// 
-	printf("   - Complete\n");
+	printf("   - Complete\n\n");
 	
 	/*** SANITY CHECK ***/
 	/*** View binary from file to check if it's correct ***/	
@@ -194,13 +197,13 @@ int main(int argc, char **argv, char **envp)
 	uc_reg_write(uc, UC_ARM_REG_SP, &SP);		// r13
 	uc_reg_write(uc, UC_ARM_REG_LR, &LR);		// r14
 
-	printf("Emulate arm code\n");	
+	printf("***Emulate arm code***\n");	
 	err=uc_emu_start(uc, START, END, 0, 0);
 	if (err){
 		printf("Failed on uc_emu_start() with error returned %u: %s\n", err, uc_strerror(err));
 		exit(1);
 	}
-	printf("   - Complete\n");
+	printf("   - Complete\n\n");
 	
 	// Free all of the allocated UART structures.
 	for (int i=0; i<uart_count; i++){
@@ -449,7 +452,7 @@ void write_UART(uc_engine *uc, uc_mem_type type,
 	uint8_t check_flag;					// Change state of switch-case statements for configuration registers
 	
 	if (address == (uint64_t)UARTx->CR1_ADDR){
-		printf("Configure CR1\n");
+
 		/*
 			In future, will likely revert to if-statements in the future 
 			to check what configurations the user disabled/enabled. 
@@ -464,13 +467,13 @@ void write_UART(uc_engine *uc, uc_mem_type type,
 				case (ENABLE) :
 					// Check if bit 0 of CR1 is set
 					if (CHECK_ENABLE(UARTx->CR1, 0)){
-						printf("	Enable: UART%d Enabled\n", uart_i);
+						//printf("	Enable: UART%d Enabled\n", uart_i);
 						UART_enable = true;            // May not need to check if UART is enabled/disabled anymore					
 						check_flag = TxENABLE;   		 // Skip all cases that require disabled UART
 					}
 					// UART Disabled, so reset ISR
 					else{
-						printf("	Enable: UART%d Disabled\n", uart_i);
+						//printf("	Enable: UART%d Disabled\n", uart_i);
 						UART_enable = false;			// May not need to check if UART1 is enabled/disabled anymore
 						UARTx->SR1 = UARTx->SR1_RESET;
 						uc_mem_write(uc, UARTx->SR1_ADDR, &UARTx->SR1, 4);   // Update status register	
@@ -485,12 +488,12 @@ void write_UART(uc_engine *uc, uc_mem_type type,
 				case (WORDLENGTH) :  
 					// Check if both bits are 0.
 					if (CHECK_WORDLENGTH8(UARTx->CR1, 28, 12)){
-						printf("	WordLength: 8 Bit Data\n");
+						//printf("	WordLength: 8 Bit Data\n");
 						Data_Mask = 0xFF;	// 8 bit data (somewhat redundant )
 					}
 					// Check if bit 28 is 1 and bit 12 is 0
 					else if (CHECK_WORDLENGTH7(UARTx->CR1, 28, 12)){
-						printf("	WordLength: 7 Bit Data\n");
+						//printf("	WordLength: 7 Bit Data\n");
 						Data_Mask = 0x7F;	// 7 bit data
 					}
 						
@@ -501,13 +504,13 @@ void write_UART(uc_engine *uc, uc_mem_type type,
 				// Only can be configured when UART Disabled
 				case (PARITY_ENABLE) :
 					if (CHECK_PARITY_EN(UARTx->CR1, 10)){
-						printf("	ParityEnable: Enabled\n");  	// Let us know it was set 
+						//printf("	ParityEnable: Enabled\n");  	// Let us know it was set 
 					}
 					else if (!CHECK_PARITY_EN(UARTx->CR1, 10)){
-						printf("	ParityEnable: Disabled\n");  	// Let us know it wasn't set (Expected Result)
+						//printf("	ParityEnable: Disabled\n");  	// Let us know it wasn't set (Expected Result)
 					}
 					else{
-						printf("	Parity set incorrectly (Not expected from fw)\n");
+						//printf("	Parity set incorrectly (Not expected from fw)\n");
 					}
 						
 				// Fall-Through
@@ -515,23 +518,23 @@ void write_UART(uc_engine *uc, uc_mem_type type,
 				case (OVERSAMPLE) :
 					
 					if (CHECK_OVERSAMPLE(UARTx->CR1, 15)){
-						printf("	Oversample: Oversample 8 Set\n");
+						//printf("	Oversample: Oversample 8 Set\n");
 					}
 					else if (!CHECK_OVERSAMPLE(UARTx->CR1, 15)){
-						printf("	Oversample: Oversample 16 Set\n");
+						//printf("	Oversample: Oversample 16 Set\n");
 					}
 					else{
-						printf("	Oversample set incorrectly (Not expected from fw)\n");
+						//printf("	Oversample set incorrectly (Not expected from fw)\n");
 					}
 						
 			    // Fall-Through
 			    case (TxENABLE) :
 			    	if (CHECK_TX_ENABLE(UARTx->CR1, 3)){
-			    		printf("	TxEnable: Enabled\n");
+			    		//printf("	TxEnable: Enabled\n");
 			    		SET_TEACK(UARTx->SR1, 21);   	// Set bit 21 of ISR (TEACK)
 			    	}
 			    	else if (!CHECK_TX_ENABLE(UARTx->CR1, 3)){
-			    		printf("	TxEnable: Disabled\n");
+			    		//printf("	TxEnable: Disabled\n");
 			    		CLEAR_TEACK(UARTx->SR1, 21);   	// Clear bit 21 of ISR (TEACK)
 			    	}
 					else {
@@ -542,11 +545,11 @@ void write_UART(uc_engine *uc, uc_mem_type type,
 			    // Fall-Through
 			    case (RxENABLE) :
 			    	if (CHECK_RX_ENABLE(UARTx->CR1, 2)){
-			    		printf("	RxEnable: Enabled\n");
+			    		//printf("	RxEnable: Enabled\n");
 			    		SET_REACK(UARTx->SR1, 22);	// Set bit 22 of ISR (REACK)
 			    	}
 			    	else if(!CHECK_RX_ENABLE(UARTx->CR1, 2)){
-			    		printf("	RxEnable: Disabled\n");
+			    		//printf("	RxEnable: Disabled\n");
 			    		CLEAR_REACK(UARTx->SR1, 22);   // Clear bit 22 of ISR (REACK)
 			    	}
 			    	else{
@@ -596,9 +599,9 @@ void write_UART(uc_engine *uc, uc_mem_type type,
 		;
 	else if	(address == (uint64_t)UARTx->CR5_ADDR){
 		UARTx->CR5 = (uint32_t)value;   // Read in BaudRate setting
-		printf("	Baud Rate Reg set to %x\n", UARTx->CR5);
+		//printf("	Baud Rate Reg set to %x\n", UARTx->CR5);
 		if (UARTx->CR5 == 0x208D){
-			printf(" BaudRate: Set to 9600\n");
+			//printf(" BaudRate: Set to 9600\n");
 		}
 	}
 	
@@ -671,9 +674,7 @@ static void read_mem(uc_engine *uc, uint64_t address, uint32_t size, void *user_
 	uint32_t var1;
 	uint32_t var2;
 	
-	if (address < 0x821c || address > 0x8278)
-		printf("How did i make it here: 0x%lx\n", address);
-	
+    /*
 	if (address == 0x824c){
 		printf("Function Entered: Main\n");
 	}
@@ -690,6 +691,8 @@ static void read_mem(uc_engine *uc, uint64_t address, uint32_t size, void *user_
     if (address == 0x826c){
     	printf("Function Leaving: read_DR()\n");
     }    
+ 	*/ 
+ 
  
 }
 

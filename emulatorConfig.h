@@ -9,8 +9,12 @@ void map_memory();				// Create memory map for the emulator.
 void reg_init();				// Initialize all ARM registers.
 int uartConfig();				// Configure UART emulation.
 void uartInit();				// Initiliazes UART mmio registers.
+void setFlags();				// Sets the inferred status register values.
 
 #define MAX_UART 99				// TODO: Find a better max number (16?)
+
+// Set kth bit in a register
+#define SET_BIT(reg, k)		(reg |= (1<<k))	
 
 /* Memory Map */
 uint32_t FLASH_ADDR;
@@ -172,7 +176,7 @@ typedef struct UART{
 // Create an UART instance. Will make more generic handles if needed.
 UART_handle *UART[MAX_UART];		// Holds pointers to different instances of UART modules.		
 
-
+// TODO: Get rid of this if we never need it.
 // Store enabled/disabled bit functionalities 
 typedef struct UART_flags{
 

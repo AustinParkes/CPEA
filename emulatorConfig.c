@@ -271,8 +271,6 @@ int uartConfig(uc_engine *uc, toml_table_t* mmio){
 	minUARTaddr = 0xFFFFFFFF;	// Chose a value that we know is larger than the smallest UART addr
 	maxUARTaddr = 0;					
 	
-	UART_enable = false;   			// UART is disabled by default
-	
  	/*
     	1) Generate UART struct for each module from [memory_map.mmio]
     	2) Traverse to [mmio.uart] and extract register values to UART struct(s)
@@ -342,8 +340,13 @@ int uartConfig(uc_engine *uc, toml_table_t* mmio){
     	// Fill UART struct with current UART module configuration values   
     	for (int key_i=0; ; key_i++){
     		const char* key = toml_key_in(uartx, key_i);
+    		
+    		// Check if key, then check if we reached the SR flags
     		if (!key) 
     			break;
+    		else if (!strcmp(key, "flags"))
+    			break;
+    		
     				
     		// Get data from the current key
     		toml_datum_t key_data = toml_int_in(uartx, key);
@@ -382,27 +385,26 @@ int uartConfig(uc_engine *uc, toml_table_t* mmio){
 					else if (*UART_data > maxUARTaddr)
 						maxUARTaddr = *UART_data;	
 				}			
-				UART_data++;				// Move to next structure member
-				
+				UART_data++;				// Move to next structure member			
 			}
         }       
         // Init UART peripheral registers with their reset values
-        uartInit(uc, tab_i);	         
+        uartInit(uc, tab_i);
+        
+        /* 3) Set Status Registers' ideal flag values based on config */        
+        toml_table_t* flags = toml_table_in(uartx, "flags");   
+ 		if (!flags){
+ 			error("missing [mmio.uart.%d.flags]", tab_i);
+ 		}	
+        
+        setFlags(uc, flags);	         
    	}
    	
    	// SANITY CHECK. Check if the min and max addresses for UART match.
    	//printf("minUARTaddr: 0x%x\nmaxUARTaddr: 0x%x\n", minUARTaddr, maxUARTaddr);
    	
    	
-	/* 3) Initialize Status registers' expected flag values based on config */
-	
-    toml_table_t* flags = toml_table_in(mmio, "uart_flags");   
- 	if (!uart){
- 		error("missing [mmio.uart_flags]", "");
- 	}	
-	
-	// Set SR flags based on user configuration.
-	setFlags(uc, flags);
+
 	
 	
 		
@@ -433,70 +435,7 @@ int uartConfig(uc_engine *uc, toml_table_t* mmio){
 // (Only initializes mmio registers that are used.)	
 void uartInit(uc_engine *uc, int i){
 
-	// Check to see if the register's address falls into the expected range. AKA is register used or not?
-	if ((UART[i]->CR1_ADDR >= minUARTaddr) && (UART[i]->CR1_ADDR <= maxUARTaddr)){
-		if (uc_mem_write(uc, UART[i]->CR1_ADDR, &UART[i]->CR1_RESET, 4)){
-			printf("Failed to Initialize CR1 for UART%d. Quit\n", i);
-			exit(1);
-		}
-	}
-	
-	if ((UART[i]->CR2_ADDR >= minUARTaddr) && (UART[i]->CR2_ADDR <= maxUARTaddr)){
-		if (uc_mem_write(uc, UART[i]->CR2_ADDR, &UART[i]->CR2_RESET, 4)){
-			printf("Failed to Initialize CR2 for UART%d. Quit\n", i);
-			exit(1);		
-		}
-	}
-	
-	if ((UART[i]->CR3_ADDR >= minUARTaddr) && (UART[i]->CR3_ADDR <= maxUARTaddr)){
-		if (uc_mem_write(uc, UART[i]->CR3_ADDR, &UART[i]->CR3_RESET, 4)){
-			printf("Failed to Initialize CR3 for UART%d. Quit\n", i);
-			exit(1);	
-		}
-	}
-	
-	if ((UART[i]->CR4_ADDR >= minUARTaddr) && (UART[i]->CR4_ADDR <= maxUARTaddr)){
-		if (uc_mem_write(uc, UART[i]->CR4_ADDR, &UART[i]->CR4_RESET, 4)){
-			printf("Failed to Initialize CR3 for UART%d. Quit\n", i);
-			exit(1);	
-		}
-	}
-	
-	if ((UART[i]->CR5_ADDR >= minUARTaddr) && (UART[i]->CR5_ADDR <= maxUARTaddr)){
-		if (uc_mem_write(uc, UART[i]->CR5_ADDR, &UART[i]->CR5_RESET, 4)){
-			printf("Failed to Initialize BRR for UART%d. Quit\n", i);
-			exit(1);	
-		}
-	}
-	
-	if ((UART[i]->CR6_ADDR >= minUARTaddr) && (UART[i]->CR6_ADDR <= maxUARTaddr)){
-		if (uc_mem_write(uc, UART[i]->CR6_ADDR, &UART[i]->CR6_RESET, 4)){
-			printf("Failed to Initialize GTPR for UART%d. Quit\n", i);
-			exit(1);	
-		}
-	}
-	
-	if ((UART[i]->CR7_ADDR >= minUARTaddr) && (UART[i]->CR7_ADDR <= maxUARTaddr)){
-		if (uc_mem_write(uc, UART[i]->CR7_ADDR, &UART[i]->CR7_RESET, 4)){
-			printf("Failed to Initialize RTOR for UART%d. Quit\n", i);
-			exit(1);	
-		}
-	}
-	
-	if ((UART[i]->CR8_ADDR >= minUARTaddr) && (UART[i]->CR8_ADDR <= maxUARTaddr)){
-		if (uc_mem_write(uc, UART[i]->CR8_ADDR, &UART[i]->CR8_RESET, 4)){
-			printf("Failed to Initialize RQR for UART%d. Quit\n", i);
-			exit(1);	
-		}
-	}
-	
-	if ((UART[i]->CR9_ADDR >= minUARTaddr) && (UART[i]->CR9_ADDR <= maxUARTaddr)){
-		if (uc_mem_write(uc, UART[i]->CR9_ADDR, &UART[i]->CR9_RESET, 4)){
-			printf("Failed to Initialize ICR for UART%d. Quit\n", i);
-			exit(1);	
-		}
-	}
-	
+	// Check to see if the register's address falls into the expected range. AKA is register used or not?	
 	if ((UART[i]->SR1_ADDR >= minUARTaddr) && (UART[i]->SR1_ADDR <= maxUARTaddr)){
 		if (uc_mem_write(uc, UART[i]->SR1_ADDR, &UART[i]->SR1_RESET, 4)){
 			printf("Failed to Initialize ISR for UART%d. Quit\n", i);

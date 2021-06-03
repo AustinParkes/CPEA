@@ -35,51 +35,32 @@ gpio_count 	= 0								# Example for what another disabled peripheral may look l
 	# 1) Allow user to change number of CR, SR, DR?
 	# 2) Allow user to change which bit functionalities are enabled?
 	[mmio.uart_config]
-	CR_count = 9
 	SR_count = 2
 	DR_count = 2
 	CR_SR_count = 0
 	
-
-	# UART register initializations
-	[mmio.uart]
-	# The uart modules below wwill be auto generated depending on UART_count
-	uart0.base_addr = 0x40013800	# Base address for uart0
-	uart0.CR1_addr	= 0x00			# CR1
-	uart0.CR2_addr	= 0x04  		# CR2
-	uart0.CR3_addr	= 0x08			# CR3
-	uart0.CR4_addr  = 0xFFFF		# SKIP       
-	uart0.CR5_addr	= 0x0c        	# BRR
-	uart0.CR6_addr	= 0x10			# GTPR
-	uart0.CR7_addr	= 0x14			# RTOR
-	uart0.CR8_addr	= 0x18			# RQR
-	uart0.CR9_addr	= 0x20			# ICR
-	uart0.SR1_addr	= 0x1c			# ISR
-	uart0.SR2_addr	= 0xFFFF		# SKIP
-	uart0.DR1_addr	= 0x24
-	uart0.DR2_addr	= 0x28
-		
-	uart0.CR1_reset	= 0x00
-	uart0.CR2_reset	= 0x00  
-	uart0.CR3_reset	= 0x00       
-	uart0.CR4_reset	= 0x00			# SKIP (skipping reset value is dependent on register's corresponding address value)
-	uart0.CR5_reset = 0x00        	
-	uart0.CR6_reset = 0x00
-	uart0.CR7_reset = 0x00
-	uart0.CR8_reset	= 0x00
-	uart0.CR9_reset	= 0x00
-	uart0.SR1_reset	= 0x020000C0
-	uart0.SR2_reset	= 0x00			# SKIP
-	uart0.DR1_reset	= 0x00
-	uart0.DR2_reset	= 0x00
 	
-	# Non-Exhaustive list of all the SR flags. Will add more after pre-liminaries
-	[mmio.uart_flags]
-	TX_data_empty = {reg = "SR1", bit = 5}	
-	RX_data_full  = {reg = "SR1", bit = 0}
-	TX_Complete   = {reg = "SR1", bit = 0}
-	RX_enable_ack = {reg = "SR1", bit = 0}
-	TX_enable_ack = {reg = "SR1", bit = 0}
+	# UART register initializations
+	[mmio.uart.0]
+	# The uart modules below wwill be auto generated depending on UART_count
+	base_addr 	= 0x40013800	# Base address for uart0		
+	SR1_addr	= 0x1c			# ISR
+	SR2_addr	= 0xFFFF		# SKIP
+	DR1_addr	= 0x24			# TDR
+	DR2_addr	= 0x28			# RDR
+		
+	SR1_reset	= 0x020000C0
+	SR2_reset	= 0x00			# SKIP
+	DR1_reset	= 0x00
+	DR2_reset	= 0x00
+	
+	# Non-Exhaustive list of all the SR flags. Will add more after pre-liminary tests
+	[mmio.uart.0.flags]
+	TX_data_empty = {reg = "SR1", bit = 7}	
+	RX_data_full  = {reg = "SR1", bit = 5}
+	TX_Complete   = {reg = "SR1", bit = 6}
+	RX_enable_ack = {reg = "SR1", bit = 22}
+	TX_enable_ack = {reg = "SR1", bit = 21}
 	
 
 	

@@ -10,91 +10,6 @@ gcc EmulateUart.c emulatorConfig.c toml.c tester.c -lunicorn -lpthread
 #include "emulatorConfig.h"
 #include "tester.h"
 
-/* UART Emulation for stm32l4xx MCUs for ARM Cortex-M */
-
-
-/*** UART Bit Configuration Checks ***/
-/*
-3)	In future, the user will just need to specify what bit needs to be 
-    checked. The register that it's checked for is already pre-configured from 
-    step 2) and this check will already be enabled for that register and disabled
-    for the other registers.
-    
-    For user's ease, user can configure only the bits that need to be checked for certain flags
-    such as CHECK_STOPBITS ... instead of configuring the same bits for CHECK_STOPBITS .5, 1, 1.5, 2,
-    user can set the bits for a Master CHECK_STOPBITS that will check those bits in each individual check.
-    After this, user can move on to step 4) and configure the bits that should be set in 
-    status registers according to the configuration set.
-*/
-// Check if kth bit is set or not in register (Check if UART enabled(1) / disabled(0)) 
-#define CHECK_ENABLE(reg, k)	(reg & (1<<k)) 
-
-// Check if any 2 bits are both 0. (Check if UART 8-N-1)
-#define CHECK_WORDLENGTH8(reg,k1,k2)  (~reg & (1<<k1)) && (~reg & (1<<k2))
-
-// Check among 2 bits if 1 is set and the other is not set. (check if UART 7-N-1)
-#define CHECK_WORDLENGTH7(reg, k1Set, k2Not)  (reg & (1<<k1Set)) && (~reg & (1<<k2Not))
-
-// Check if kth bit is set or not in register (Check if parity is enabled (1) / disabled (0))
-#define CHECK_PARITY_EN(reg, k)	(reg & (1<<k)) 
-
-// Check if any 2 bits are both 0 (Check if 1 stop bit)
-#define CHECK_STOPBITS1(reg,k1,k2)  (~reg & (1<<k1)) && (~reg & (1<<k2))
-
-// Check if kth bit is set or not in register (Check if oversample8 (enabled (1)) / oversample16 (disabled(0)) )
-#define CHECK_OVERSAMPLE(reg, k)	(reg & (1<<k)) 
-
-// Check if kth bit is set or not in register (Check if transmitter enabled (1) / disabled (0))
-#define CHECK_TX_ENABLE(reg, k)	(reg & (1<<k)) 
-
-// Check if kth bit is set or not in register (Check if receiver enabled (1) / disabled (0))
-#define CHECK_RX_ENABLE(reg, k)	(reg & (1<<k))
-
-// Check if kth bit is set or not in register (Check if receiver enabled (1) / disabled (0))
-#define CHECK_TCCF(reg, k)	(reg & (1<<k))
-
-/*** UART Status Register Sets/Clears ***/
-
-// Set kth bit in register (Sets the Transmit enable Acknowledge flag if transmitter is enabled)
-#define SET_TEACK(reg, k)	(reg |= (1<<k))
-
-// Clear kth bit in register (Clears the Transmit enable Acknowledge flag if transmitter is disabled)
-#define CLEAR_TEACK(reg, k)	(reg &= ~(1<<k))			
-
-// Set kth bit in register (Sets the Receive enable Acknowledge flag if receiver is enabled)
-#define SET_REACK(reg, k)	(reg |= (1<<k))
-
-// Clear kth bit in register (Clears the Receive enable Acknowledge flag if receiver is disabled)
-#define CLEAR_REACK(reg, k)	(reg &= ~(1<<k))
-
-// Set kth bit in register (Sets the Read Data Register Not Empty flag)
-#define SET_RXNE(reg, k)	(reg |= (1<<k))
-
-// Clear kth bit in register (Clears the Read Data Register Not Empty flag)
-#define CLEAR_RXNE(reg, k)	(reg &= ~(1<<k))
-
-// Set kth bit in register (Sets the Transmit Data Register Empty)
-#define SET_TXE(reg, k)	(reg |= (1<<k))
-
-// Clear kth bit in register (Clears the Transmit Data Register Empty)
-#define CLEAR_TXE(reg, k)	(reg &= ~(1<<k))
-
-// Set kth bit in register (Sets Transmission Complete Flag)
-#define SET_TC(reg, k)	(reg |= (1<<k))
-
-// Clear kth bit in register (Clears the Transmission Complete Flag)
-#define CLEAR_TC(reg, k)	(reg &= ~(1<<k))
-
-// Set kth bit in a register
-#define SET_BIT(reg, k)		(reg |= (1<<k))	
-
-
-/*** UART Hardware Flags and Masks***/
-/* These flags aren't actually available in UART registers, so we declare them here */
-
-// Mask data to be 7, 8, 9 bits
-uint8_t Data_Mask = 0xFF;	  	// 8 bits default
-
 
 static void read_mem();			// Callback declaration.
 static void readBinFile();		// Read data from binary file
@@ -247,11 +162,8 @@ void pre_read_UART(uc_engine *uc, uc_mem_type type,
 	UART_handle *UARTx = NULL;	// Points to the UART mmio accessed.
 	
 	printf("Made it to pre_read_UART callback\n");
-    
-    // TODO: Make more generic for OTHER Peripherals.
-    // TODO: Add some checks to make sure that pointer isn't going out of bounds
-    // TODO: Check for general correctness in semantics
-    
+
+	// TODO: Turn into function called findModule	
     // Determine which UART module the accessed address belongs to. 
     for (uart_i=0; uart_i < uart_count; uart_i++){
     	UART_ptr = (uint32_t *)UART[uart_i];		// Serves as an init and reset for UART_ptr
@@ -275,57 +187,22 @@ void pre_read_UART(uc_engine *uc, uc_mem_type type,
     		break;	   		
     }
     
-
-    // TODO, in future, may not need to even check all of these registers.
-    // Determine which UART register is going to be accessed.
-	if	(address == (uint64_t)UARTx->CR1_ADDR)
-		;
-	else if	(address == (uint64_t)UARTx->CR2_ADDR)
-		;
-	else if	(address == (uint64_t)UARTx->CR3_ADDR)
-		;
-	else if	(address == (uint64_t)UARTx->CR4_ADDR)
-		;
-	else if	(address == (uint64_t)UARTx->CR5_ADDR)
-		;
-	else if	(address == (uint64_t)UARTx->CR6_ADDR)
-		;
-	else if	(address == (uint64_t)UARTx->CR7_ADDR)
-		;
-	else if	(address == (uint64_t)UARTx->CR8_ADDR)
-		;
-	else if	(address == (uint64_t)UARTx->CR9_ADDR)
-		;
-	else if	(address == (uint64_t)UARTx->SR1_ADDR){
-    		printf("	Update ISR\n");  
-    	/*
-    	bits 25, 7, & 6 are set by default in ISR.
-    	25 is undetermined atm
-    	7 & 6 never change, since there is no logical reason to ever change them
-    	*/
-    	// Commit the current ISR value to memory before fw reads it
-    	
-    	uc_mem_write(uc, UARTx->SR1_ADDR, &UARTx->SR1, 4);
-    }
-	else if	(address == (uint64_t)UARTx->SR2_ADDR)
-		;
-	else if	(address == (uint64_t)UARTx->DR1_ADDR){
-    	printf("	Update Data Register\n") ;
-    	Data = 0xEE;		
-    	// Mask should be 7 bit in this test (Data == 0x6E)
-    	Data &= Data_Mask;		// Mask according to 7, 8, 9 bit data 
+    // Produce data for DR read.   
+	if	(address == (uint64_t)UARTx->DR1_ADDR){
+    	printf("	Update Data Register\n");
+    	Data = 0x6E;		
     	UARTx->DR1 = Data;
     	printf("	DR val: 0x%x\n", Data);		
-    	uc_mem_write(uc, UARTx->DR1_ADDR, &UARTx->DR1, 4);
-    	// Data is loaded into DR at this point, so RXNE == 1
-    	SET_RXNE(UARTx->SR1, 5);   // Set bit 5 (RXNE)    		
+    	uc_mem_write(uc, UARTx->DR1_ADDR, &UARTx->DR1, 4);  		
     }
-	else if	(address == (uint64_t)UARTx->DR2_ADDR)
-		;
-	else{
-		printf("Address does not match any UART%d register addresses.\n", uart_i);
-		exit(1);
-    }
+    
+	else if	(address == (uint64_t)UARTx->DR2_ADDR){
+    	printf("	Update Data Register\n");
+    	Data = 0x6E;		
+    	UARTx->DR2 = Data;
+    	printf("	DR val: 0x%x\n", Data);		
+    	uc_mem_write(uc, UARTx->DR2_ADDR, &UARTx->DR2, 4);
+    }	
                                  
 }
 
@@ -362,46 +239,23 @@ void post_read_UART(uc_engine *uc, uc_mem_type type,
     	if (UARTx == UART[uart_i])				
     		break;	   		
     }
-
-    // TODO, in future, may not need to even check all of these registers.
-    // Determine which UART register is going to be accessed.
-	if (address == (uint64_t)UARTx->CR1_ADDR)
-		;
-	else if	(address == (uint64_t)UARTx->CR2_ADDR)
-		;
-	else if	(address == (uint64_t)UARTx->CR3_ADDR)
-		;
-	else if	(address == (uint64_t)UARTx->CR4_ADDR)
-		;
-	else if	(address == (uint64_t)UARTx->CR5_ADDR)
-		;
-	else if	(address == (uint64_t)UARTx->CR6_ADDR)
-		;
-	else if	(address == (uint64_t)UARTx->CR7_ADDR)
-		;
-	else if	(address == (uint64_t)UARTx->CR8_ADDR)
-		;
-	else if	(address == (uint64_t)UARTx->CR9_ADDR)
-		;
-	else if	(address == (uint64_t)UARTx->SR1_ADDR)
-		;
-	else if	(address == (uint64_t)UARTx->SR2_ADDR)
-		;
-	else if	(address == (uint64_t)UARTx->DR1_ADDR){
+	
+	// Clear DR after it's read.
+	if	(address == (uint64_t)UARTx->DR1_ADDR){
     	printf("	Clear DR after read\n");
     	// Data Register should be cleared after it's read
     	UARTx->DR1 = 0;	
     	printf("	DR Val:0x%x\n", UARTx->DR1);	
-    	uc_mem_write(uc, UARTx->DR2_ADDR, &UARTx->DR1, 4);
-    	// Data has been read already, so RXNE == 0
-    	CLEAR_RXNE(UARTx->SR1, 5);   // Clear bit 5 (RXNE) 	  		
+    	uc_mem_write(uc, UARTx->DR1_ADDR, &UARTx->DR1, 4);
+	  		
     }
-	else if	(address == (uint64_t)UARTx->DR2_ADDR)
-		;
-	else{
-		printf("Address does not match and of UART%d register addresses.\n", uart_i);
-		exit(1);
-    }
+	else if	(address == (uint64_t)UARTx->DR2_ADDR){
+    	printf("	Clear DR after read\n");
+    	// Data Register should be cleared after it's read
+    	UARTx->DR2 = 0;	
+    	printf("	DR Val:0x%x\n", UARTx->DR2);	
+    	uc_mem_write(uc, UARTx->DR2_ADDR, &UARTx->DR2, 4);	
+	}
                                 
 }
 
@@ -410,235 +264,13 @@ void write_UART(uc_engine *uc, uc_mem_type type,
         uint64_t address, int size, uint64_t value, void *user_data)
 {
 
-
-	int uart_i;					// Index for UART modules
-	uint32_t *UART_ptr;			// Points to any given UART module
-	UART_handle *UARTx = NULL;	// Points to the UART mmio accessed.
-
-	printf("Made it to write_UART callback\n\n");
-	
-    for (uart_i=0; uart_i < uart_count; uart_i++){
-    	UART_ptr = (uint32_t *)UART[uart_i];		// Serves as an init and reset for UART_ptr
-    	if (!UART_ptr){
-    		printf("Error accessing UART%d in pre_read_uartx callback", uart_i);	
-    		exit(1);
-    	} 	 		
-    	*UART_ptr++;								// Skip the base address.
-    	
-    	// Cycle through each register address and look for a match.
-    	for (int addr_cnt=0; addr_cnt < reg_count; addr_cnt++){		// NOTE: 11 is the predetermined # of registers to go through
-    		if (*UART_ptr == (uint32_t)address){	
-    			UARTx = UART[uart_i];				// Set to the start of the matching UART module
-    			break;
-    		}
-    		else
-    			*UART_ptr++;						// No match, move to next UART addr in struct
-    	}
-    	
-    	// Leave outer most loop if there is a match.
-    	if (UARTx == UART[uart_i])				
-    		break;	   		
-    }
-	
-	/*	
-	    Certain Emulation Exceptions:
-		1) If UART is enabled, certain bits in multiple registers cannot be written to.
-		   It's assumed that the FW disabled/enables UART accordingly and that the FW has
-		   previously been ran on an actual device. Therefore, enable/disable checks are emitted 
-		   from the emulator.
+	/* 
+		TODO: Find if we need this or not.
+		QEMU will write to memory whether we have this callback or not.
+		If SR writes in FW end up overwriting our ideal SR values, then we will need to save our 
+		ideal values here and write them back on a pre-read callback.
+		
 	*/
-
-	bool terminate = false;			 		// Terminate register checks/writes when true
-	uint8_t check_flag;					// Change state of switch-case statements for configuration registers
-	
-	if (address == (uint64_t)UARTx->CR1_ADDR){
-
-		/*
-			In future, will likely revert to if-statements in the future 
-			to check what configurations the user disabled/enabled. 
-				  Disabled configs will be zero.   (therefore not executed)
-				  Enabled configs will be non-zero (therefore executed)
-		*/			
-		UARTx->CR1 = (uint32_t)value;    // Save value written to memory in CR1
-		check_flag = ENABLE;   // Check if UART enabled first
-		while (!terminate){
-			switch (check_flag){
-
-				case (ENABLE) :
-					// Check if bit 0 of CR1 is set
-					if (CHECK_ENABLE(UARTx->CR1, 0)){
-						//printf("	Enable: UART%d Enabled\n", uart_i);
-						UART_enable = true;            // May not need to check if UART is enabled/disabled anymore					
-						check_flag = TxENABLE;   		 // Skip all cases that require disabled UART
-					}
-					// UART Disabled, so reset ISR
-					else{
-						//printf("	Enable: UART%d Disabled\n", uart_i);
-						UART_enable = false;			// May not need to check if UART1 is enabled/disabled anymore
-						UARTx->SR1 = UARTx->SR1_RESET;
-						uc_mem_write(uc, UARTx->SR1_ADDR, &UARTx->SR1, 4);   // Update status register	
-						check_flag = WORDLENGTH;
-					}
-					break;
-					
-				/*
-					In future, need to check for 9 bit configuration as well
-				*/
-				// Only can be configured when UART Disabled
-				case (WORDLENGTH) :  
-					// Check if both bits are 0.
-					if (CHECK_WORDLENGTH8(UARTx->CR1, 28, 12)){
-						//printf("	WordLength: 8 Bit Data\n");
-						Data_Mask = 0xFF;	// 8 bit data (somewhat redundant )
-					}
-					// Check if bit 28 is 1 and bit 12 is 0
-					else if (CHECK_WORDLENGTH7(UARTx->CR1, 28, 12)){
-						//printf("	WordLength: 7 Bit Data\n");
-						Data_Mask = 0x7F;	// 7 bit data
-					}
-						
-				// Fall-Through
-				/*
-					In some cases fw may be able to red parity bit
-				*/
-				// Only can be configured when UART Disabled
-				case (PARITY_ENABLE) :
-					if (CHECK_PARITY_EN(UARTx->CR1, 10)){
-						//printf("	ParityEnable: Enabled\n");  	// Let us know it was set 
-					}
-					else if (!CHECK_PARITY_EN(UARTx->CR1, 10)){
-						//printf("	ParityEnable: Disabled\n");  	// Let us know it wasn't set (Expected Result)
-					}
-					else{
-						//printf("	Parity set incorrectly (Not expected from fw)\n");
-					}
-						
-				// Fall-Through
-				// Only can be configured when UART Disabled
-				case (OVERSAMPLE) :
-					
-					if (CHECK_OVERSAMPLE(UARTx->CR1, 15)){
-						//printf("	Oversample: Oversample 8 Set\n");
-					}
-					else if (!CHECK_OVERSAMPLE(UARTx->CR1, 15)){
-						//printf("	Oversample: Oversample 16 Set\n");
-					}
-					else{
-						//printf("	Oversample set incorrectly (Not expected from fw)\n");
-					}
-						
-			    // Fall-Through
-			    case (TxENABLE) :
-			    	if (CHECK_TX_ENABLE(UARTx->CR1, 3)){
-			    		//printf("	TxEnable: Enabled\n");
-			    		SET_TEACK(UARTx->SR1, 21);   	// Set bit 21 of ISR (TEACK)
-			    	}
-			    	else if (!CHECK_TX_ENABLE(UARTx->CR1, 3)){
-			    		//printf("	TxEnable: Disabled\n");
-			    		CLEAR_TEACK(UARTx->SR1, 21);   	// Clear bit 21 of ISR (TEACK)
-			    	}
-					else {
-						printf("	Tx Enable set incorrectly (Not expected from fw)\n");
-					}
-			    	
-			    	
-			    // Fall-Through
-			    case (RxENABLE) :
-			    	if (CHECK_RX_ENABLE(UARTx->CR1, 2)){
-			    		//printf("	RxEnable: Enabled\n");
-			    		SET_REACK(UARTx->SR1, 22);	// Set bit 22 of ISR (REACK)
-			    	}
-			    	else if(!CHECK_RX_ENABLE(UARTx->CR1, 2)){
-			    		//printf("	RxEnable: Disabled\n");
-			    		CLEAR_REACK(UARTx->SR1, 22);   // Clear bit 22 of ISR (REACK)
-			    	}
-			    	else{
-			    		printf("	Rx Enable set incorrectly (Not expected from fw)\n");
-			    	}
-			    	terminate = true;	// Temporary, will change when we have more flags to check
-			    	break;			    	
-			    default :
-			    	// Error, and don't hang
-			    	printf("CR1 Config not checked\n");
-			    	terminate = true;
-			    	break;
-			}  
-		}
-	}
-	else if	(address == (uint64_t)UARTx->CR2_ADDR){
-		UARTx->CR2 = (uint32_t)value;   // Write value written to memory in CR2
-		check_flag = STOP_BITS;   	// Temporary, will change with more flags					
-		while (!terminate){
-			switch (check_flag){
-				// Only can be configured when UART Disabled
-				/*
-					In future, need to check for 0.5, 1.5, 2 stop bits
-				*/
-				case (STOP_BITS) :
-					if (CHECK_STOPBITS1(UARTx->CR2, 13, 12)){
-						printf("	Stop bits: 1 Stop Bit (Expected from fw)\n");
-					}
-					else{
-						printf("Stop bit not configured to 1 bit correctly (Not Expected from fw)\n");
-					}
-	                // Stop checking bits												
-					terminate = true;   // Temporary, will change when we have more flags to check
-					break;	
-				default :
-					// Error, and don't hang
-					printf("CR2 Config not checked\n");
-					terminate = true;
-					break;
-			}
-		}
-	}
-	
-	else if	(address == (uint64_t)UARTx->CR3_ADDR)
-		;
-	else if	(address == (uint64_t)UARTx->CR4_ADDR)
-		;
-	else if	(address == (uint64_t)UARTx->CR5_ADDR){
-		UARTx->CR5 = (uint32_t)value;   // Read in BaudRate setting
-		//printf("	Baud Rate Reg set to %x\n", UARTx->CR5);
-		if (UARTx->CR5 == 0x208D){
-			//printf(" BaudRate: Set to 9600\n");
-		}
-	}
-	
-	else if	(address == (uint64_t)UARTx->CR6_ADDR)
-		;
-	else if	(address == (uint64_t)UARTx->CR7_ADDR)
-		;
-	else if	(address == (uint64_t)UARTx->CR8_ADDR)
-		;
-
-	else if	(address == (uint64_t)UARTx->CR9_ADDR){
-		check_flag = TCCF; // Manually check TCCF flag
-		switch(check_flag)
-			case (TCCF) :
-				if (CHECK_TCCF(UARTx->CR9, 6))   // bit 6 == TCCF flag
-					CLEAR_TC(UARTx->SR1, 6);
-			//break;	
-	}
-	else if	(address == (uint64_t)UARTx->SR1_ADDR)
-		;
-	else if	(address == (uint64_t)UARTx->SR2_ADDR)
-		;	
-	else if	(address == (uint64_t)UARTx->DR1_ADDR)		
-    	;
-	else if	(address == (uint64_t)UARTx->DR2_ADDR){
-		// TXE set to '1' by default, no reason to ever clear it to '0'
-		// since writes to TDR are redundant and don't affect FW execution
-		printf("Write to UART DR: %lu\n", value);   // Check if writes match what should have been read.
-			
-		// Manually set TC, since it is possible for it to be cleared in FW via ICR register
-		SET_TC(UARTx->SR1, 6);	// Set bit 6 of ISR (TC)	
-	}
-	
-	else{
-		printf("Address does not match and of UART%d register addresses.\n", uart_i);
-		exit(1);
-    }	
 
 }
 
@@ -693,9 +325,6 @@ static void read_mem(uc_engine *uc, uint64_t address, uint32_t size, void *user_
     }    
  	*/ 
  
- 
 }
 
-/* 
-	Compile Command: gcc SimpleUart.c -lunicorn -lpthread
-*/
+

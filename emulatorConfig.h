@@ -53,7 +53,6 @@ uint32_t LR;			// r14
 /*****************/
 /*** UART Config ***/
 /*****************/
-bool UART_enable;   		// Disabled by default (CR1)
 int uart_count;				// Number of uart modules		TODO: Generate from python program/configuration
 int reg_count;				// Number of UART registers		TODO: Generate from python program/configuration
 
@@ -115,20 +114,11 @@ typedef struct UART{
 	Once this is configured by user, can move onto 2) and the user can 
 	specifically map certain functionalities to certain registers.
 */
-	uint32_t BASE_ADDR;
-	uint32_t CR1_ADDR;		// CR1
-	uint32_t CR2_ADDR;		// CR2
-	uint32_t CR3_ADDR;		// CR3
-	uint32_t CR4_ADDR;
-	uint32_t CR5_ADDR;		// BRR
-	uint32_t CR6_ADDR;		// GTPR
-	uint32_t CR7_ADDR;		// RTOR
-	uint32_t CR8_ADDR;		// RQR
-	uint32_t CR9_ADDR;		// ICR	flipped with ISR
-	uint32_t SR1_ADDR;		// ISR	flipped with ICR
+	uint32_t BASE_ADDR;	
+	uint32_t SR1_ADDR;		
 	uint32_t SR2_ADDR;		
-	uint32_t DR1_ADDR;		// RDR
-	uint32_t DR2_ADDR;		// TDR
+	uint32_t DR1_ADDR;		
+	uint32_t DR2_ADDR;		
 	
 	/* 
 	In future, May need to make these names for generic for later configuration.
@@ -137,39 +127,22 @@ typedef struct UART{
 	*/ 	
 	
 	// Reset values to init memory with
-	uint32_t CR1_RESET;		// CR1
-	uint32_t CR2_RESET;		// CR2
-	uint32_t CR3_RESET;		// CR3
-	uint32_t CR4_RESET;
-	uint32_t CR5_RESET;		// BRR
-	uint32_t CR6_RESET;		// GTPR
-	uint32_t CR7_RESET;		// RTOR
-	uint32_t CR8_RESET;		// RQR
-	uint32_t CR9_RESET;		// ICR
-	uint32_t SR1_RESET;		// ISR
+		
+	uint32_t SR1_RESET;		
 	uint32_t SR2_RESET;
-	uint32_t DR1_RESET;		// RDR
-	uint32_t DR2_RESET;		// TDR
+	uint32_t DR1_RESET;		
+	uint32_t DR2_RESET;		
 	
 /* 
 	In future, May need to make these names for generic for later configuration.
 	May also need to add an 8 bit mode for 8 bit wide peripheral registers.
 	Would maybe need to create a new "UART8" struct entirely for that. Could call this one "UART32"
 */ 	
-	// UART regs to temporarily hold values
-	uint32_t CR1;		// CR1
-	uint32_t CR2;		// CR2
-	uint32_t CR3;		// CR3
-	uint32_t CR4;
-	uint32_t CR5;		// BRR
-	uint32_t CR6;		// GTPR
-	uint32_t CR7;		// RTOR
-	uint32_t CR8;		// RQR
-	uint32_t CR9;		// ICR
-	uint32_t SR1;		// ISR
+	// UART regs to temporarily hold values	
+	uint32_t SR1;		
 	uint32_t SR2;
-	uint32_t DR1;		// RDR
-	uint32_t DR2;		// TDR
+	uint32_t DR1;		
+	uint32_t DR2;		
 	
 } UART_handle;
 
@@ -192,13 +165,8 @@ typedef struct UART_flags{
 	bool SR1_en[32];
 	bool SR2_en[32];
 	
-
 } UART_flag_handle;
 
 // Create multiple instances incase multiple UART modules differ in their bits that are enabled/disabled
 UART_flag_handle *UART_flags[MAX_UART];
-
-
-
-
 

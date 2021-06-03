@@ -105,24 +105,6 @@ void show_UART(uc_engine *uc){
 
 	for (i=0; i<uart_count; i++){
 	
-		if ((UART[i]->CR1_ADDR >= minUARTaddr) && (UART[i]->CR1_ADDR <= maxUARTaddr))
-			uc_mem_read(uc, UART[i]->CR1_ADDR, &CR1, 4);
-		if ((UART[i]->CR2_ADDR >= minUARTaddr) && (UART[i]->CR2_ADDR <= maxUARTaddr))
-			uc_mem_read(uc, UART[i]->CR2_ADDR, &CR2, 4);
-		if ((UART[i]->CR3_ADDR >= minUARTaddr) && (UART[i]->CR3_ADDR <= maxUARTaddr))
-			uc_mem_read(uc, UART[i]->CR3_ADDR, &CR3, 4);
-		if ((UART[i]->CR4_ADDR >= minUARTaddr) && (UART[i]->CR4_ADDR <= maxUARTaddr))
-			uc_mem_read(uc, UART[i]->CR4_ADDR, &CR4, 4);
-		if ((UART[i]->CR5_ADDR >= minUARTaddr) && (UART[i]->CR5_ADDR <= maxUARTaddr))
-			uc_mem_read(uc, UART[i]->CR5_ADDR, &CR5, 4);
-		if ((UART[i]->CR6_ADDR >= minUARTaddr) && (UART[i]->CR6_ADDR <= maxUARTaddr))
-			uc_mem_read(uc, UART[i]->CR6_ADDR, &CR6, 4);
-		if ((UART[i]->CR7_ADDR >= minUARTaddr) && (UART[i]->CR7_ADDR <= maxUARTaddr))
-			uc_mem_read(uc, UART[i]->CR7_ADDR, &CR7, 4);
-		if ((UART[i]->CR8_ADDR >= minUARTaddr) && (UART[i]->CR8_ADDR <= maxUARTaddr))
-			uc_mem_read(uc, UART[i]->CR8_ADDR, &CR8, 4);
-		if ((UART[i]->CR9_ADDR >= minUARTaddr) && (UART[i]->CR9_ADDR <= maxUARTaddr))
-			uc_mem_read(uc, UART[i]->CR9_ADDR, &CR9, 4);
 		if ((UART[i]->SR1_ADDR >= minUARTaddr) && (UART[i]->SR1_ADDR <= maxUARTaddr))
 			uc_mem_read(uc, UART[i]->SR1_ADDR, &SR1, 4);
 		if ((UART[i]->SR2_ADDR >= minUARTaddr) && (UART[i]->SR2_ADDR <= maxUARTaddr))
@@ -132,15 +114,6 @@ void show_UART(uc_engine *uc){
 		if ((UART[i]->DR2_ADDR >= minUARTaddr) && (UART[i]->DR2_ADDR <= maxUARTaddr))
 			uc_mem_read(uc, UART[i]->DR2_ADDR, &DR2, 4);
 		
-		printf("UART%d CR1:  0x%x\n", i, CR1);
-		printf("UART%d CR2:  0x%x\n", i, CR2);
-		printf("UART%d CR3:  0x%x\n", i, CR3);
-		printf("UART%d CR4:  0x%x\n", i, CR4);
-		printf("UART%d CR5:  0x%x\n", i, CR5);
-		printf("UART%d CR6:  0x%x\n", i, CR6);
-		printf("UART%d CR7:  0x%x\n", i, CR7);
-		printf("UART%d CR8:  0x%x\n", i, CR8);
-		printf("UART%d CR9:  0x%x\n", i, CR9);
 		printf("UART%d SR1:  0x%x\n", i, SR1);
 		printf("UART%d SR2:  0x%x\n", i, SR2);
 		printf("UART%d DR1:  0x%x\n", i, DR1);

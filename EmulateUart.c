@@ -10,7 +10,6 @@ gcc EmulateUart.c emulatorConfig.c toml.c tester.c -lunicorn -lpthread
 #include "emulatorConfig.h"
 #include "tester.h"
 
-
 static void read_mem();			// Callback declaration.
 static void readBinFile();		// Read data from binary file
 
@@ -163,8 +162,10 @@ void pre_read_UART(uc_engine *uc, uc_mem_type type,
 	
 	printf("Made it to pre_read_UART callback\n");
 
-	// TODO: Turn into function called findModule	
+	// TODO: Turn into function called findModule
+	// FIXME: Need better way to cycle through the addresses. Could break easily in future.	
     // Determine which UART module the accessed address belongs to. 
+    /*
     for (uart_i=0; uart_i < uart_count; uart_i++){
     	UART_ptr = (uint32_t *)UART[uart_i];		// Serves as an init and reset for UART_ptr
     	if (!UART_ptr){
@@ -186,22 +187,25 @@ void pre_read_UART(uc_engine *uc, uc_mem_type type,
     	if (UARTx == UART[uart_i])				
     		break;	   		
     }
+    */
+    
+    UARTx = UART[0];
     
     // Produce data for DR read.   
-	if	(address == (uint64_t)UARTx->DR1_ADDR){
+	if	(address == (uint64_t)UARTx->DR_ADDR[DR1]){
     	printf("	Update Data Register\n");
     	Data = 0x6E;		
-    	UARTx->DR1 = Data;
+    	UARTx->DR[DR1] = Data;
     	printf("	DR val: 0x%x\n", Data);		
-    	uc_mem_write(uc, UARTx->DR1_ADDR, &UARTx->DR1, 4);  		
+    	uc_mem_write(uc, UARTx->DR_ADDR[DR1], &UARTx->DR[DR1], 4);  		
     }
     
-	else if	(address == (uint64_t)UARTx->DR2_ADDR){
+	else if	(address == (uint64_t)UARTx->DR_ADDR[DR2]){
     	printf("	Update Data Register\n");
     	Data = 0x6E;		
-    	UARTx->DR2 = Data;
+    	UARTx->DR[DR2] = Data;
     	printf("	DR val: 0x%x\n", Data);		
-    	uc_mem_write(uc, UARTx->DR2_ADDR, &UARTx->DR2, 4);
+    	uc_mem_write(uc, UARTx->DR_ADDR[DR2], &UARTx->DR[DR2], 4);
     }	
                                  
 }
@@ -217,6 +221,7 @@ void post_read_UART(uc_engine *uc, uc_mem_type type,
 
 	printf("Made it to post_read_UART callback\n");
 	
+    /*
     for (uart_i=0; uart_i < uart_count; uart_i++){
     	UART_ptr = (uint32_t *)UART[uart_i];		// Serves as an init and reset for UART_ptr
     	if (!UART_ptr){
@@ -233,28 +238,30 @@ void post_read_UART(uc_engine *uc, uc_mem_type type,
     		}
     		else
     			*UART_ptr++;						// No match, move to next UART addr in struct
-    	}
-    	
+    	}   	
     	// Leave outer most loop if there is a match.
     	if (UARTx == UART[uart_i])				
     		break;	   		
     }
+    */
+    
+    UARTx = UART[0];
 	
 	// Clear DR after it's read.
-	if	(address == (uint64_t)UARTx->DR1_ADDR){
+	if	(address == (uint64_t)UARTx->DR_ADDR[DR1]){
     	printf("	Clear DR after read\n");
     	// Data Register should be cleared after it's read
-    	UARTx->DR1 = 0;	
-    	printf("	DR Val:0x%x\n", UARTx->DR1);	
-    	uc_mem_write(uc, UARTx->DR1_ADDR, &UARTx->DR1, 4);
+    	UARTx->DR[DR1] = 0;	
+    	printf("	DR Val:0x%x\n", UARTx->DR[DR1]);	
+    	uc_mem_write(uc, UARTx->DR_ADDR[DR1], &UARTx->DR[DR1], 4);
 	  		
     }
-	else if	(address == (uint64_t)UARTx->DR2_ADDR){
+	else if	(address == (uint64_t)UARTx->DR_ADDR[DR2]){
     	printf("	Clear DR after read\n");
     	// Data Register should be cleared after it's read
-    	UARTx->DR2 = 0;	
-    	printf("	DR Val:0x%x\n", UARTx->DR2);	
-    	uc_mem_write(uc, UARTx->DR2_ADDR, &UARTx->DR2, 4);	
+    	UARTx->DR[DR2] = 0;	
+    	printf("	DR Val:0x%x\n", UARTx->DR[DR2]);	
+    	uc_mem_write(uc, UARTx->DR_ADDR[DR2], &UARTx->DR[DR2], 4);	
 	}
                                 
 }

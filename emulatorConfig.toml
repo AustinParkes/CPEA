@@ -39,16 +39,16 @@ gpio_count 	= 0								# Example for what another disabled peripheral may look l
 	DR_count = 2
 	CR_SR_count = 0
 	
-	
 	# UART register initializations
-	[mmio.uart.0]
-	# The uart modules below wwill be auto generated depending on UART_count
+	[mmio.uart.0.addr]
+	# The uart modules below will be auto generated depending on UART_count
 	base_addr 	= 0x40013800	# Base address for uart0		
 	SR1_addr	= 0x1c			# ISR
 	SR2_addr	= 0xFFFF		# SKIP
 	DR1_addr	= 0x24			# TDR
 	DR2_addr	= 0x28			# RDR
 		
+	[mmio.uart.0.reset]
 	SR1_reset	= 0x020000C0
 	SR2_reset	= 0x00			# SKIP
 	DR1_reset	= 0x00
@@ -61,6 +61,8 @@ gpio_count 	= 0								# Example for what another disabled peripheral may look l
 	TX_Complete   = {reg = "SR1", bit = 6}
 	RX_enable_ack = {reg = "SR1", bit = 22}
 	TX_enable_ack = {reg = "SR1", bit = 21}
+	
+	
 	
 
 	

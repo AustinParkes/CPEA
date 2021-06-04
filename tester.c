@@ -105,14 +105,15 @@ void show_UART(uc_engine *uc){
 
 	for (i=0; i<uart_count; i++){
 	
-		if ((UART[i]->SR1_ADDR >= minUARTaddr) && (UART[i]->SR1_ADDR <= maxUARTaddr))
-			uc_mem_read(uc, UART[i]->SR1_ADDR, &SR1, 4);
-		if ((UART[i]->SR2_ADDR >= minUARTaddr) && (UART[i]->SR2_ADDR <= maxUARTaddr))
-			uc_mem_read(uc, UART[i]->SR2_ADDR, &SR2, 4);
-		if ((UART[i]->DR1_ADDR >= minUARTaddr) && (UART[i]->DR1_ADDR <= maxUARTaddr))
-			uc_mem_read(uc, UART[i]->DR1_ADDR, &DR1, 4);
-		if ((UART[i]->DR2_ADDR >= minUARTaddr) && (UART[i]->DR2_ADDR <= maxUARTaddr))
-			uc_mem_read(uc, UART[i]->DR2_ADDR, &DR2, 4);
+		
+		if ((UART[i]->SR_ADDR[SR1] >= minUARTaddr) && (UART[i]->SR_ADDR[SR1] <= maxUARTaddr))
+			uc_mem_read(uc, UART[i]->SR_ADDR[SR1], &SR1, 4);
+		if ((UART[i]->SR_ADDR[SR2] >= minUARTaddr) && (UART[i]->SR_ADDR[SR2] <= maxUARTaddr))
+			uc_mem_read(uc, UART[i]->SR_ADDR[SR2], &SR2, 4);
+		if ((UART[i]->DR_ADDR[DR1] >= minUARTaddr) && (UART[i]->DR_ADDR[DR1] <= maxUARTaddr))
+			uc_mem_read(uc, UART[i]->DR_ADDR[DR1], &DR1, 4);
+		if ((UART[i]->DR_ADDR[DR2] >= minUARTaddr) && (UART[i]->DR_ADDR[DR2] <= maxUARTaddr))
+			uc_mem_read(uc, UART[i]->DR_ADDR[DR2], &DR2, 4);
 		
 		printf("UART%d SR1:  0x%x\n", i, SR1);
 		printf("UART%d SR2:  0x%x\n", i, SR2);

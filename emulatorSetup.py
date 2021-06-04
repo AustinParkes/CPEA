@@ -35,7 +35,6 @@ def extract_elf(elf):
 			f.seek(0)
 			print("File given is not an ELF file.")
 			return
-	
 		
 		f.seek(0)
 		elffile = ELFFile(f)		
@@ -197,10 +196,5 @@ if __name__ == "__main__":
 	
 	if args.extract_elf:
 		extract_elf(args.extract_elf)
-	
-	
-	
-	
-	
-	
+		
 	

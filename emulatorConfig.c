@@ -275,7 +275,7 @@ int uartConfig(uc_engine *uc, toml_table_t* mmio){
 	int DR_i;					// Data Register Index - Keeps track of which DR we are storing to.
 	int SR_count;				// Number of SR to iterate through.
 	
-	enum uartx_keys {addr_key, reset_key, flags_key};
+	enum uartx_keys {config_key, addr_key, reset_key, flags_key};
 
 	// FIXME: Pull THESE from config file
 	SR_count = 2;				
@@ -324,8 +324,6 @@ int uartConfig(uc_engine *uc, toml_table_t* mmio){
  		error("missing [mmio.uart]", "");
  	}
 
- 	// TODO: Add 8-bit/16-bit register mode after full configuration finished.
- 	// TODO: Turn these nested for-loops into a function.
  	// Check if UART module exists and how many. "tab_i" keeps track of the number of modules.
  	for (tab_i=0; ; tab_i++){   
  		 	
@@ -344,6 +342,21 @@ int uartConfig(uc_engine *uc, toml_table_t* mmio){
     	toml_table_t* uartx = toml_table_in(uart, uart_module);
     	if (!uartx)
  			error("Failed to get UART table from module %s", uart_module);		
+ 		
+ 		
+ 		/* TODO: May want to loop these "uartx_keys", since we are calling parseKeys 2-4 times. */
+ 		
+ 		// Get the config table string. 
+ 		uartx_key = toml_key_in(uartx, config_key);
+ 		if (!uartx_key)
+ 			error("uartx.addr table missing from module %s", uart_module);
+ 		
+ 		// Get config table from current uart module
+ 		addr_tab = toml_table_in(uartx, "config");
+ 		if (!addr_tab)
+ 			error("Failed to get addr table from module %s", uart_module);
+ 		 		 
+		parseKeys(addr_tab, uartx_key, SR_count, tab_i);
  		
  		// Get the address table string. 
  		uartx_key = toml_key_in(uartx, addr_key);
@@ -563,7 +576,8 @@ void parseKeys(toml_table_t* mod_tab, const char* mod_key, int SR_count, int tab
     			continue;
     		}
  			//printf("data: %x\n", data);
- 						
+ 			
+ 			// TODO TODO TODO: Split this into config, addr, reset, flag blocks and handle each independently.			
  			// Get base addr
 			if (!strcmp(mod_key, "addr") && key_i == 0){
     			base_addr = data;				
@@ -573,7 +587,9 @@ void parseKeys(toml_table_t* mod_tab, const char* mod_key, int SR_count, int tab
     		// Store data/addr key values
     		else{
     			
-    			if (!strcmp(mod_key, "addr")){
+    			if (!strcmp(mod_key, "config"))
+    				; // TODO. Make this read config table)
+    			else if (!strcmp(mod_key, "addr")){
 
 					// Check if user entered offset and convert to absolute address.
 					if (data < base_addr)

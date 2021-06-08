@@ -35,7 +35,7 @@ gpio_count 	= 0								# Example for what another disabled peripheral may look l
 	# 1) Allow user to change number of CR, SR, DR?
 	# 2) Allow user to change which bit functionalities are enabled?
 	# 3) Convert to mmio.uart.x.config format when support is ready for it. (Makes it easier to cycle through other peripherals and their configs)?
-	[mmio.uart_config]
+	[mmio.uart.0.config]
 	SR_count = 2
 	DR_count = 2
 	

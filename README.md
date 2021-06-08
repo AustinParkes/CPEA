@@ -4,14 +4,13 @@ Configurable Peripheral Emulator for ARM
 TODO
 ----
 
-1) Format UART and bit functionalities in config file.
-   - Get a format for configurating the bit mapping.
-
-2) Create generic emulator.
-
-3) Automation
-   - 
+1) Automation
    - Auto generate mmio for emulatorConfig.toml
+      - This includes mmio modules for each mmio.
+      
+2) Configuration
+   - Make config functions more neat and optimized
+      - Have config, addr, reset, and flags for each peripheral. Can call parseKeys for each and handle each accordingly.
 
 Projects Referenced or Used
 ---------------------------

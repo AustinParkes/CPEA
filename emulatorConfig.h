@@ -8,8 +8,9 @@ toml_table_t* parseTOML();		// Gather data from TOML file.
 void map_memory();				// Create memory map for the emulator.
 void reg_init();				// Initialize all ARM registers.
 int uartConfig();				// Configure UART emulation.
-void uartInit();				// Initiliazes UART mmio registers.
-void setFlags();				// Sets the inferred status register values.
+//void uartInit();				// Initiliazes UART mmio registers.
+int setFlags();					// Sets the configured status register values.
+void parseKeys();				// Gathers key data and stores it.
 
 #define MAX_UART 16				// TODO: Find a better max number (16?)
 
@@ -73,6 +74,7 @@ void write_UART();		// After an UART register is written to
 enum Status_Register {SR1, SR2, SR3, SR4, SR5, SR6, SR7, SR8};
 enum Data_Register {DR1, DR2};
 
+// TODO: Need to init these arrays because they contain garbage.
 // UART 32 bit peripheral registers
 typedef struct UART{
 

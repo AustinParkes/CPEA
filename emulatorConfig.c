@@ -259,25 +259,28 @@ void reg_init(){
 	 
 }
 
-// Configure UART emulation. 
+// Configure UART emulation.
+/* 
+	TODO TODO TODO: Fix all the potential bugs and memory problems since changing data structures. 
+					
+*/
 int uartConfig(uc_engine *uc, toml_table_t* mmio){
 
-	uint32_t base_addr;         // Need base address to check if user entered and offset or absolute address.
 	uint32_t data;				// Store key data
-	char tab_key[10];			// Stores table names "addr", "reset", & "flags"
-	toml_table_t* uartx_tab;
-	int tab_i;					// Iterates through TOML peripheral tables
+	const char* uartx_key;		// Contains table string for addr/reset
+	toml_table_t* addr_tab;		// Address table for UART module
+	toml_table_t* reset_tab;	// Reset table for UART module
+	int tab_i;					// Peripheral Module Index
 	int SR_i;					// Status Register Index - Keeps track of which SR we are storing to.
 	int DR_i;					// Data Register Index - Keeps track of which DR we are storing to.
 	int SR_count;				// Number of SR to iterate through.
-	int DR_count;
 	
-	SR_count = 2;				// FIXME: Pull from config file
-	DR_count = 2;				// FIXME: Pull from config file
-	
-	reg_count = 13;				// TODO: Generate from python program or configuration file somehow
-								// FIXME: This is not correct register count
+	enum uartx_keys {addr_key, reset_key, flags_key};
 
+	// FIXME: Pull THESE from config file
+	SR_count = 2;				
+	//DR_count = 2;				
+	
 	// These keep track of the callback range for UART register accesses.
 	minUARTaddr = 0xFFFFFFFF;	// Chose a value that we know is larger than the smallest UART addr
 	maxUARTaddr = 0;					
@@ -287,7 +290,6 @@ int uartConfig(uc_engine *uc, toml_table_t* mmio){
     	2) Traverse to [mmio.uart] and extract register values to UART struct(s)
     	3) Traverse to [mmio.uart_flags] and initialize status registers in mmio.
     */
-    
     
     // Get number of UART modules
     toml_datum_t num_uarts = toml_int_in(mmio, "uart_count");
@@ -313,13 +315,15 @@ int uartConfig(uc_engine *uc, toml_table_t* mmio){
     		printf("UART struct memory not allocated for UART%d\n", i);
     	}
     }
+    
+    // TODO: Init the struct arrays since they contain garbage otherwise
 	
     /* 2) Extract UART register config values to UART structs */
     toml_table_t* uart = toml_table_in(mmio, "uart");   // Use mmio pointer from earlier
  	if (!uart){
  		error("missing [mmio.uart]", "");
  	}
- 	printf("2\n");
+
  	// TODO: Add 8-bit/16-bit register mode after full configuration finished.
  	// TODO: Turn these nested for-loops into a function.
  	// Check if UART module exists and how many. "tab_i" keeps track of the number of modules.
@@ -341,100 +345,33 @@ int uartConfig(uc_engine *uc, toml_table_t* mmio){
     	if (!uartx)
  			error("Failed to get UART table from module %s", uart_module);		
  		
- 		// Get ptr to current UART struct data. 
- 		//UART_data = (uint32_t *)UART[tab_i];
- 		            	
- 		//if (!UART_data)
- 		//	error("Failed to get pointer from current UART struct", "");
- 			
+ 		// Get the address table string. 
+ 		uartx_key = toml_key_in(uartx, addr_key);
+ 		if (!uartx_key)
+ 			error("uartx.addr table missing from module %s", uart_module);
  		
- 		// TODO: Get number of registers for UART from python autoscript. (# is hardcoded rn)
-    	// Fill UART struct with current UART module configuration values   
-    	for (int key_i=0; ; key_i++){
-    		const char* key = toml_key_in(uartx, key_i);
-    		
-    		// Check if key, then check if we reached the SR flags
-    		if (!key) 
-    			break;
-    		printf("key_i: %d\nkey: %s\n", key_i, key); 
-    		// Set the table identifier that our data is beneath.	
-    		if (!strcmp(key, "addr")){
-    			strcpy(tab_key, key);
-				uartx_tab = toml_table_in(uartx, tab_key);
-    			SR_i = 0;
-    			DR_i = 0;
-    			continue;						// Skip to next iteration to get data
-    		}	
-    		else if (!strcmp(key, "reset")){
-    			strcpy(tab_key, key);
-    			uartx_tab = toml_table_in(uartx, tab_key);
-    			SR_i = 0;
-    			DR_i = 0;	
-    			continue;	
-    		}		
-    		else if (!strcmp(key, "flags"))
-    			break;
-    					
-    		// Get data from the current key
-    		toml_datum_t key_data = toml_int_in(uartx_tab, key);
-    		if (!key_data.ok)
-    			error("Cannot read key data", "");
-    		data = (uint32_t)key_data.u.i;
-    		printf("key_i: %d\n", key_i);   		
-    		// Store base addr first.
-			if (key_i == 1){
-    			base_addr = data;				
-    			UART[tab_i]->BASE_ADDR = base_addr;				 
-    		}
-    		
-    		// Store addr and reset values    		
-    		else{ 
-    			printf("%s\n", tab_key);	    			
-				if (!strcmp(tab_key, "addr")){
-					// Check if user entered offset and convert to absolute address.
-					if (data < base_addr)
-						data = data + base_addr;
-					printf("data: %d", data);
-					// TODO: May store min,max addr for each module.
-					// Keep track of lowest and highest addr.
-					if (data < minUARTaddr)
-						minUARTaddr = data;
-					else if (data > maxUARTaddr)
-						maxUARTaddr = data;
-					
-					// Store addr data	
-					if (SR_i < SR_count){
-						UART[tab_i]->SR_ADDR[SR_i] = data;
-						SR_i++;	
-					}
-					else{
-						UART[tab_i]->DR_ADDR[DR_i] = data;
-						DR_i++;
-					} 
-				}
-								
-				// Reset Values
-				else if(!strcmp(tab_key, "reset")){
-					if (SR_i < SR_count){
-						UART[tab_i]->SR_RESET[SR_i] = data;
-						SR_i++;	
-					}
-					else{
-						UART[tab_i]->DR_RESET[DR_i] = data;
-						DR_i++;
-					}
-									
-				// Table that shouldn't exist.	 				
-				}
-				else
-					error("Non-existent table accessed: %s", tab_key);
-					
-    		}			
-			
-        }     
-          
+ 		// Get addr table from current uart module
+ 		addr_tab = toml_table_in(uartx, "addr");
+ 		if (!addr_tab)
+ 			error("Failed to get addr table from module %s", uart_module);
+ 		 		 
+		parseKeys(addr_tab, uartx_key, SR_count, tab_i);
+ 		
+ 		// Get the reset table string. 
+ 		uartx_key = toml_key_in(uartx, reset_key);
+ 		if (!uartx_key)
+ 			error("uartx.reset table missing from module %s", uart_module);
+ 		
+ 		// Get reset table from current uart module
+ 		reset_tab = toml_table_in(uartx, "reset");
+ 		if (!reset_tab)
+ 			error("Failed to get reset table from module %s", uart_module);
+ 		
+ 		parseKeys(reset_tab, uartx_key, SR_count, tab_i);		
+ 				 
         // Init UART peripheral registers with their reset values
-        uartInit(uc, tab_i);
+        // NOTE: Currently handled in setFlags.
+        //uartInit(uc, tab_i);
         
         /* 3) Set Status Registers' ideal flag values based on config */        
         toml_table_t* flags = toml_table_in(uartx, "flags");   
@@ -442,11 +379,11 @@ int uartConfig(uc_engine *uc, toml_table_t* mmio){
  			error("missing [mmio.uart.%d.flags]", tab_i);
  		}	
         
-        setFlags(uc, flags);	         
+        setFlags(uc, flags, tab_i);	         
    	}
    	
    	// SANITY CHECK. Check if the min and max addresses for UART match.
-   	printf("minUARTaddr: 0x%x\nmaxUARTaddr: 0x%x\n", minUARTaddr, maxUARTaddr);
+   	//printf("minUARTaddr: 0x%x\nmaxUARTaddr: 0x%x\n", minUARTaddr, maxUARTaddr);
    	
 
 	// UART specific callbacks
@@ -471,40 +408,45 @@ int uartConfig(uc_engine *uc, toml_table_t* mmio){
 
 // Cycle through each UART module and initialize mmio registers.
 // (Only initializes mmio registers that are used.)	
-void uartInit(uc_engine *uc, int i){
+
+/*
+TODO: Keep incase it has use for us. We are currently initializing SR in setFlags.
+void uartInit(uc_engine *uc, int mod_i){
 
 	// Check to see if the register's address falls into the expected range. AKA is register used or not?	
-	if ((UART[i]->SR_ADDR[SR1] >= minUARTaddr) && (UART[i]->SR_ADDR[SR1] <= maxUARTaddr)){
-		if (uc_mem_write(uc, UART[i]->SR_ADDR[SR1], &UART[i]->SR_RESET[SR1], 4)){
-			printf("Failed to Initialize ISR for UART%d. Quit\n", i);
-			exit(1);	
-		}
-	}
-	if ((UART[i]->SR_ADDR[SR2] >= minUARTaddr) && (UART[i]->SR_ADDR[SR2] <= maxUARTaddr)){
-		if (uc_mem_write(uc, UART[i]->SR_ADDR[SR2], &UART[i]->SR_RESET[SR2], 4)){
-			printf("Failed to Initialize ISR for UART%d. Quit\n", i);
+	if ((UART[mod_i]->SR_ADDR[SR1] >= minUARTaddr) && (UART[mod_i]->SR_ADDR[SR1] <= maxUARTaddr)){
+		if (uc_mem_write(uc, UART[mod_i]->SR_ADDR[SR1], &UART[mod_i]->SR_RESET[SR1], 4)){
+			printf("Failed to Initialize ISR for UART%d. Quit\n", mod_i);
 			exit(1);	
 		}
 	}
 	
-	if ((UART[i]->DR_ADDR[DR1] >= minUARTaddr) && (UART[i]->DR_ADDR[DR1] <= maxUARTaddr)){
-		if (uc_mem_write(uc, UART[i]->DR_ADDR[DR1], &UART[i]->DR_RESET[DR1], 4)){
-			printf("Failed to Initialize RDR for UART%d. Quit\n", i);
+	if ((UART[mod_i]->SR_ADDR[SR2] >= minUARTaddr) && (UART[mod_i]->SR_ADDR[SR2] <= maxUARTaddr)){
+		if (uc_mem_write(uc, UART[mod_i]->SR_ADDR[SR2], &UART[mod_i]->SR_RESET[SR2], 4)){
+			printf("Failed to Initialize ISR for UART%d. Quit\n", mod_i);
 			exit(1);	
 		}
 	}
 	
-	if ((UART[i]->DR_ADDR[DR2] >= minUARTaddr) && (UART[i]->DR_ADDR[DR2] <= maxUARTaddr)){
-		if (uc_mem_write(uc, UART[i]->DR_ADDR[DR2], &UART[i]->DR_RESET[DR2], 4)){
-			printf("Failed to Initialize TDR for UART%d. Quit\n", i);
+	if ((UART[mod_i]->DR_ADDR[DR1] >= minUARTaddr) && (UART[mod_i]->DR_ADDR[DR1] <= maxUARTaddr)){
+		if (uc_mem_write(uc, UART[mod_i]->DR_ADDR[DR1], &UART[mod_i]->DR_RESET[DR1], 4)){
+			printf("Failed to Initialize RDR for UART%d. Quit\n", mod_i);
+			exit(1);	
+		}
+	}
+	
+	if ((UART[mod_i]->DR_ADDR[DR2] >= minUARTaddr) && (UART[mod_i]->DR_ADDR[DR2] <= maxUARTaddr)){
+		if (uc_mem_write(uc, UART[mod_i]->DR_ADDR[DR2], &UART[mod_i]->DR_RESET[DR2], 4)){
+			printf("Failed to Initialize TDR for UART%d. Quit\n", mod_i);
 			exit(1);	
 		}
 	}
 }
+*/
 
-void setFlags(uc_engine *uc, toml_table_t* flag_tab){
-	int i;						// UART module index
-	int tab_i;					// Table Index
+
+int setFlags(uc_engine *uc, toml_table_t* flag_tab, int mod_i){
+	int flag_i;					// SR Flag Index
 	int SR_i;					// String Index for Status Registers
 	int flag_bit;				// Bit location that flag belongs to
 	const char* flag_name;		// Name of current flag
@@ -520,10 +462,11 @@ void setFlags(uc_engine *uc, toml_table_t* flag_tab){
 	{{"sr1"},{"sr2"},{"sr3"},{"sr4"},{"sr5"},{"sr6"},{"sr7"},{"sr8"}}
 	};
 	
-	for (tab_i = 0; ;tab_i++){
+	
+	for (flag_i = 0; ; flag_i++){
 	
  		// Check if table exists and leave when we finish.    
-    	flag_name = toml_key_in(flag_tab, tab_i);
+    	flag_name = toml_key_in(flag_tab, flag_i);
     	if (!flag_name) 
     		break;
     					
@@ -540,6 +483,11 @@ void setFlags(uc_engine *uc, toml_table_t* flag_tab){
     	if (!flag_key.ok)
     		error("Failed to get flag register from: %s", flag_name);
     	flag_reg = flag_key.u.s;
+		    		
+		// Skip flag and exit ASAP.    		 
+    	if (!strcmp(flag_reg, "reg"))
+    		return 0;
+	
 	
  		// Get the bit location the flag belongs to		
 		flag_key = toml_int_in(flag_ptr, "bit");
@@ -554,68 +502,121 @@ void setFlags(uc_engine *uc, toml_table_t* flag_tab){
     		Write current flag to the appropriate SR and bit location
     		for all UART modules
     	*/
-    	/*
-    	printf("str_count: %ld", sizeof(reg_name[0])/sizeof(reg_name[0][0]));
+    	
+    	printf("str_count: %ld\n", sizeof(reg_name[0])/sizeof(reg_name[0][0]));
     	for (SR_i=0; SR_i<8; SR_i++){
     		printf("reg_name: %s\n", reg_name[up_case][SR_i]);		
     		if (!strcmp(flag_reg, reg_name[up_case][SR_i]) || !strcmp(flag_reg, reg_name[low_case][SR_i])){
-    			for (i=0; i<uart_count; i++){
-    				SET_BIT(UART[i]->SR[SR_i], flag_bit);	
-    				if (uc_mem_write(uc, UART[i]->SR_ADDR[SR_i], &UART[i]->SR[SR_i], 4)){
-						printf("Failed to set bit for SR1 at UART%d. Quit\n", i);
-						exit(1);
-					}
-    			} 			
-    		}
-    		break;   // Break if match found.	
-    	}
-    	*/
-    	// Check for other possible cases
-    	//if (!strcmp(flag_reg, "reg"))
-    		//;
-    	//else
-    	//	error("Please give \"reg\" name in formats SRx or srx. You gave: ", flag_reg, "");
-    	
-    	if (!strcmp(flag_reg, "SR1") || !strcmp(flag_reg, "sr1")){
-    		for (i=0; i<uart_count; i++){
-    			SET_BIT(UART[i]->SR[SR1], flag_bit);
-    			if (uc_mem_write(uc, UART[i]->SR_ADDR[SR1], &UART[i]->SR[SR1], 4)){
-					printf("Failed to set bit for SR2 at UART%d. Quit\n", i);
+				
+    			SET_BIT(UART[mod_i]->SR[SR_i], flag_bit);				
+    			if (uc_mem_write(uc, UART[mod_i]->SR_ADDR[SR_i], &UART[mod_i]->SR[SR_i], 4)){
+					printf("Failed to set bit for SR1 at UART%d. Quit\n", mod_i);
 					exit(1);
-				} 			
+				}
+				break;   // Break if match found.	  						
     		}
-    	}  	
-    	else if (!strcmp(flag_reg, "SR2") || !strcmp(flag_reg, "sr2")){
-    		for (i=0; i<uart_count; i++){
-    			SET_BIT(UART[i]->SR[SR2], flag_bit);
-    			if (uc_mem_write(uc, UART[i]->SR_ADDR[SR2], &UART[i]->SR[SR2], 4)){
-					printf("Failed to set bit for SR2 at UART%d. Quit\n", i);
-					exit(1);
-				}    			
-    		}
+    		
+    		// Incorrect register naming format	
+    		else{
+    			if (SR_i == 7)
+    				error("Please give \"reg\" name in formats SRx or srx. You gave: ", flag_reg, "");
+    		}	
     	}
     	
-    	
-    	/*
-    	else if (!strcmp(flag_reg, "SR3") || !strcmp(flag_reg, "sr3")){
-    		for (uart_i=0; uart_i<uart_count; uart_i++){
-    			SET_BIT(UART[uart_i]->SR3, flag_bit);
-    		}
-    	}
-    	else if (!strcmp(flag_reg, "SR4") || !strcmp(flag_reg, "sr4")){
-    		for (uart_i=0; uart_i<uart_count; uart_i++){
-    			SET_BIT(UART[uart_i]->SR4, flag_bit);
-    		}
-    	}  
-    	*/ 	    	    	
-    	else if (!strcmp(flag_reg, "reg"))
-    		;
-    	else
-    		error("Please give \"reg\" name in formats SRx or srx. You gave: ", flag_reg, "");
-    	
-
+		
 	}	
 
+	return 0;
+
+}
+
+void parseKeys(toml_table_t* mod_tab, const char* mod_key, int SR_count, int tab_i){
+
+ 		int SR_i=0;				// Status Register Index
+ 		int DR_i=0;				// Data Register Index
+ 		int key_i=0;			// Key Index
+ 		
+ 		uint32_t base_addr;     // Need base address to check if user entered and offset or absolute address.
+ 		uint32_t data;			// Key Data to store.
+ 		
+ 		// TODO: Can place this loop in "addr" and "reset" if-statements so we aren't redundantly checking them each loop.				
+ 		for (key_i=0; ; key_i++){
+ 			const char* key = toml_key_in(mod_tab, key_i);
+    		//printf("key: %s\n", key);
+    		
+    		if (!key) 
+    			break;
+    		 		
+ 			// Get data from the current key
+    		toml_datum_t key_data = toml_int_in(mod_tab, key);
+    		if (!key_data.ok)
+    			error("Cannot read key data", "");
+    		data = (uint32_t)key_data.u.i;
+    		
+    		// Skip Storing data if 0xFFFF
+    		if (data == 0xFFFF){
+    			if (SR_i < SR_count)
+    				SR_i++;
+    			else
+    				DR_i++;
+    				
+    			continue;
+    		}
+ 			//printf("data: %x\n", data);
+ 						
+ 			// Get base addr
+			if (!strcmp(mod_key, "addr") && key_i == 0){
+    			base_addr = data;				
+    			UART[tab_i]->BASE_ADDR = base_addr;				 
+    		}
+    		
+    		// Store data/addr key values
+    		else{
+    			
+    			if (!strcmp(mod_key, "addr")){
+
+					// Check if user entered offset and convert to absolute address.
+					if (data < base_addr)
+						data = data + base_addr;
+
+					// Store addr data	
+					if (SR_i < SR_count){
+						UART[tab_i]->SR_ADDR[SR_i] = data;
+						SR_i++;	
+					}
+					else{
+						UART[tab_i]->DR_ADDR[DR_i] = data;
+						DR_i++;
+					} 
+					
+					// TODO: May store min,max addr for each module.
+					// Keep track of lowest and highest addr.
+					if (data < minUARTaddr)
+						minUARTaddr = data;
+					else if (data > maxUARTaddr)
+						maxUARTaddr = data;					
+					
+				}	
+    			else if(!strcmp(mod_key, "reset")){
+					if (SR_i < SR_count){
+						UART[tab_i]->SR[SR_i] = data;
+						SR_i++;	
+					}
+					else{
+						UART[tab_i]->DR_RESET[DR_i] = data;
+						DR_i++;
+					}
+				
+				}
+				
+				// Deal with flag data in another function "setFlags".
+    			else if (!strcmp(mod_key, "flags"))
+    				break;
+    			else
+    				error("Trying to access a module table that doesn't exist.");    		
+    		} 
+    			
+ 		}
 }
 
 void error(const char *msg, const char* msg1, const char* msg2)

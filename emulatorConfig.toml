@@ -34,10 +34,10 @@ gpio_count 	= 0								# Example for what another disabled peripheral may look l
 	# Generic UART configurations
 	# 1) Allow user to change number of CR, SR, DR?
 	# 2) Allow user to change which bit functionalities are enabled?
+	# 3) Convert to mmio.uart.x.config format when support is ready for it. (Makes it easier to cycle through other peripherals and their configs)?
 	[mmio.uart_config]
 	SR_count = 2
 	DR_count = 2
-	CR_SR_count = 0
 	
 	# UART register initializations
 	[mmio.uart.0.addr]
@@ -63,13 +63,3 @@ gpio_count 	= 0								# Example for what another disabled peripheral may look l
 	TX_enable_ack = {reg = "SR1", bit = 21}
 	
 	
-	
-
-	
-	
-	
-	
-	
-		
-		
-		

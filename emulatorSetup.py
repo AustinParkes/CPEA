@@ -13,21 +13,97 @@ Things to add:
 
 import argparse
 import subprocess
+# TODO: Fix this madness. (May just import *)
 from tomlkit import parse
 from tomlkit import dumps
 from tomlkit import integer  
 from tomlkit import comment
+from tomlkit import table
+from tomlkit import inline_table
+from tomlkit import nl
 from elftools.elf.elffile import ELFFile
 from elftools.elf.elffile import SymbolTableSection
 
-
+"""
+	TODO:
+	1) Generate a recursive table [mmio.uart.0.config]
+	   - Can quote an then remove quotes (Not preferred)
+	   - API support?
+	   
+	2) Indentations
+	   - indent() method apart of 'Table' class and likely other classes
+	   
+	3) Get inline tables   
+"""
+def generate_periph(config_file):
+	
+	p_flags = {'uart': {'f1': "TX_data_empty", 'f2': "RX_data_full", 'f3': "TX_Complete",
+						'f4': "RX_enable_ack", 'f5': "TX_enable_ack"},
+			   'gpio': {'f1': "Generic_Flag", 'f2': "Generic_Flag", 'f3': "Generic_Flag"}}
+	
+	
+	# Load entire TOML as a dictionary
+	# Returns TOMLDocument/Dictionary
+	config = parse(open(config_file).read())
+	
+	if config['mmio']:
+		for p_count in config['mmio']['count']:
+			# Get count of current peripheral
+			# TODO: Set limit on the count	
+			count = config['mmio']['count'][p_count]
+			if count <= 0:
+				continue
+				
+			for peri in p_flags:
+				if p_count == peri + "_count":
+				
+					config['mmio'][peri] = table()
+					config['mmio'][peri].indent(4)
+					# Generate as many modules as 'count' specifies
+					for i in range(count):
+					
+						mod_i = str(i)
+						# Generate config table
+						config['mmio'][peri].update({mod_i: {'config': {'SR_count': 2, 'DR_count': 2}}})
+						# TODO: Move the indentations to the end of this.
+						
+						config['mmio'][peri][mod_i].indent(4)
+						config['mmio'][peri][mod_i]['config'].indent(4)					
+					
+						# Generate addr table
+						config['mmio'][peri][mod_i].update({'addr': {'base_addr': 0, 'SR1_addr': 0, 
+													'SR2_addr': 0, 'DR1_addr': 0, 'DR2_addr': 0}})
+					
+						config['mmio'][peri][mod_i]['addr'].indent(4)					
+									
+						# Generate reset table
+						config['mmio'][peri][mod_i].update({'reset': {'SR1_reset': 0, 'SR2_reset': 0, 
+													'DR1_reset': 0, 'DR2_reset': 0}})
+					
+						config['mmio'][peri][mod_i]['reset'].indent(4)						
+					
+						# Generate flag table											   
+						config['mmio'][peri][mod_i].update({'flags': {}})
+						for flag in p_flags[peri].values():
+							config['mmio'][peri][mod_i]['flags'].add(flag, inline_table())
+							config['mmio'][peri][mod_i]['flags'][flag].append('reg', "reg")
+							config['mmio'][peri][mod_i]['flags'][flag].append('bit', 0)
+		
+		
+		
+		
+		
+	print(config)
+	print(dumps(config))
+	
+# TODO: Add 2nd argument to include the TOML file to write to.
 # If using elf file, extract useful FW and Emulator information from elf file
 def extract_elf(elf):
 	# Get emulator and firmware configuration details
 	#elf = "SimpleUart.elf"
 	
 	with open(elf, 'rb') as f:
-
+	
 		
 		# Check if elf file was given
 		f.seek(0)
@@ -129,7 +205,7 @@ def extract_elf(elf):
 	# Update toml dictionary with ELF data
 
 	# Load entire TOML as a dictionary
-	config = parse(open('emulatorConfig.toml').read())
+	config = parse(open('testConfig.toml').read())
 
 	# Update flash addr
 	config['mem_map']['flash_addr'] = hex(ExecVAddr)
@@ -171,10 +247,12 @@ def extract_elf(elf):
 	config = dumps(config)
 	#print(config)
 
-	stop_index = config.find("mem_map.mmio.uart")
 
+
+	stop_index = config.find("[mmio]")
 	parsed_config = ""
 
+	# Get rid of all quotations from the TOML file by re-writing a new block of string without them.
 	for i in range(0, len(config)):
 		if (config[i] != "\"") and (i < stop_index):
 			parsed_config = parsed_config + config[i]
@@ -189,12 +267,22 @@ def extract_elf(elf):
 
 if __name__ == "__main__":
 	parser = argparse.ArgumentParser(description='Setup emulator and configuration file')
+	parser.add_argument('-g', '--gen-periph',
+						help='Generate Peripherals based on its mmio count',
+						dest='gen_periph')	
+	
 	parser.add_argument('-e', '--extract-elf',
 						help='Extract FW and emulator info from elf',
 						dest='extract_elf')
+																	
 	args = parser.parse_args();
 	
-	if args.extract_elf:
+	if args.gen_periph:
+		generate_periph(args.gen_periph)
+		
+	elif args.extract_elf:
 		extract_elf(args.extract_elf)
+		
+
 		
 	

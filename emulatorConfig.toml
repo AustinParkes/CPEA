@@ -56,7 +56,7 @@ gpio_count 	= 0								# Example for what another disabled peripheral may look l
 	
 	# Non-Exhaustive list of all the SR flags. Will add more after pre-liminary tests
 	[mmio.uart.0.flags]
-	TX_data_empty = {reg = "SR1", bit = 7}	
+	TX_data_empty = {reg = "SR1", bit = 7}
 	RX_data_full  = {reg = "SR1", bit = 5}
 	TX_Complete   = {reg = "SR1", bit = 6}
 	RX_enable_ack = {reg = "SR1", bit = 22}

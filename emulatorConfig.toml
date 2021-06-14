@@ -26,7 +26,7 @@ sram_size 	= 0x00020000
 
 # ARM mmio map 0x40000000 - 0x5fffffff
 # TODO: Enable different peripherals here?
-[mmio]
+[mmio.count]
 ### TODO: ### A python script WILL use this number to generate UART modules below.
 uart_count	= 1								# Used to generate the emulators UART structs
 gpio_count 	= 0								# Example for what another disabled peripheral may look like

@@ -18,9 +18,11 @@ from tomlkit import parse
 from tomlkit import dumps
 from tomlkit import integer  
 from tomlkit import comment
+from tomlkit import key
 from tomlkit import table
 from tomlkit import inline_table
 from tomlkit import nl
+from tomlkit import ws
 from elftools.elf.elffile import ELFFile
 from elftools.elf.elffile import SymbolTableSection
 
@@ -40,6 +42,10 @@ def generate_periph(config_file):
 	p_flags = {'uart': {'f1': "TX_data_empty", 'f2': "RX_data_full", 'f3': "TX_Complete",
 						'f4': "RX_enable_ack", 'f5': "TX_enable_ack"},
 			   'gpio': {'f1': "Generic_Flag1", 'f2': "Generic_Flag2", 'f3': "Generic_Flag3"}}
+		
+	count = 0			# Number of modules we want to generate	
+	num_exist = 0		# Number of modules that currently exist in TOML
+	index = 0			# Index of modules
 		
 	# Load entire TOML as a dictionary
 	# Returns TOMLDocument/Dictionary
@@ -74,6 +80,9 @@ def generate_periph(config_file):
 										
 					# Peripheral already exists at specified count, so don't update.	
 					if count == num_exist:
+					
+						# Check if we need to update register counts before we leave
+						update_regs(config, peri, count)				
 						break		
 				
 					# Erase the excess peripheral modules
@@ -90,25 +99,27 @@ def generate_periph(config_file):
 							else:	
 								config['mmio'][peri].remove(index)
 								index = str( int(index)-1 )
-								num_exist = num_exist - 1							
+								num_exist = num_exist - 1
+								
+						# Check if we need to update register counts before we leave		
+						update_regs(config, peri, count)									
 						break
 					
-								
-					# Don't overwrite existing modules
-					if num_exist == 0:
-						config['mmio'][peri] = table()
-						config['mmio'][peri].indent(4)
+					# Generate more modules
+					elif count > num_exist:			
+						# Only indent first instance. Don't overwrite existing modules
+						if num_exist == 0:
+							config['mmio'][peri] = table()
+							config['mmio'][peri].indent(4)
 					
-					# Generate as many modules as 'count' specifies
-					for i in range(num_exist, count):
-						generate_module(config, peri, p_flags, i)
-					
-					# FIXME: This won't execute unless modules are added.
-					# Read peripheral configurations	
-					for i in range(count):
-						mod_i = str(i)
-						SR_count = config['mmio'][peri][mod_i]['config']['SR_count']
-						print(SR_count)
+						# Generate as many modules as 'count' specifies
+						for i in range(num_exist, count):
+							generate_module(config, peri, p_flags, i)
+							
+						# Check if we need to update register counts before we leave
+						update_regs(config, peri, count)
+						
+
 						
 		
 	#print(config)
@@ -142,6 +153,7 @@ def generate_module(config, peri, p_flags, i):
 					
 	# Generate flag table											   
 	config['mmio'][peri][mod_i].update({'flags': {}})
+	config['mmio'][peri][mod_i]['flags'].indent(4)
 	for flag in p_flags[peri].values():
 		config['mmio'][peri][mod_i]['flags'].add(flag, inline_table())
 		config['mmio'][peri][mod_i]['flags'][flag].append('reg', "reg")
@@ -162,7 +174,103 @@ def check_existance(config, peri):
 			
 	# If no match is made, periph doesn't exist.	
 	return 0	
+
+
+def update_regs(config, peri, count):
+	
+	SR_count = 0	# Number of SR that we want to generate
+	DR_count = 0	# Number of DR that we want to generate
+	
+	SR_exist = 0	# Number of SR that already exist in TOML
+	DR_exist = 0	# Number of DR that already exist in TOML
+	
+	# Read peripheral configurations for each module	
+	for i in range(count):
+		mod_i = str(i)
+		SR_count = config['mmio'][peri][mod_i]['config']['SR_count']
+		DR_count = config['mmio'][peri][mod_i]['config']['DR_count']
+		addr_tab = config['mmio'][peri][mod_i]['addr']
+		reset_tab = config['mmio'][peri][mod_i]['reset']
+		
+		# Save the keys for re-ordering SR and DR.		
+		addr_keys = list(zip(addr_tab.keys(), addr_tab.values()))
+		reset_keys = list(zip(reset_tab.keys(), reset_tab.values()))
+		
+		SR_exist = 0
+		DR_exist = 0
+		# Cycle through register addresses, counting the SR and DR.
+		for addr_i in config['mmio'][peri][mod_i]['addr']:			
+			# Detect SR or DR
+			if "SR" in addr_i:
+				SR_exist = SR_exist + 1
+			elif "DR" in addr_i:
+				DR_exist = DR_exist + 1
+		
+		# Nothing to update, leave.
+		if SR_count == SR_exist and DR_count == DR_exist:
+			continue
 			
+		# Delete excess DR			
+		elif SR_count == SR_exist and DR_count < DR_exist:
+			continue
+			
+		# Add additional DR	
+		elif SR_count == SR_exist and DR_count > DR_exist:
+			continue
+		
+		# Delete excess SR	
+		elif SR_count < SR_exist and DR_count == DR_exist:
+			continue
+			
+		# Delete excess SR and DR	
+		elif SR_count < SR_exist and DR_count < DR_exist:
+			continue
+			
+		# Delete excess SR and add additional DR			
+		elif SR_count < SR_exist and DR_count > DR_exist:
+			continue
+		
+		# Add additional SR	
+		elif SR_count > SR_exist and DR_count == DR_exist:
+			add_SR(addr_tab, reset_tab, addr_keys, reset_keys, SR_count, SR_exist)								
+			continue
+			
+		# Add additional SR and delete excess DR	
+		elif SR_count > SR_exist and DR_count < DR_exist:
+			continue
+			
+		# Add additional SR and DR	
+		elif SR_count > SR_exist and DR_count > DR_exist:	
+			continue
+	
+		else:
+			print("Odd SR/DR combination")
+			continue
+			
+
+def add_SR(addr_tab, reset_tab, addr_keys, reset_keys, SR_count, SR_exist):
+
+	# Add the SR(s)	
+	for SR_i in range(SR_exist + 1, SR_count + 1):
+		SR_addr = "SR" + str(SR_i) + "_addr"
+		SR_reset = "SR" + str(SR_i) + "_reset"			
+		addr_tab.add(SR_addr, 0)
+		reset_tab.add(SR_reset, 0)
+		
+	# Remove the DR addr(s) and add back at correct position
+	for key in addr_keys:
+		if "DR" in key[0]:	
+			addr_tab.remove(key[0])					
+			# HACK: key[1] (tomkit.items.Integer) causes indentation unless you convert it to int()
+			addr_tab.add(key[0], int(key[1]))
+			
+	# Remove the DR reset(s) and add back at correct position		
+	for key in reset_keys:
+		if "DR" in key[0]:					
+			reset_tab.remove(key[0])					
+			# HACK: key[1] (tomkit.items.Integer) causes indentation unless you convert it to int()
+			reset_tab.add(key[0], int(key[1]))
+				
 			
 # TODO: Add 2nd argument to include the TOML file to write to.
 # If using elf file, extract useful FW and Emulator information from elf file

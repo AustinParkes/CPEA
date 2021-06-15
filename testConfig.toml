@@ -30,4 +30,3 @@ uart_count = 0								# Used to generate the emulators UART structs
 gpio_count 	= 0								# Example for what another disabled peripheral may look like
 
 
-

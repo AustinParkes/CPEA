@@ -1,16 +1,33 @@
 Configurable Peripheral Emulator for ARM
 ========================================
 
-TODO
+Version0.1 Details
 ----
 
-1) Automation
-   - Auto generate mmio for emulatorConfig.toml
-      - This includes mmio modules for each mmio.
-      
-2) Configuration
-   - Make config functions more neat and optimized
-      - Have config, addr, reset, and flags for each peripheral. Can call parseKeys for each and handle each accordingly.
+1. Automation
+   - Python Program DOES extract ELF info to config file
+   - Python Program DOES automate peripheral modules and register counts
+     
+2. Configuration
+   - Configuration ONLY contains status and data registers.
+   - Configuration DOES read firmware information
+   - Configuration ONLY reads UART peripheral.
+   
+   
+3. Data Structures
+   - Structures ONLY contain status and data registers
+   - Structure ALLOWS for 8/16/32 bit registers by using arrays to store address/reset values
+   - Structure ONLY tailored for UART and NOT for all peripherals.
+
+4. Emulation
+   - Emulation does NOT generically emulate any peripherals. Only Data registers.
+   - Emulation does NOT contain configuration registers. (ONLY SR and DR)
+   
+5. Next Version Goals
+   - Make data structures/emulator more generic for ANY peripheral. Not just UART.
+   - Add more peripherals to configuration
+   - Add more SR flags for each peripheral
+   - Research interrupt support   
 
 Projects Referenced or Used
 ---------------------------

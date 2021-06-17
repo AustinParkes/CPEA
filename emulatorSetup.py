@@ -13,7 +13,6 @@ Things to add:
 
 import argparse
 import subprocess
-# TODO: Fix this madness. (May just import *)
 from tomlkit import parse
 from tomlkit import dumps
 from tomlkit import integer  
@@ -26,17 +25,7 @@ from tomlkit import ws
 from elftools.elf.elffile import ELFFile
 from elftools.elf.elffile import SymbolTableSection
 
-"""
-	TODO:
-	1) Generate a recursive table [mmio.uart.0.config]
-	   - Can quote an then remove quotes (Not preferred)
-	   - API support?
-	   
-	2) Indentations
-	   - indent() method apart of 'Table' class and likely other classes
-	   
-	3) Get inline tables   
-"""
+
 def generate_periph(config_file):
 	
 	p_flags = {'uart': {'f1': "TX_data_empty", 'f2': "RX_data_full", 'f3': "TX_Complete",
@@ -127,10 +116,16 @@ def generate_periph(config_file):
 	
 	# Write to TOML
 	config = dumps(config)
+	
+	# Remove unwanted quotations from around hexadecimal vlaues
+	parsed_config = del_quotes(config)
+		
+	#print(parsed_config)
 	with open('testConfig.toml', 'w') as f:
-		f.write(config)
+		f.write(parsed_config)
 
 def generate_module(config, peri, p_flags, i):
+
 	mod_i = str(i)
 	# Generate config table
 	config['mmio'][peri].update({mod_i: {'config': {'SR_count': 2, 'DR_count': 2}}})
@@ -140,14 +135,14 @@ def generate_module(config, peri, p_flags, i):
 	config['mmio'][peri][mod_i]['config'].indent(4)					
 					
 	# Generate addr table
-	config['mmio'][peri][mod_i].update({'addr': {'base_addr': 0, 'SR1_addr': 0, 
-													'SR2_addr': 0, 'DR1_addr': 0, 'DR2_addr': 0}})
+	config['mmio'][peri][mod_i].update({'addr': {'base_addr': hex(0), 'SR1_addr': hex(0), 
+													'SR2_addr': hex(0), 'DR1_addr': hex(0), 'DR2_addr': hex(0)}})
 					
 	config['mmio'][peri][mod_i]['addr'].indent(4)					
 									
 	# Generate reset table
-	config['mmio'][peri][mod_i].update({'reset': {'SR1_reset': 0, 'SR2_reset': 0, 
-													'DR1_reset': 0, 'DR2_reset': 0}})
+	config['mmio'][peri][mod_i].update({'reset': {'SR1_reset': hex(0), 'SR2_reset': hex(0), 
+													'DR1_reset': hex(0), 'DR2_reset': hex(0)}})
 					
 	config['mmio'][peri][mod_i]['reset'].indent(4)						
 					
@@ -187,12 +182,14 @@ def update_regs(config, peri, count):
 	# Read peripheral configurations for each module	
 	for i in range(count):
 		mod_i = str(i)
-		SR_count = config['mmio'][peri][mod_i]['config']['SR_count']
-		DR_count = config['mmio'][peri][mod_i]['config']['DR_count']
-		addr_tab = config['mmio'][peri][mod_i]['addr']
-		reset_tab = config['mmio'][peri][mod_i]['reset']
 		
-		# Save the keys for re-ordering SR and DR.		
+		p_config = config['mmio'][peri][mod_i]['config']			
+		SR_count = p_config['SR_count']
+		DR_count = p_config['DR_count']
+		addr_tab = config['mmio'][peri][mod_i]['addr']
+		reset_tab = config['mmio'][peri][mod_i]['reset']	
+		
+		# Save the keys for re-ordering SR and DR.	
 		addr_keys = list(zip(addr_tab.keys(), addr_tab.values()))
 		reset_keys = list(zip(reset_tab.keys(), reset_tab.values()))
 		
@@ -206,72 +203,134 @@ def update_regs(config, peri, count):
 			elif "DR" in addr_i:
 				DR_exist = DR_exist + 1
 		
-		# Nothing to update, leave.
-		if SR_count == SR_exist and DR_count == DR_exist:
-			continue
+		# Nothing to update
+		if SR_count == SR_exist:
+			pass
 			
-		# Delete excess DR			
-		elif SR_count == SR_exist and DR_count < DR_exist:
-			continue
-			
-		# Add additional DR	
-		elif SR_count == SR_exist and DR_count > DR_exist:
-			continue
-		
 		# Delete excess SR	
-		elif SR_count < SR_exist and DR_count == DR_exist:
-			continue
-			
-		# Delete excess SR and DR	
-		elif SR_count < SR_exist and DR_count < DR_exist:
-			continue
-			
-		# Delete excess SR and add additional DR			
-		elif SR_count < SR_exist and DR_count > DR_exist:
-			continue
+		elif SR_count < SR_exist:
+			del_SR(p_config, addr_tab, reset_tab, SR_count, SR_exist)
 		
 		# Add additional SR	
-		elif SR_count > SR_exist and DR_count == DR_exist:
-			add_SR(addr_tab, reset_tab, addr_keys, reset_keys, SR_count, SR_exist)								
-			continue
-			
-		# Add additional SR and delete excess DR	
-		elif SR_count > SR_exist and DR_count < DR_exist:
-			continue
-			
-		# Add additional SR and DR	
-		elif SR_count > SR_exist and DR_count > DR_exist:	
-			continue
-	
-		else:
-			print("Odd SR/DR combination")
-			continue
-			
-
-def add_SR(addr_tab, reset_tab, addr_keys, reset_keys, SR_count, SR_exist):
-
-	# Add the SR(s)	
-	for SR_i in range(SR_exist + 1, SR_count + 1):
-		SR_addr = "SR" + str(SR_i) + "_addr"
-		SR_reset = "SR" + str(SR_i) + "_reset"			
-		addr_tab.add(SR_addr, 0)
-		reset_tab.add(SR_reset, 0)
+		elif SR_count > SR_exist:
+			add_SR(p_config, addr_tab, reset_tab, addr_keys, reset_keys, SR_count, SR_exist)								
 		
+		# Nothing to update, 
+		if DR_count == DR_exist:
+			pass
+			
+		# Delete excess DR	
+		elif DR_count < DR_exist:
+			del_DR(p_config, addr_tab, reset_tab, DR_count, DR_exist)				
+		
+		# Add additional DR	
+		elif DR_count > DR_exist:
+			add_DR(p_config, addr_tab, reset_tab, DR_count, DR_exist)		
+
+	return
+
+def add_SR(p_config, addr_tab, reset_tab, addr_keys, reset_keys, SR_count, SR_exist):
+
+	# Save config keys for imposing limits on SR/DR counts
+	p_config_keys = list(zip(p_config.keys(), p_config.values()))
+	
+	# HACK. To change SR_count: Need to remove and add to prevent extra indentation. Also need to re-order DRs.
+	if SR_count >= 9:
+		SR_count = 8		
+		p_config.remove('SR_count')
+		p_config.add('SR_count', 8)
+		for key in p_config_keys:
+			if "DR" in key[0]:
+				p_config.remove(key[0])
+				p_config.add(key[0], int(key[1]))		
+		print("SR count can't exceed 8")
+	
+	# Add the SR(s)	
+	while SR_count > SR_exist:		
+		SR_addr = "SR" + str(SR_exist+1) + "_addr"
+		SR_reset = "SR" + str(SR_exist+1) + "_reset"			
+		addr_tab.add(SR_addr, hex(0))
+		reset_tab.add(SR_reset, hex(0))
+		SR_exist = SR_exist + 1		
+	
 	# Remove the DR addr(s) and add back at correct position
 	for key in addr_keys:
 		if "DR" in key[0]:	
 			addr_tab.remove(key[0])					
 			# HACK: key[1] (tomkit.items.Integer) causes indentation unless you convert it to int()
-			addr_tab.add(key[0], int(key[1]))
+			addr_tab.add(key[0], hex(key[1]))
 			
 	# Remove the DR reset(s) and add back at correct position		
 	for key in reset_keys:
 		if "DR" in key[0]:					
 			reset_tab.remove(key[0])					
 			# HACK: key[1] (tomkit.items.Integer) causes indentation unless you convert it to int()
-			reset_tab.add(key[0], int(key[1]))
+			reset_tab.add(key[0], hex(key[1]))
+	return		
+	
 				
-			
+def add_DR(p_config, addr_tab, reset_tab, DR_count, DR_exist):
+	if DR_count >= 3:
+		DR_count = 2
+		# HACK. Need to remove and add to prevent extra indentation.
+		p_config.remove('DR_count')
+		p_config.add('DR_count', 2)		
+		print("DR count must be 1 or 2")
+		
+	# Add the DR(s)
+	while DR_count > DR_exist:
+		DR_addr = "DR" + str(DR_exist+1) + "_addr"
+		DR_reset = "DR" + str(DR_exist+1) + "_reset"			
+		addr_tab.add(DR_addr, hex(0))
+		reset_tab.add(DR_reset, hex(0))
+		DR_exist = DR_exist + 1			
+	return
+
+	
+def del_SR(p_config, addr_tab, reset_tab, SR_count, SR_exist):
+
+	# Save config keys for imposing limits on SR/DR counts
+	p_config_keys = list(zip(p_config.keys(), p_config.values()))
+	if SR_count <= 0:
+		SR_count = 1
+		# HACK. To change SR_count: Need to remove and add to prevent extra indentation. Also need to re-order DRs.
+		p_config.remove('SR_count')
+		p_config.add('SR_count', 1)
+		for key in p_config_keys:
+			if "DR" in key[0]:
+				p_config.remove(key[0])
+				p_config.add(key[0], int(key[1]))
+						
+		print("SR count can't go below 1")
+	
+	# Delete the SR(s)	
+	while SR_count < SR_exist:
+		SR_addr = "SR" + str(SR_exist) + "_addr"
+		SR_reset = "SR" + str(SR_exist) + "_reset"
+		addr_tab.remove(SR_addr)
+		reset_tab.remove(SR_reset)
+		SR_exist = SR_exist - 1
+	return	
+
+		
+def del_DR(p_config, addr_tab, reset_tab, DR_count, DR_exist):
+	if DR_count <= 0:
+		DR_count = 1
+		# HACK. Need to remove and add to prevent extra indentation.
+		p_config.remove('DR_count')
+		p_config.add('DR_count', 1)	
+		print("DR count must be 1 or 2")
+		
+	# Delete the DR(s)	
+	while DR_count < DR_exist:
+		DR_addr = "DR" + str(DR_exist) + "_addr"
+		DR_reset = "DR" + str(DR_exist) + "_reset"
+		addr_tab.remove(DR_addr)
+		reset_tab.remove(DR_reset)
+		DR_exist = DR_exist - 1
+	return		
+
+		
 # TODO: Add 2nd argument to include the TOML file to write to.
 # If using elf file, extract useful FW and Emulator information from elf file
 def extract_elf(elf):
@@ -426,19 +485,39 @@ def extract_elf(elf):
 
 
 	stop_index = config.find("[mmio]")
-	parsed_config = ""
 
+					 
+	
 	# Get rid of all quotations from the TOML file by re-writing a new block of string without them.
-	for i in range(0, len(config)):
-		if (config[i] != "\"") and (i < stop_index):
-			parsed_config = parsed_config + config[i]
-
-	# Concatenate the remaining, uneditted string
-	parsed_config = parsed_config + config[stop_index:]
+	parsed_config = del_quotes(config)
+	print("Check if \'del_quotes\' works correctly. Delete this print statement if it does.")
 	#print(parsed_config)
 
 	with open('testConfig.toml', 'w') as f:
 		f.write(parsed_config)
+
+# Remove unwanted quotations around hexadecimal values.
+def del_quotes(config):
+	# Re-write config
+	parsed_config = ""
+	
+	# Re-write line by line
+	for line in config.splitlines():	
+		# Don't re-write quotes.
+		if ("reg" not in line):
+			for ch in range(0, len(line)):
+				if (line[ch] != "\""):
+					parsed_config = parsed_config + line[ch]
+					
+			# Add newline.		
+			parsed_config = parsed_config + "\n"
+			
+		# Re-write quotes ONLY if on same line as "reg."		
+		else:
+			parsed_config = parsed_config + line + "\n"
+	
+	return parsed_config
+
 
 
 if __name__ == "__main__":

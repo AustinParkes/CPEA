@@ -2,11 +2,11 @@
 [firmware]
 	[firmware.code]
 	code_addr	= 0x00008018	# .text start
-	code_size	= "done"	    # .text size determined by file size at the moment
+	code_size	= 0xFFFF	    # .text size determined by file size at the moment
 
 	[firmware.data]
 	data_addr	= 0x00018730	# .data start
-	data_size	= "done"		# .data size determined by file size at the moment
+	data_size	= 0xFFFF		# .data size determined by file size at the moment
 	
 	# Where firmware will begin and end execution
 	[firmware.execution]
@@ -26,7 +26,7 @@ sram_size 	= 0x00020000
 
 [mmio]
 [mmio.count]
-uart_count = 0								# Used to generate the emulators UART structs
-gpio_count 	= 0								# Example for what another disabled peripheral may look like
+uart_count = 0
+gpio_count = 0
 
 

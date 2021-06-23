@@ -9,8 +9,7 @@ gcc EmulateUart.c emulatorConfig.c toml.c tester.c -lunicorn -lpthread
 #include <string.h>
 #include "emulatorConfig.h"
 #include "tester.h"
-
-static void read_mem();			// Callback declaration.
+static void read_mem();			// Callback gdeclaration.
 static void readBinFile();		// Read data from binary file
 
 int main(int argc, char **argv, char **envp)
@@ -18,7 +17,10 @@ int main(int argc, char **argv, char **envp)
 	/* Unicorn Initialization */
 	uc_engine *uc;
 	uc_err err;
- 
+	
+	uc_hook handle1;			// Used by uc_hook_add to give to uc_hook_del() API
+	uc_hook handle2;
+	uc_hook handle3; 
 	uc_hook handle4;   
 
 	char *save_addr;
@@ -90,7 +92,16 @@ int main(int argc, char **argv, char **envp)
 	}
 	free(arm_data);
 	arm_data = NULL;	
-			
+	
+	// Callback to handle FW reads before they happen.
+	uc_hook_add(uc, &handle1, UC_HOOK_MEM_READ, pre_read_MMIO, NULL, minPeriphaddr, maxPeriphaddr);
+	
+	// Callback to handle FW reads after they happen. 
+	uc_hook_add(uc, &handle2, UC_HOOK_MEM_READ_AFTER, post_read_MMIO, NULL, minPeriphaddr, maxPeriphaddr);	
+	
+	// Callback to handle when FW writes to any MMIO register	
+	uc_hook_add(uc, &handle3, UC_HOOK_MEM_WRITE, write_MMIO, NULL, minPeriphaddr, maxPeriphaddr);		
+	
 	// Callback to check memory/debug at any code address (specific addresses can be defined in callback)
 	uc_hook_add(uc, &handle4, UC_HOOK_CODE, read_mem, NULL, FLASH_ADDR, FLASH_ADDR + FLASH_SIZE);	
 					
@@ -119,12 +130,12 @@ int main(int argc, char **argv, char **envp)
 	}
 	printf("   - Complete\n\n");
 	
-	// Free all of the allocated UART structures.
-	for (int i=0; i<uart_count; i++){
-    	if (UART[i] == NULL){
-    		printf("Accessed a peripheral module that shouldn't exist: UART%d\n", i);
+	// Free all of the allocated Peripheral structures.
+	for (int i=0; i<mod_count; i++){
+    	if (MMIO[i] == NULL){
+    		printf("Accessed a peripheral module that shouldn't exist: MMIO%d\n", i);
     	}
-    	free(UART[i]);
+    	free(MMIO[i]);
     }
     
 	// Read end results in registers 
@@ -150,17 +161,16 @@ int main(int argc, char **argv, char **envp)
 	return 0;
 }
 
-// When FW reads from RDR (Before successful read)
-void pre_read_UART(uc_engine *uc, uc_mem_type type,
+void pre_read_MMIO(uc_engine *uc, uc_mem_type type,
         uint64_t address, int size, uint64_t value, void *user_data)
 {
 
-	uint32_t Data;  			// For RDR
-	uint32_t *UART_ptr;			// Used to iterate through UART modules.
-	int uart_i;					// Index for UART module
-	UART_handle *UARTx = NULL;	// Points to the UART mmio accessed.
+	uint32_t Data;  				// For RDR
+	uint32_t *periph_ptr;			// Used to iterate through periphal modules.
+	int periph_i;					// Index for peripheral module
+	MMIO_handle *periphx = NULL;	// Points to the peripheral mmio accessed.
 	
-	printf("Made it to pre_read_UART callback\n");
+	printf("Made it to pre_read_MMIO callback\n");
 
 	// TODO: Turn into function called findModule
 	// FIXME: Need better way to cycle through the addresses. Could break easily in future.	
@@ -189,37 +199,36 @@ void pre_read_UART(uc_engine *uc, uc_mem_type type,
     }
     */
     
-    UARTx = UART[0];
+    periphx = MMIO[0];
     
     // Produce data for DR read.   
-	if	(address == (uint64_t)UARTx->DR_ADDR[DR1]){
+	if	(address == (uint64_t)periphx->DR_ADDR[DR1]){
     	printf("	Update Data Register\n");
     	Data = 0x6E;		
-    	UARTx->DR[DR1] = Data;
+    	periphx->DR[DR1] = Data;
     	printf("	DR val: 0x%x\n", Data);		
-    	uc_mem_write(uc, UARTx->DR_ADDR[DR1], &UARTx->DR[DR1], 4);  		
+    	uc_mem_write(uc, periphx->DR_ADDR[DR1], &periphx->DR[DR1], 4);  		
     }
     
-	else if	(address == (uint64_t)UARTx->DR_ADDR[DR2]){
+	else if	(address == (uint64_t)periphx->DR_ADDR[DR2]){
     	printf("	Update Data Register\n");
     	Data = 0x6E;		
-    	UARTx->DR[DR2] = Data;
+    	periphx->DR[DR2] = Data;
     	printf("	DR val: 0x%x\n", Data);		
-    	uc_mem_write(uc, UARTx->DR_ADDR[DR2], &UARTx->DR[DR2], 4);
+    	uc_mem_write(uc, periphx->DR_ADDR[DR2], &periphx->DR[DR2], 4);
     }	
                                  
 }
 
-// When FW reads from RDR (After successful read)
-void post_read_UART(uc_engine *uc, uc_mem_type type,
+void post_read_MMIO(uc_engine *uc, uc_mem_type type,
         uint64_t address, int size, uint64_t value, void *user_data)
 {
 
-	int uart_i;					// Index for UART modules
-	uint32_t *UART_ptr;			// Points to any given UART module
-	UART_handle *UARTx = NULL;	// Points to the UART mmio accessed.
+	int periph_i;					// Index for peripheral modules
+	uint32_t *periph_ptr;			// Points to any given peripheral module
+	MMIO_handle *periphx = NULL;	// Points to the peripheral mmio accessed.
 
-	printf("Made it to post_read_UART callback\n");
+	printf("Made it to post_read_MMIO callback\n");
 	
     /*
     for (uart_i=0; uart_i < uart_count; uart_i++){
@@ -245,29 +254,29 @@ void post_read_UART(uc_engine *uc, uc_mem_type type,
     }
     */
     
-    UARTx = UART[0];
+    periphx = MMIO[0];
 	
 	// Clear DR after it's read.
-	if	(address == (uint64_t)UARTx->DR_ADDR[DR1]){
+	if	(address == (uint64_t)periphx->DR_ADDR[DR1]){
     	printf("	Clear DR after read\n");
     	// Data Register should be cleared after it's read
-    	UARTx->DR[DR1] = 0;	
-    	printf("	DR Val:0x%x\n", UARTx->DR[DR1]);	
-    	uc_mem_write(uc, UARTx->DR_ADDR[DR1], &UARTx->DR[DR1], 4);
+    	periphx->DR[DR1] = 0;	
+    	printf("	DR Val:0x%x\n", periphx->DR[DR1]);	
+    	uc_mem_write(uc, periphx->DR_ADDR[DR1], &periphx->DR[DR1], 4);
 	  		
     }
-	else if	(address == (uint64_t)UARTx->DR_ADDR[DR2]){
+	else if	(address == (uint64_t)periphx->DR_ADDR[DR2]){
     	printf("	Clear DR after read\n");
     	// Data Register should be cleared after it's read
-    	UARTx->DR[DR2] = 0;	
-    	printf("	DR Val:0x%x\n", UARTx->DR[DR2]);	
-    	uc_mem_write(uc, UARTx->DR_ADDR[DR2], &UARTx->DR[DR2], 4);	
+    	periphx->DR[DR2] = 0;	
+    	printf("	DR Val:0x%x\n", periphx->DR[DR2]);	
+    	uc_mem_write(uc, periphx->DR_ADDR[DR2], &periphx->DR[DR2], 4);	
 	}
                                 
 }
 
-// When FW writes writes to UART MMIO (Data and Control Registers) 
-void write_UART(uc_engine *uc, uc_mem_type type,
+// When FW writes writes to peripheral MMIO (Data and Control Registers) 
+void write_MMIO(uc_engine *uc, uc_mem_type type,
         uint64_t address, int size, uint64_t value, void *user_data)
 {
 

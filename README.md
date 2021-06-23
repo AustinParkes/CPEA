@@ -11,6 +11,15 @@ TODO
 2) Configuration
    - Make config functions more neat and optimized
       - Have config, addr, reset, and flags for each peripheral. Can call parseKeys for each and handle each accordingly.
+      
+DONE
+----
+
+1) Callbacks
+   - Got rid of UART specific callbacks. Doing callbacks for entire ARM mmio range.
+   
+   
+         
 
 Projects Referenced or Used
 ---------------------------

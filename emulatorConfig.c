@@ -34,7 +34,7 @@ void emuConfig(uc_engine *uc, char *arm_code, char *arm_data){
    	if (!root_table)
    		error("cannot parse emulatorConfig.toml - ", errbuf);
     
-    // Gather and Store data from emulatorConfig.toml     	
+    // Gather and Store firmware and memory map info    	
     mmio = parseTOML(root_table);
     
     /***********************************
@@ -52,7 +52,9 @@ void emuConfig(uc_engine *uc, char *arm_code, char *arm_data){
     /***********************************
 		Peripheral Configurations   
     ************************************/
-	uartConfig(uc, mmio);
+    
+    // Gather and Store mmio information.
+	mmioConfig(uc, mmio);
        	     	    	            
     /*** Free Memory for config file ***/
     free(root_table); 
@@ -259,105 +261,140 @@ void reg_init(){
 	 
 }
 
-// Configure UART emulation.
+// Configure MMIO emulation.
 /* 
-	TODO TODO TODO: Fix all the potential bugs and memory problems since changing data structures. 
-					
+	TODO TODO TODO: Fix all the potential bugs and memory problems since changing data structures. 					
 */
-int uartConfig(uc_engine *uc, toml_table_t* mmio){
+int mmioConfig(uc_engine *uc, toml_table_t* mmio){
+
+	
 
 	uint32_t data;				// Store key data
-	const char* uartx_key;		// Contains table string for addr/reset
-	toml_table_t* addr_tab;		// Address table for UART module
-	toml_table_t* reset_tab;	// Reset table for UART module
-	int tab_i;					// Peripheral Module Index
+	const char* periphx_key;	// Contains table string for addr/reset
+	
+	toml_table_t* mod_tab;		// Ptr to module tables. e.g. config, addr, reset, flags
+	int key_i;					// Key index for any table
+	int mod_i;					// Peripheral Module Index
+	int tab_i;					// Index to iterate through modules. e.g. config, addr, reset, flags
 	int SR_i;					// Status Register Index - Keeps track of which SR we are storing to.
 	int DR_i;					// Data Register Index - Keeps track of which DR we are storing to.
 	int SR_count;				// Number of SR to iterate through.
 	
-	enum uartx_keys {config_key, addr_key, reset_key, flags_key};
+	//enum periph_keys {config_key, addr_key, reset_key, flags_key};
 
-	// FIXME: Pull THESE from config file
+	const char periph_str[2][10] = {"uart", "gpio"};
+
+	// TODO: Pull THESE from config file
 	SR_count = 2;				
 	//DR_count = 2;				
 	
-	// These keep track of the callback range for UART register accesses.
-	minUARTaddr = 0xFFFFFFFF;	// Chose a value that we know is larger than the smallest UART addr
-	maxUARTaddr = 0;					
-	
+	// These keep track of the address range for each peripheral
+	minPeriphaddr = 0xFFFFFFFF;
+	maxPeriphaddr = 0;					
+	 	 
  	/*
-    	1) Generate UART struct for each module from [memory_map.mmio]
-    	2) Traverse to [mmio.uart] and extract register values to UART struct(s)
-    	3) Traverse to [mmio.uart_flags] and initialize status registers in mmio.
-    */
-    
-    // Get number of UART modules
-    toml_datum_t num_uarts = toml_int_in(mmio, "uart_count");
-    if (!num_uarts.ok){
-    	error("Cannot read mmio.uart_count", "");
+ 		TODO: Allocate Space for all peripheral structures and modules
+ 		1) Generate all at once? Tag IDs for each? 
+ 	*/
+ 		
+ 		   
+    toml_table_t* mmio_count = toml_table_in(mmio, "count");
+ 	if (!mmio){
+ 		error("missing [mmio.count]", "");
+ 	}
+ 	 
+ 	// TODO: WORKING ON THIS LOOP 
+ 	for (key_i=0; ;key_i++){
+ 		const char* periph_count = toml_key_in(mmio_count, key_i);
+ 		 if (!periph_count)
+ 			break;
+ 		printf("%s\n", periph_count);
+ 	
+ 	}
+ 	 		
+    // Get number of Peripheral modules
+    toml_datum_t num_mods = toml_int_in(mmio_count, "uart_count");
+    if (!num_mods.ok){
+    	error("Cannot read mmio.count.uart_count", "");
     }
-    uart_count = (int)num_uarts.u.i;					// Number of UART modules the user specified.
+    mod_count = (int)num_mods.u.i;					// Number of Peripheral modules the user specified.
     
-    // No UART modules specified.
-    // TODO: Check on what user can really set UART count to.  
-	if (uart_count <= 0)
+    // No Peripheral modules specified.
+    // TODO: Check on what user can really set module count to for any given peripheral.  
+	if (mod_count <= 0)
 		return 0;
-	else if (uart_count > MAX_UART - 1 ){
-		printf("WARNING: UART count set to %d, but cannot exceed %d. ", uart_count, MAX_UART - 1);
+	else if (mod_count > MAX_MMIO - 1 ){
+		printf("WARNING: MMIO count set to %d, but cannot exceed %d. ", mod_count, MAX_MMIO - 1);
 		printf("Setting to 15.");	
-		uart_count = 15;	
+		mod_count = 15;	
 	}
 
 	// Allocate space for each struct. Freed after emulation is complete. 	
-	for (int i=0; i<uart_count; i++){
-    	UART[i] = (UART_handle *)malloc(sizeof(UART_handle));
-    	if (UART[i] == NULL){
-    		printf("UART struct memory not allocated for UART%d\n", i);
+	for (int i=0; i<mod_count; i++){
+    	MMIO[i] = (MMIO_handle *)malloc(sizeof(MMIO_handle));
+    	if (MMIO[i] == NULL){
+    		// TODO: Update message
+    		printf("Periph struct memory not allocated for periph%d\n", i);
     	}
     }
     
+    
     // TODO: Init the struct arrays since they contain garbage otherwise
-	
-    /* 2) Extract UART register config values to UART structs */
-    toml_table_t* uart = toml_table_in(mmio, "uart");   // Use mmio pointer from earlier
- 	if (!uart){
- 		error("missing [mmio.uart]", "");
+    
+	// TODO: Loop through peripherals
+    toml_table_t* periph = toml_table_in(mmio, "uart");   // Use mmio pointer from earlier
+ 	if (!periph){
+ 		// TODO: Change error message
+ 		error("missing [mmio.]", "uart");
  	}
 
- 	// Check if UART module exists and how many. "tab_i" keeps track of the number of modules.
- 	for (tab_i=0; ; tab_i++){   
+ 	// Extract Peripheral Module configs to data structure
+ 	for (mod_i=0; ; mod_i++){   
  		 	
  		// Check if table exists.    
-    	const char* uart_module = toml_key_in(uart, tab_i);
-    	if (!uart_module) 
+    	const char* periph_mod = toml_key_in(periph, mod_i);
+    	if (!periph_mod) 
     		break;		
     	
     	// Check if more tables than modules specified.
- 		else if (tab_i > (uart_count - 1)){
- 			printf("ERROR: %d UART tables, but only %d modules were specified.", tab_i + 1, uart_count);
+ 		else if (mod_i > (mod_count - 1)){
+ 			// TODO: Change error message
+ 			printf("ERROR: %d Peripheral tables, but only %d modules were specified.", mod_i + 1, mod_count);
  			exit(1);
  		}
     	
-    	// Get the current UART table ptr from the name
-    	toml_table_t* uartx = toml_table_in(uart, uart_module);
-    	if (!uartx)
- 			error("Failed to get UART table from module %s", uart_module);		
+    	// Get the current Periph table ptr from the name
+    	toml_table_t* periphx = toml_table_in(periph, periph_mod);
+    	if (!periphx)
+    		// TODO: Change error message
+ 			error("Failed to get periph table from module %s", periph_mod);		
  		
  		
- 		/* TODO: May want to loop these "uartx_keys", since we are calling parseKeys 2-4 times. */
+ 		/* TODO: Loop these "periphx_keys", since we are calling parseKeys 2-4 times. */
  		
- 		// Get the config table string. 
- 		uartx_key = toml_key_in(uartx, config_key);
- 		if (!uartx_key)
- 			error("uartx.addr table missing from module %s", uart_module);
+ 		// Loop config, addr, reset, & flags table. Parse Each.
+ 		for (tab_i=0; ;tab_i++){
  		
- 		// Get config table from current uart module
- 		addr_tab = toml_table_in(uartx, "config");
- 		if (!addr_tab)
- 			error("Failed to get addr table from module %s", uart_module);
- 		 		 
-		parseKeys(addr_tab, uartx_key, SR_count, tab_i);
+ 			// Get table string. 
+ 			const char* mod_key = toml_key_in(periphx, tab_i);
+ 			if (!mod_key)
+ 				break;
  		
+ 			// Get table ptr 
+ 			mod_tab = toml_table_in(periphx, mod_key);
+ 			if (!mod_tab)
+ 				error("Failed to get table from module %s", periph_mod);
+ 		 	
+ 		 	// Not on "flags" table
+ 		 	if (strcmp(mod_key, "flags"))
+				parseKeys(mod_tab, mod_key, SR_count, mod_i);
+				
+			// ON "flags" table	
+			else
+				setFlags(uc, mod_tab, mod_i);
+ 		}
+ 		
+ 		/*
  		// Get the address table string. 
  		uartx_key = toml_key_in(uartx, addr_key);
  		if (!uartx_key)
@@ -368,7 +405,7 @@ int uartConfig(uc_engine *uc, toml_table_t* mmio){
  		if (!addr_tab)
  			error("Failed to get addr table from module %s", uart_module);
  		 		 
-		parseKeys(addr_tab, uartx_key, SR_count, tab_i);
+		parseKeys(addr_tab, uartx_key, SR_count, mod_i);
  		
  		// Get the reset table string. 
  		uartx_key = toml_key_in(uartx, reset_key);
@@ -380,82 +417,23 @@ int uartConfig(uc_engine *uc, toml_table_t* mmio){
  		if (!reset_tab)
  			error("Failed to get reset table from module %s", uart_module);
  		
- 		parseKeys(reset_tab, uartx_key, SR_count, tab_i);		
- 				 
-        // Init UART peripheral registers with their reset values
-        // NOTE: Currently handled in setFlags.
-        //uartInit(uc, tab_i);
-        
-        /* 3) Set Status Registers' ideal flag values based on config */        
+ 		parseKeys(reset_tab, uartx_key, SR_count, mod_i);		
+            
         toml_table_t* flags = toml_table_in(uartx, "flags");   
  		if (!flags){
- 			error("missing [mmio.uart.%d.flags]", tab_i);
+ 			error("missing [mmio.uart.%d.flags]", mod_i);
  		}	
         
-        setFlags(uc, flags, tab_i);	         
+        setFlags(uc, flags, mod_i);	 
+        */        
    	}
    	
    	// SANITY CHECK. Check if the min and max addresses for UART match.
    	//printf("minUARTaddr: 0x%x\nmaxUARTaddr: 0x%x\n", minUARTaddr, maxUARTaddr);
    	
-
-	// UART specific callbacks
 		
-	// Callback to handle FW reads before they happen. (Update values in memory before they are read)
-	uc_hook_add(uc, &handle1, UC_HOOK_MEM_READ, pre_read_UART, NULL, minUARTaddr, maxUARTaddr);
-	// Callback to handle FW reads after they happen. (Update certain registers after reads)
-	uc_hook_add(uc, &handle2, UC_HOOK_MEM_READ_AFTER, post_read_UART, NULL, minUARTaddr, maxUARTaddr);	
-	// Callback to handle when FW writes to any UART register (DR and CR. SR should change according to CR write.) 
-	uc_hook_add(uc, &handle3, UC_HOOK_MEM_WRITE, write_UART, NULL, minUARTaddr, maxUARTaddr);
-   	
-   		
    	return 0;	  		
 }
-
-/* 
-	TODO: Better way to check if a register is used by emulator?
-		  Currently checking if it's address falls within the expected range.
-
-*/
-
-
-// Cycle through each UART module and initialize mmio registers.
-// (Only initializes mmio registers that are used.)	
-
-/*
-TODO: Keep incase it has use for us. We are currently initializing SR in setFlags.
-void uartInit(uc_engine *uc, int mod_i){
-
-	// Check to see if the register's address falls into the expected range. AKA is register used or not?	
-	if ((UART[mod_i]->SR_ADDR[SR1] >= minUARTaddr) && (UART[mod_i]->SR_ADDR[SR1] <= maxUARTaddr)){
-		if (uc_mem_write(uc, UART[mod_i]->SR_ADDR[SR1], &UART[mod_i]->SR_RESET[SR1], 4)){
-			printf("Failed to Initialize ISR for UART%d. Quit\n", mod_i);
-			exit(1);	
-		}
-	}
-	
-	if ((UART[mod_i]->SR_ADDR[SR2] >= minUARTaddr) && (UART[mod_i]->SR_ADDR[SR2] <= maxUARTaddr)){
-		if (uc_mem_write(uc, UART[mod_i]->SR_ADDR[SR2], &UART[mod_i]->SR_RESET[SR2], 4)){
-			printf("Failed to Initialize ISR for UART%d. Quit\n", mod_i);
-			exit(1);	
-		}
-	}
-	
-	if ((UART[mod_i]->DR_ADDR[DR1] >= minUARTaddr) && (UART[mod_i]->DR_ADDR[DR1] <= maxUARTaddr)){
-		if (uc_mem_write(uc, UART[mod_i]->DR_ADDR[DR1], &UART[mod_i]->DR_RESET[DR1], 4)){
-			printf("Failed to Initialize RDR for UART%d. Quit\n", mod_i);
-			exit(1);	
-		}
-	}
-	
-	if ((UART[mod_i]->DR_ADDR[DR2] >= minUARTaddr) && (UART[mod_i]->DR_ADDR[DR2] <= maxUARTaddr)){
-		if (uc_mem_write(uc, UART[mod_i]->DR_ADDR[DR2], &UART[mod_i]->DR_RESET[DR2], 4)){
-			printf("Failed to Initialize TDR for UART%d. Quit\n", mod_i);
-			exit(1);	
-		}
-	}
-}
-*/
 
 
 int setFlags(uc_engine *uc, toml_table_t* flag_tab, int mod_i){
@@ -513,7 +491,7 @@ int setFlags(uc_engine *uc, toml_table_t* flag_tab, int mod_i){
     	
     	/* 
     		Write current flag to the appropriate SR and bit location
-    		for all UART modules
+    		for all Peripheral modules
     	*/
     	
     	printf("str_count: %ld\n", sizeof(reg_name[0])/sizeof(reg_name[0][0]));
@@ -521,9 +499,9 @@ int setFlags(uc_engine *uc, toml_table_t* flag_tab, int mod_i){
     		printf("reg_name: %s\n", reg_name[up_case][SR_i]);		
     		if (!strcmp(flag_reg, reg_name[up_case][SR_i]) || !strcmp(flag_reg, reg_name[low_case][SR_i])){
 				
-    			SET_BIT(UART[mod_i]->SR[SR_i], flag_bit);				
-    			if (uc_mem_write(uc, UART[mod_i]->SR_ADDR[SR_i], &UART[mod_i]->SR[SR_i], 4)){
-					printf("Failed to set bit for SR1 at UART%d. Quit\n", mod_i);
+    			SET_BIT(MMIO[mod_i]->SR[SR_i], flag_bit);				
+    			if (uc_mem_write(uc, MMIO[mod_i]->SR_ADDR[SR_i], &MMIO[mod_i]->SR[SR_i], 4)){
+					printf("Failed to set bit for SR1 at module %d. Quit\n", mod_i);
 					exit(1);
 				}
 				break;   // Break if match found.	  						
@@ -543,7 +521,7 @@ int setFlags(uc_engine *uc, toml_table_t* flag_tab, int mod_i){
 
 }
 
-void parseKeys(toml_table_t* mod_tab, const char* mod_key, int SR_count, int tab_i){
+void parseKeys(toml_table_t* mod_tab, const char* mod_key, int SR_count, int mod_i){
 
  		int SR_i=0;				// Status Register Index
  		int DR_i=0;				// Data Register Index
@@ -576,12 +554,11 @@ void parseKeys(toml_table_t* mod_tab, const char* mod_key, int SR_count, int tab
     			continue;
     		}
  			//printf("data: %x\n", data);
- 			
- 			// TODO TODO TODO: Split this into config, addr, reset, flag blocks and handle each independently.			
+ 				
  			// Get base addr
 			if (!strcmp(mod_key, "addr") && key_i == 0){
     			base_addr = data;				
-    			UART[tab_i]->BASE_ADDR = base_addr;				 
+    			MMIO[mod_i]->BASE_ADDR = base_addr;				 
     		}
     		
     		// Store data/addr key values
@@ -597,29 +574,29 @@ void parseKeys(toml_table_t* mod_tab, const char* mod_key, int SR_count, int tab
 
 					// Store addr data	
 					if (SR_i < SR_count){
-						UART[tab_i]->SR_ADDR[SR_i] = data;
+						MMIO[mod_i]->SR_ADDR[SR_i] = data;
 						SR_i++;	
 					}
 					else{
-						UART[tab_i]->DR_ADDR[DR_i] = data;
+						MMIO[mod_i]->DR_ADDR[DR_i] = data;
 						DR_i++;
 					} 
 					
 					// TODO: May store min,max addr for each module.
 					// Keep track of lowest and highest addr.
-					if (data < minUARTaddr)
-						minUARTaddr = data;
-					else if (data > maxUARTaddr)
-						maxUARTaddr = data;					
+					if (data < minPeriphaddr)
+						minPeriphaddr = data;
+					else if (data > maxPeriphaddr)
+						maxPeriphaddr = data;					
 					
 				}	
     			else if(!strcmp(mod_key, "reset")){
 					if (SR_i < SR_count){
-						UART[tab_i]->SR[SR_i] = data;
+						MMIO[mod_i]->SR[SR_i] = data;
 						SR_i++;	
 					}
 					else{
-						UART[tab_i]->DR_RESET[DR_i] = data;
+						MMIO[mod_i]->DR_RESET[DR_i] = data;
 						DR_i++;
 					}
 				

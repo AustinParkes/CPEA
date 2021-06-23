@@ -28,9 +28,6 @@ Write a Unicorn program that executes a firmware
                      - How do 32 bit UARTs compare to each other and how do 8 bit  UARTS compare to each other
 
 
-
-
-
 /* Compiling the Emulators */
 // TODO: Eventually want to make my added files apart of the unicorn library
 gcc EmulateUart.c emulatorConfig.c toml.c tester.c -lunicorn -lpthread

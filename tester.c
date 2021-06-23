@@ -25,18 +25,18 @@ void show_config(){
 // Show a peripherals main data structure.
 void show_structures(){
 
-	uint32_t *UART_ptr;		// Point to a particular UART module
+	uint32_t *periph_ptr;		// Point to a particular UART module
 	printf("\n*** UART Structures ***\n");
-	for (int uart_i=0; uart_i<uart_count; uart_i++){
-		UART_ptr = (uint32_t *)UART[uart_i];
-		printf("UART%d Base:  0x%x\n", uart_i, *UART_ptr);
-		UART_ptr++;
+	for (int mod_i=0; mod_i<mod_count; mod_i++){
+		periph_ptr = (uint32_t *)MMIO[mod_i];
+		printf("mod%d Base:  0x%x\n", mod_i, *periph_ptr);
+		periph_ptr++;
 		for (int i=1; i<23; i++){
 			if (i <= 11)
-				printf("UART%d addr:  0x%x\n", uart_i, *UART_ptr);
+				printf("mod%d addr:  0x%x\n", mod_i, *periph_ptr);
 			else
-				printf("UART%d reset: 0x%x\n", uart_i, *UART_ptr);
-			UART_ptr++;
+				printf("mod%d reset: 0x%x\n", mod_i, *periph_ptr);
+			periph_ptr++;
 		}
 	}
 }
@@ -103,17 +103,17 @@ void show_UART(uc_engine *uc){
 	
 	printf("\n*** Show UART mmio contents ***\n");
 
-	for (i=0; i<uart_count; i++){
+	for (i=0; i<mod_count; i++){
 	
 		
-		if ((UART[i]->SR_ADDR[SR1] >= minUARTaddr) && (UART[i]->SR_ADDR[SR1] <= maxUARTaddr))
-			uc_mem_read(uc, UART[i]->SR_ADDR[SR1], &SR1, 4);
-		if ((UART[i]->SR_ADDR[SR2] >= minUARTaddr) && (UART[i]->SR_ADDR[SR2] <= maxUARTaddr))
-			uc_mem_read(uc, UART[i]->SR_ADDR[SR2], &SR2, 4);
-		if ((UART[i]->DR_ADDR[DR1] >= minUARTaddr) && (UART[i]->DR_ADDR[DR1] <= maxUARTaddr))
-			uc_mem_read(uc, UART[i]->DR_ADDR[DR1], &DR1, 4);
-		if ((UART[i]->DR_ADDR[DR2] >= minUARTaddr) && (UART[i]->DR_ADDR[DR2] <= maxUARTaddr))
-			uc_mem_read(uc, UART[i]->DR_ADDR[DR2], &DR2, 4);
+		if ((MMIO[i]->SR_ADDR[SR1] >= minPeriphaddr) && (MMIO[i]->SR_ADDR[SR1] <= maxPeriphaddr))
+			uc_mem_read(uc, MMIO[i]->SR_ADDR[SR1], &SR1, 4);
+		if ((MMIO[i]->SR_ADDR[SR2] >= minPeriphaddr) && (MMIO[i]->SR_ADDR[SR2] <= maxPeriphaddr))
+			uc_mem_read(uc, MMIO[i]->SR_ADDR[SR2], &SR2, 4);
+		if ((MMIO[i]->DR_ADDR[DR1] >= minPeriphaddr) && (MMIO[i]->DR_ADDR[DR1] <= maxPeriphaddr))
+			uc_mem_read(uc, MMIO[i]->DR_ADDR[DR1], &DR1, 4);
+		if ((MMIO[i]->DR_ADDR[DR2] >= minPeriphaddr) && (MMIO[i]->DR_ADDR[DR2] <= maxPeriphaddr))
+			uc_mem_read(uc, MMIO[i]->DR_ADDR[DR2], &DR2, 4);
 		
 		printf("UART%d SR1:  0x%x\n", i, SR1);
 		printf("UART%d SR2:  0x%x\n", i, SR2);

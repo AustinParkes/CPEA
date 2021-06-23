@@ -2,13 +2,12 @@
 [firmware]
 	[firmware.code]
 	code_addr	= 0x00008018	# .text start
-	code_size	= "done"	    # .text size determined by file size at the moment
+	code_size	= 0xFFFF	    # .text size determined by file size at the moment
 
 	[firmware.data]
 	data_addr	= 0x00018730	# .data start
-	data_size	= "done"		# .data size determined by file size at the moment
+	data_size	= 0xFFFF		# .data size determined by file size at the moment
 	
-	# Where firmware will begin and end execution
 	[firmware.execution]
 	entry		= 0x0000824c	# start of main
 	end  		= 0x00008278	# end of main
@@ -25,23 +24,15 @@ sram_addr 	= 0x02000000
 sram_size 	= 0x00020000
 
 # ARM mmio map 0x40000000 - 0x5fffffff
-# TODO: Enable different peripherals here?
 [mmio.count]
-### TODO: ### A python script WILL use this number to generate UART modules below.
-uart_count	= 1								# Used to generate the emulators UART structs
-gpio_count 	= 0								# Example for what another disabled peripheral may look like
+uart_count	= 1								
+gpio_count 	= 0								
 	
-	# Generic UART configurations
-	# 1) Allow user to change number of CR, SR, DR?
-	# 2) Allow user to change which bit functionalities are enabled?
-	# 3) Convert to mmio.uart.x.config format when support is ready for it. (Makes it easier to cycle through other peripherals and their configs)?
 	[mmio.uart.0.config]
 	SR_count = 2
 	DR_count = 2
 	
-	# UART register initializations
 	[mmio.uart.0.addr]
-	# The uart modules below will be auto generated depending on UART_count
 	base_addr 	= 0x40013800	# Base address for uart0		
 	SR1_addr	= 0x1c			# ISR
 	SR2_addr	= 0xFFFF		# SKIP
@@ -54,7 +45,6 @@ gpio_count 	= 0								# Example for what another disabled peripheral may look l
 	DR1_reset	= 0x00
 	DR2_reset	= 0x00
 	
-	# Non-Exhaustive list of all the SR flags. Will add more after pre-liminary tests
 	[mmio.uart.0.flags]
 	TX_data_empty = {reg = "SR1", bit = 7}
 	RX_data_full  = {reg = "SR1", bit = 5}

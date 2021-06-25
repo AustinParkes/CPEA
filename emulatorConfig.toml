@@ -25,8 +25,8 @@ sram_size 	= 0x00020000
 
 # ARM mmio map 0x40000000 - 0x5fffffff
 [mmio.count]
-uart_count	= 1								
-gpio_count 	= 0								
+uart_count	= 2								
+gpio_count 	= 3								
 	
 	[mmio.uart.0.config]
 	SR_count = 2
@@ -52,4 +52,97 @@ gpio_count 	= 0
 	RX_enable_ack = {reg = "SR1", bit = 22}
 	TX_enable_ack = {reg = "SR1", bit = 21}
 	
-	
+    [mmio.uart.1]
+    [mmio.uart.1.config]
+    SR_count = 2
+    DR_count = 2
+
+    [mmio.uart.1.addr]
+    base_addr = 0x40000000
+    SR1_addr = 0x0
+    SR2_addr = 0x0
+    DR1_addr = 0x0
+    DR2_addr = 0x0
+
+    [mmio.uart.1.reset]
+    SR1_reset = 0x0
+    SR2_reset = 0x0
+    DR1_reset = 0x0
+    DR2_reset = 0x0
+
+    [mmio.uart.1.flags]
+    TX_data_empty = {reg = "reg", bit = 0}
+    RX_data_full = {reg = "reg", bit = 0}
+    TX_Complete = {reg = "reg", bit = 0}
+    RX_enable_ack = {reg = "reg", bit = 0}
+    TX_enable_ack = {reg = "reg", bit = 0}
+
+    [mmio.gpio]
+    [mmio.gpio.0]
+    [mmio.gpio.0.config]
+    SR_count = 2
+    DR_count = 2
+
+    [mmio.gpio.0.addr]
+    base_addr = 0x40000000
+    SR1_addr = 0x0
+    SR2_addr = 0x0
+    DR1_addr = 0x0
+    DR2_addr = 0x0
+
+    [mmio.gpio.0.reset]
+    SR1_reset = 0x0
+    SR2_reset = 0x0
+    DR1_reset = 0x0
+    DR2_reset = 0x0
+
+    [mmio.gpio.0.flags]
+    Generic_Flag1 = {reg = "reg", bit = 0}
+    Generic_Flag2 = {reg = "reg", bit = 0}
+    Generic_Flag3 = {reg = "reg", bit = 0}
+
+    [mmio.gpio.1]
+    [mmio.gpio.1.config]
+    SR_count = 2
+    DR_count = 2
+
+    [mmio.gpio.1.addr]
+    base_addr = 0x40000000
+    SR1_addr = 0x0
+    SR2_addr = 0x0
+    DR1_addr = 0x0
+    DR2_addr = 0x0
+
+    [mmio.gpio.1.reset]
+    SR1_reset = 0x0
+    SR2_reset = 0x0
+    DR1_reset = 0x0
+    DR2_reset = 0x0
+
+    [mmio.gpio.1.flags]
+    Generic_Flag1 = {reg = "reg", bit = 0}
+    Generic_Flag2 = {reg = "reg", bit = 0}
+    Generic_Flag3 = {reg = "reg", bit = 0}
+
+    [mmio.gpio.2]
+    [mmio.gpio.2.config]
+    SR_count = 2
+    DR_count = 2
+
+    [mmio.gpio.2.addr]
+    base_addr = 0x40000000
+    SR1_addr = 0x0
+    SR2_addr = 0x0
+    DR1_addr = 0x0
+    DR2_addr = 0x0
+
+    [mmio.gpio.2.reset]
+    SR1_reset = 0x0
+    SR2_reset = 0x0
+    DR1_reset = 0x0
+    DR2_reset = 0x0
+
+    [mmio.gpio.2.flags]
+    Generic_Flag1 = {reg = "reg", bit = 0}
+    Generic_Flag2 = {reg = "reg", bit = 0}
+    Generic_Flag3 = {reg = "reg", bit = 0}

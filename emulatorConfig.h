@@ -52,7 +52,10 @@ uint32_t LR;			// r14
 /*******************/
 /*** MMIO Config ***/
 /*******************/
-int mod_count;				// Number of peripheral modules			TODO: Generate from python program/configuration
+int mod_count;				// Number of peripheral modules	
+int SR_count;				// Number of SR for a module
+int DR_count;				// Number of DR for amodule
+
 
 // These keep track of the callback range for UART register accesses. 
 uint32_t minPeriphaddr;
@@ -65,20 +68,21 @@ void write_MMIO();		// After an MMIO register is written to
 
 // Peripherals and their corresponding ID to determine which structures belong to which periph
 //const char periph_str[2][10];
-enum periphID {uart, gpio};
+enum periphID {uartID, gpioID};
 
 // To index correct SR or DR
 enum Status_Register {SR1, SR2, SR3, SR4, SR5, SR6, SR7, SR8};
 enum Data_Register {DR1, DR2};
 
 // TODO: Need to init these arrays because they contain garbage.
-// UART 32 bit peripheral registers
+// MMIO Structure for all peripherals. 
 typedef struct MMIO{
-	
+	// MMIO Metadata
 	int periphID;							// ID of which peripheral this struct is for. e.g. uart, gpio, etc.
 	int modID;								// ID for which module this is. e.g. 0, 1, 2, etc
-	int minAddr;							// Lowest register address for this periph
-	int maxAddr;							// Highest register address for this periph
+	int modCount;							// Number of total modules for this peripheral
+	int minAddr;							// Lowest register address for this module
+	int maxAddr;							// Highest register address for this module
 
 	uint32_t BASE_ADDR;
 	
@@ -96,6 +100,6 @@ typedef struct MMIO{
 } MMIO_handle;
 
 // Create an MMIO instance. Will make more generic handles if needed.
-MMIO_handle *MMIO[MAX_MMIO];		// Holds pointers to different instances of UART modules.		
+MMIO_handle *MMIO[MAX_MMIO];		// Holds pointers to different instances of peripherals		
 
 

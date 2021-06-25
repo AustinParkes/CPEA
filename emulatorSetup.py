@@ -121,7 +121,7 @@ def generate_periph(config_file):
 	parsed_config = del_quotes(config)
 		
 	#print(parsed_config)
-	with open('testConfig.toml', 'w') as f:
+	with open(config_file, 'w') as f:
 		f.write(parsed_config)
 
 def generate_module(config, peri, p_flags, i):
@@ -440,7 +440,7 @@ def extract_elf(elf):
 	# Update toml dictionary with ELF data
 
 	# Load entire TOML as a dictionary
-	config = parse(open('testConfig.toml').read())
+	config = parse(open('emulatorConfig.toml').read())
 
 	# Update flash addr
 	config['mem_map']['flash_addr'] = hex(ExecVAddr)

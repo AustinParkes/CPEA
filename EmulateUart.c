@@ -9,6 +9,8 @@ gcc EmulateUart.c emulatorConfig.c toml.c tester.c -lunicorn -lpthread
 #include <string.h>
 #include "emulatorConfig.h"
 #include "tester.h"
+
+static MMIO_handle* findMod();
 static void read_mem();			// Callback gdeclaration.
 static void readBinFile();		// Read data from binary file
 
@@ -166,41 +168,14 @@ void pre_read_MMIO(uc_engine *uc, uc_mem_type type,
 {
 
 	uint32_t Data;  				// For RDR
-	uint32_t *periph_ptr;			// Used to iterate through periphal modules.
-	int periph_i;					// Index for peripheral module
 	MMIO_handle *periphx = NULL;	// Points to the peripheral mmio accessed.
 	
-	printf("Made it to pre_read_MMIO callback\n");
+	printf("Pre Read MMIO callback\n");
+	
+	// Determine which MMIO module the accessed address belongs to.
+	periphx = findMod(address, &periphx);
 
-	// TODO: Turn into function called findModule
-	// FIXME: Need better way to cycle through the addresses. Could break easily in future.	
-    // Determine which UART module the accessed address belongs to. 
-    /*
-    for (uart_i=0; uart_i < uart_count; uart_i++){
-    	UART_ptr = (uint32_t *)UART[uart_i];		// Serves as an init and reset for UART_ptr
-    	if (!UART_ptr){
-    		printf("Error accessing UART%d in pre_read_uartx callback", uart_i);	
-    		exit(1);
-    	} 	 		
-    	*UART_ptr++;								// Skip the base address.
-    	
-    	// Cycle through each register address and look for a match.
-    	for (int addr_cnt=0; addr_cnt < reg_count; addr_cnt++){		// NOTE: 11 is the predetermined # of registers to go through
-    		if (*UART_ptr == (uint32_t)address){	
-    			UARTx = UART[uart_i];				// Set to the start of the matching UART module
-    			break;
-    		}
-    		else
-    			*UART_ptr++;						// No match, move to next UART addr in struct
-    	}   	
-    	// Leave outer most loop if there is a match.
-    	if (UARTx == UART[uart_i])				
-    		break;	   		
-    }
-    */
-    
-    periphx = MMIO[0];
-    
+   
     // Produce data for DR read.   
 	if	(address == (uint64_t)periphx->DR_ADDR[DR1]){
     	printf("	Update Data Register\n");
@@ -223,38 +198,11 @@ void pre_read_MMIO(uc_engine *uc, uc_mem_type type,
 void post_read_MMIO(uc_engine *uc, uc_mem_type type,
         uint64_t address, int size, uint64_t value, void *user_data)
 {
-
-	int periph_i;					// Index for peripheral modules
-	uint32_t *periph_ptr;			// Points to any given peripheral module
+					
 	MMIO_handle *periphx = NULL;	// Points to the peripheral mmio accessed.
 
-	printf("Made it to post_read_MMIO callback\n");
-	
-    /*
-    for (uart_i=0; uart_i < uart_count; uart_i++){
-    	UART_ptr = (uint32_t *)UART[uart_i];		// Serves as an init and reset for UART_ptr
-    	if (!UART_ptr){
-    		printf("Error accessing UART%d in pre_read_uartx callback", uart_i);	
-    		exit(1);
-    	} 	 		
-    	*UART_ptr++;								// Skip the base address.
-    	
-    	// Cycle through each register address and look for a match.
-    	for (int addr_cnt=0; addr_cnt < reg_count; addr_cnt++){		// NOTE: 11 is the predetermined # of registers to go through
-    		if (*UART_ptr == (uint32_t)address){	
-    			UARTx = UART[uart_i];				// Set to the start of the matching UART module
-    			break;
-    		}
-    		else
-    			*UART_ptr++;						// No match, move to next UART addr in struct
-    	}   	
-    	// Leave outer most loop if there is a match.
-    	if (UARTx == UART[uart_i])				
-    		break;	   		
-    }
-    */
-    
-    periphx = MMIO[0];
+	printf("Post Read MMIO callback\n");
+	periphx = findMod(address, &periphx);
 	
 	// Clear DR after it's read.
 	if	(address == (uint64_t)periphx->DR_ADDR[DR1]){
@@ -310,6 +258,31 @@ static void readBinFile(FILE *f, char **fdata, int *fsize){
 	while (fread(data, 1, size, f) == 1);
 
 	fclose(f);		
+
+}
+
+static MMIO_handle* findMod(uint64_t address, MMIO_handle** periph){
+
+	int mod_i;		// Index for peripheral module
+	MMIO_handle *periphx = *periph;
+	
+    // Determine which MMIO module the accessed address belongs to.     
+    for (mod_i=0; mod_i < mod_count; mod_i++){
+    
+    	if (!MMIO[mod_i]){
+    		printf("Error accessing MMIO%d in pre_read_MMIO callback", mod_i);	
+    		exit(1);
+    	} 
+    		 	
+    	// Get the correct peripheral module	 		
+		if (address >= MMIO[mod_i]->minAddr && address <= MMIO[mod_i]->maxAddr){
+			periphx = MMIO[mod_i];
+    		break;
+    	}
+  		
+    }
+
+	return periphx;
 
 }
 

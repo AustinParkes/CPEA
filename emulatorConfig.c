@@ -268,25 +268,27 @@ void reg_init(){
 int mmioConfig(uc_engine *uc, toml_table_t* mmio){
 
 	
-
+	toml_table_t* periph;		// Ptr to peripheral table
+	toml_table_t* table_ptr;	// Ptr to module tables. e.g. config, addr, reset, flags
 	uint32_t data;				// Store key data
-	const char* periphx_key;	// Contains table string for addr/reset
-	
-	toml_table_t* mod_tab;		// Ptr to module tables. e.g. config, addr, reset, flags
-	int key_i;					// Key index for any table
+	int struct_i;				// Index for allocating/accessing peripheral module structs
+	int key_i;					// Key index for any table TODO: We need this?
+	int periph_i;				// Peripheral Index for peripheral tables and peripheral counts
 	int mod_i;					// Peripheral Module Index
 	int tab_i;					// Index to iterate through modules. e.g. config, addr, reset, flags
 	int SR_i;					// Status Register Index - Keeps track of which SR we are storing to.
 	int DR_i;					// Data Register Index - Keeps track of which DR we are storing to.
-	int SR_count;				// Number of SR to iterate through.
+	
+	char p_str[10];				// String of a peripheral
+	int pid;					// Iterable Peripheral Index
+	int p_total;				// Total number of possible peripherals
 	
 	//enum periph_keys {config_key, addr_key, reset_key, flags_key};
 
 	const char periph_str[2][10] = {"uart", "gpio"};
+	p_total = sizeof(periph_str)/sizeof(periph_str[0]);
 
-	// TODO: Pull THESE from config file
-	SR_count = 2;				
-	//DR_count = 2;				
+	mod_count = 0;		
 	
 	// These keep track of the address range for each peripheral
 	minPeriphaddr = 0xFFFFFFFF;
@@ -303,131 +305,111 @@ int mmioConfig(uc_engine *uc, toml_table_t* mmio){
  		error("missing [mmio.count]", "");
  	}
  	 
- 	// TODO: WORKING ON THIS LOOP 
- 	for (key_i=0; ;key_i++){
- 		const char* periph_count = toml_key_in(mmio_count, key_i);
+ 	// Index Peripheral Counts/Modules and allocate memory for each peripheral. Init MMIO struct
+ 	struct_i=0;
+ 	for (periph_i=0; ;periph_i++){
+ 	
+ 		// Get current peripheral & count
+ 		const char* periph_count = toml_key_in(mmio_count, periph_i);
  		 if (!periph_count)
  			break;
- 		printf("%s\n", periph_count);
- 	
- 	}
- 	 		
-    // Get number of Peripheral modules
-    toml_datum_t num_mods = toml_int_in(mmio_count, "uart_count");
-    if (!num_mods.ok){
-    	error("Cannot read mmio.count.uart_count", "");
-    }
-    mod_count = (int)num_mods.u.i;					// Number of Peripheral modules the user specified.
-    
-    // No Peripheral modules specified.
-    // TODO: Check on what user can really set module count to for any given peripheral.  
-	if (mod_count <= 0)
-		return 0;
-	else if (mod_count > MAX_MMIO - 1 ){
-		printf("WARNING: MMIO count set to %d, but cannot exceed %d. ", mod_count, MAX_MMIO - 1);
-		printf("Setting to 15.");	
-		mod_count = 15;	
-	}
-
-	// Allocate space for each struct. Freed after emulation is complete. 	
-	for (int i=0; i<mod_count; i++){
-    	MMIO[i] = (MMIO_handle *)malloc(sizeof(MMIO_handle));
-    	if (MMIO[i] == NULL){
-    		// TODO: Update message
-    		printf("Periph struct memory not allocated for periph%d\n", i);
+ 			
+ 		// Get number of Peripheral modules
+    	toml_datum_t num_mods = toml_int_in(mmio_count, periph_count);
+    	if (!num_mods.ok){
+    		error("Cannot read mmio.count.%s", periph_count);
     	}
-    }
-    
-    
-    // TODO: Init the struct arrays since they contain garbage otherwise
-    
-	// TODO: Loop through peripherals
-    toml_table_t* periph = toml_table_in(mmio, "uart");   // Use mmio pointer from earlier
- 	if (!periph){
- 		// TODO: Change error message
- 		error("missing [mmio.]", "uart");
+    	
+    	// Check for invalid module count
+    	// TODO: Get an appropriate MAX_MMIO count. Also use another variable instead of the typecasted struct.union combo
+    	if ((int)num_mods.u.i <= 0)
+			continue;
+		else if ((int)num_mods.u.i > MAX_MMIO - 1 ){
+			printf("WARNING: MMIO count set to %d, but cannot exceed %d. ", (int)num_mods.u.i, MAX_MMIO - 1);
+			printf("Setting to 15.");	
+			num_mods.u.i = 15;	
+		}
+    	
+    	mod_count = mod_count + (int)num_mods.u.i;	// Get total number of peripheral modules for this periph
+ 		
+ 		// Get peripheral ID for struct.
+ 		for (pid=0; pid<=p_total; pid++){
+ 			if (pid == p_total)
+ 				error("No peripheral match in mmio.count", "");
+
+ 			strcpy(p_str, periph_str[pid]);
+			strcat(p_str, "_count");
+			if (!strcmp(p_str, periph_count))
+				break;
+	
+ 		}
+ 		
+ 		 // Get current peripheral string name
+    	strcpy(p_str, periph_str[pid]);
+    		
+    	// Get current peripheral ptr
+    	periph = toml_table_in(mmio, p_str);
+ 		if (!periph){
+ 			error("missing [mmio.]", p_str);
+ 		}
+ 		
+ 		// Allocate space for modules. Init MMIO metadata, addresses, resets, and flags
+ 		for (mod_i=0; struct_i<mod_count; struct_i++, mod_i++){
+    		MMIO[struct_i] = (MMIO_handle *)malloc(sizeof(MMIO_handle));
+    		if (MMIO[struct_i] == NULL){
+    			// TODO: Update message
+    			printf("Periph struct memory not allocated for module%d\n", struct_i);
+    		}
+    		
+    		//printf("periph: %s\n", periph_count);
+    		
+    		// Add metadata to MMIO struct 
+    		MMIO[struct_i]->periphID = pid;
+    		//printf("pid: %d\n", MMIO[struct_i]->periphID);
+    		MMIO[struct_i]->modID = mod_i;
+    		//printf("mod: %d\n", MMIO[struct_i]->modID);
+    		MMIO[struct_i]->modCount = (int)num_mods.u.i;
+    		//printf("modCount: %d\n", MMIO[struct_i]->modCount);  	
+    		
+			/* Add config, addr, reset, flags to MMIO struct */
+			
+ 			// Get current module string   
+    		const char* module_str = toml_key_in(periph, mod_i);
+    		if (!module_str) 
+    			break;
+    		
+    		// Get current module ptr
+    		toml_table_t* module_ptr = toml_table_in(periph, module_str);
+    		if (!module_ptr)
+    			// TODO: Change error message
+ 				error("Failed to get periph table from module %s", module_str);
+ 			
+			// Loop config, addr, reset, & flags table. Parse Each.
+ 			for (tab_i=0; ;tab_i++){
+ 		
+ 				// Get table string. 
+ 				const char* table_str = toml_key_in(module_ptr, tab_i);
+ 				if (!table_str)
+ 					break;
+ 		
+ 				// Get table ptr 
+ 				table_ptr = toml_table_in(module_ptr, table_str);
+ 				if (!table_ptr)
+ 					error("Failed to get table from module %s", module_str);
+ 		 	
+ 		 		// Not on "flags" table
+ 		 		if (strcmp(table_str, "flags"))
+					parseKeys(p_str, module_str, table_ptr, table_str, struct_i);
+				
+				// ON "flags" table	
+				else
+					setFlags(uc, table_ptr, struct_i);
+ 			}			
+ 						
+    	}
+	
  	}
 
- 	// Extract Peripheral Module configs to data structure
- 	for (mod_i=0; ; mod_i++){   
- 		 	
- 		// Check if table exists.    
-    	const char* periph_mod = toml_key_in(periph, mod_i);
-    	if (!periph_mod) 
-    		break;		
-    	
-    	// Check if more tables than modules specified.
- 		else if (mod_i > (mod_count - 1)){
- 			// TODO: Change error message
- 			printf("ERROR: %d Peripheral tables, but only %d modules were specified.", mod_i + 1, mod_count);
- 			exit(1);
- 		}
-    	
-    	// Get the current Periph table ptr from the name
-    	toml_table_t* periphx = toml_table_in(periph, periph_mod);
-    	if (!periphx)
-    		// TODO: Change error message
- 			error("Failed to get periph table from module %s", periph_mod);		
- 		
- 		
- 		/* TODO: Loop these "periphx_keys", since we are calling parseKeys 2-4 times. */
- 		
- 		// Loop config, addr, reset, & flags table. Parse Each.
- 		for (tab_i=0; ;tab_i++){
- 		
- 			// Get table string. 
- 			const char* mod_key = toml_key_in(periphx, tab_i);
- 			if (!mod_key)
- 				break;
- 		
- 			// Get table ptr 
- 			mod_tab = toml_table_in(periphx, mod_key);
- 			if (!mod_tab)
- 				error("Failed to get table from module %s", periph_mod);
- 		 	
- 		 	// Not on "flags" table
- 		 	if (strcmp(mod_key, "flags"))
-				parseKeys(mod_tab, mod_key, SR_count, mod_i);
-				
-			// ON "flags" table	
-			else
-				setFlags(uc, mod_tab, mod_i);
- 		}
- 		
- 		/*
- 		// Get the address table string. 
- 		uartx_key = toml_key_in(uartx, addr_key);
- 		if (!uartx_key)
- 			error("uartx.addr table missing from module %s", uart_module);
- 		
- 		// Get addr table from current uart module
- 		addr_tab = toml_table_in(uartx, "addr");
- 		if (!addr_tab)
- 			error("Failed to get addr table from module %s", uart_module);
- 		 		 
-		parseKeys(addr_tab, uartx_key, SR_count, mod_i);
- 		
- 		// Get the reset table string. 
- 		uartx_key = toml_key_in(uartx, reset_key);
- 		if (!uartx_key)
- 			error("uartx.reset table missing from module %s", uart_module);
- 		
- 		// Get reset table from current uart module
- 		reset_tab = toml_table_in(uartx, "reset");
- 		if (!reset_tab)
- 			error("Failed to get reset table from module %s", uart_module);
- 		
- 		parseKeys(reset_tab, uartx_key, SR_count, mod_i);		
-            
-        toml_table_t* flags = toml_table_in(uartx, "flags");   
- 		if (!flags){
- 			error("missing [mmio.uart.%d.flags]", mod_i);
- 		}	
-        
-        setFlags(uc, flags, mod_i);	 
-        */        
-   	}
-   	
    	// SANITY CHECK. Check if the min and max addresses for UART match.
    	//printf("minUARTaddr: 0x%x\nmaxUARTaddr: 0x%x\n", minUARTaddr, maxUARTaddr);
    	
@@ -435,6 +417,167 @@ int mmioConfig(uc_engine *uc, toml_table_t* mmio){
    	return 0;	  		
 }
 
+void parseKeys(char* periph_str, const char* module_str, toml_table_t* table_ptr, const char* table_str, int mod_i){
+
+ 	int SR_i=0;				// Status Register Index
+ 	int DR_i=0;				// Data Register Index
+ 	int key_i=0;			// Key Index
+ 	
+ 	const char* key_str;	// Store name of any key
+ 	toml_datum_t key_data;	// Store data from any key
+ 		
+ 	uint32_t base_addr;     // Need base address to check if user entered and offset or absolute address.
+ 	uint32_t data;			// Key Data to store.
+ 	
+ 	// Get SR and DR counts. 
+ 	if (!strcmp(table_str, "config")){
+ 		// Get SR_count string
+		key_str = toml_key_in(table_ptr, 0);
+		
+		// Get SR_count number
+		key_data = toml_int_in(table_ptr, key_str);
+		if (!key_data.ok)
+    		error("Cannot read key data", "");
+		data = key_data.u.i;
+		
+		// SR count must be between 0 and 17 
+		if (data <= 0)
+			SR_count = 1;
+		else if (data > 0 && data <= 16)
+			SR_count = data;		
+		else
+			SR_count = 16;
+		
+		// Get DR_count string
+		key_str = toml_key_in(table_ptr, 1);
+		
+		// Get DR_count number
+		key_data = toml_int_in(table_ptr, key_str);
+		if (!key_data.ok)
+    		error("Cannot read key data", "");
+		data = (uint32_t)key_data.u.i;
+		
+		// DR count must be between 0 and 17 
+		if (data <= 0)
+			DR_count = 1;			
+		else if (data > 0 && data <= 16)
+			DR_count = data;		
+		else	
+			DR_count = data;
+	}	
+		
+	// Get the register addresses	
+ 	else if(!strcmp(table_str, "addr")){
+ 		// Index the addr keys
+ 		for (key_i=0; ; key_i++){
+ 		
+ 			// Get addr key string
+ 			key_str = toml_key_in(table_ptr, key_i);
+ 			if (!key_str)
+ 				break;
+ 				
+  			// Get data from the current key
+    		toml_datum_t key_data = toml_int_in(table_ptr, key_str);
+    		if (!key_data.ok)
+    			error("Cannot read key data", "");
+    		data = (uint32_t)key_data.u.i;			
+ 			
+ 			// Skip Storing data if 0xFFFF
+    		if (data == 0xFFFF){
+    			if (SR_i < SR_count)
+    				SR_i++;
+    			else
+    				DR_i++;  				
+    			continue;
+    		}
+
+ 			// Get base addr
+			if (key_i == 0){
+    			base_addr = data;
+    			if (base_addr < 0x40000000 || base_addr > 0x5fffffff){
+    				fprintf(stderr, "ERROR: Base Address for %s%s out of bounds. [0x40000000 - 0x5fffffff]\n", periph_str, module_str);
+					exit(1);	
+    			}				
+    			MMIO[mod_i]->BASE_ADDR = base_addr;				 
+    		}
+    		
+    		else{
+    		 						
+				// Check if user entered offset and convert to absolute address.
+				if (data < base_addr)
+					data = data + base_addr;
+
+				// Store addr data	
+				if (SR_i < SR_count){
+					MMIO[mod_i]->SR_ADDR[SR_i] = data;
+					SR_i++;	
+				}
+				else{
+					MMIO[mod_i]->DR_ADDR[DR_i] = data;
+					DR_i++;
+				} 
+					
+				// Keep track of lowest and highest addr.
+				if (data < minPeriphaddr)
+					minPeriphaddr = data;					
+				else if (data > maxPeriphaddr)
+					maxPeriphaddr = data;
+			}
+				
+ 		}
+ 		
+ 	}
+ 	
+ 	// Get the register resets	
+ 	else if(!strcmp(table_str, "reset")){
+ 		// Index the reset keys
+ 		for (key_i=0; ; key_i++){
+ 		
+ 			// Get reset key string
+ 			key_str = toml_key_in(table_ptr, key_i);
+ 			if (!key_str)
+ 				break;
+ 				
+  			// Get data from the current key
+    		toml_datum_t key_data = toml_int_in(table_ptr, key_str);
+    		if (!key_data.ok)
+    			error("Cannot read key data", "");
+    		data = (uint32_t)key_data.u.i;			
+ 			
+ 			// Skip Storing data if 0xFFFF
+    		if (data == 0xFFFF){
+    			if (SR_i < SR_count)
+    				SR_i++;
+    			else
+    				DR_i++;  				
+    			continue;
+    		}
+
+			// Store reset data	
+			if (SR_i < SR_count){
+				MMIO[mod_i]->SR_RESET[SR_i] = data;
+				SR_i++;	
+			}
+			else{
+				MMIO[mod_i]->DR_RESET[DR_i] = data;
+				DR_i++;
+			} 
+			
+ 		}
+ 		
+ 	}
+ 		
+ 	// 	
+ 	else if (!strcmp(table_str, "flags"))
+ 		;
+ 	else
+    	error("Trying to access a module table that doesn't exist.");  	
+ 	
+ 	// Get address range for this module
+ 	MMIO[mod_i]->minAddr = minPeriphaddr;
+ 	MMIO[mod_i]->maxAddr = maxPeriphaddr;
+ 	
+}
 
 int setFlags(uc_engine *uc, toml_table_t* flag_tab, int mod_i){
 	int flag_i;					// SR Flag Index
@@ -460,9 +603,6 @@ int setFlags(uc_engine *uc, toml_table_t* flag_tab, int mod_i){
     	flag_name = toml_key_in(flag_tab, flag_i);
     	if (!flag_name) 
     		break;
-    					
-		printf("%s\n", flag_name);
-		
 			
 		// Get the current Flag table ptr from its name
     	flag_ptr = toml_table_in(flag_tab, flag_name);
@@ -475,11 +615,10 @@ int setFlags(uc_engine *uc, toml_table_t* flag_tab, int mod_i){
     		error("Failed to get flag register from: %s", flag_name);
     	flag_reg = flag_key.u.s;
 		    		
-		// Skip flag and exit ASAP.    		 
+		// Skip flag and exit.    		 
     	if (!strcmp(flag_reg, "reg"))
     		return 0;
-	
-	
+		
  		// Get the bit location the flag belongs to		
 		flag_key = toml_int_in(flag_ptr, "bit");
     	if (!flag_key.ok)
@@ -489,17 +628,13 @@ int setFlags(uc_engine *uc, toml_table_t* flag_tab, int mod_i){
     	/* SANITY CHECK - Check register and bit */
     	//printf("reg: %s\nbit: %d\n",flag_reg, flag_bit);
     	
-    	/* 
-    		Write current flag to the appropriate SR and bit location
-    		for all Peripheral modules
-    	*/
-    	
-    	printf("str_count: %ld\n", sizeof(reg_name[0])/sizeof(reg_name[0][0]));
-    	for (SR_i=0; SR_i<8; SR_i++){
-    		printf("reg_name: %s\n", reg_name[up_case][SR_i]);		
+    	 
+    	// Write current flag to correct SR   	
+    	for (SR_i=0; SR_i<8; SR_i++){	
     		if (!strcmp(flag_reg, reg_name[up_case][SR_i]) || !strcmp(flag_reg, reg_name[low_case][SR_i])){
-				
-    			SET_BIT(MMIO[mod_i]->SR[SR_i], flag_bit);				
+    			// Write to the variable				
+    			SET_BIT(MMIO[mod_i]->SR[SR_i], flag_bit);
+    			// Commit to emulator memory				
     			if (uc_mem_write(uc, MMIO[mod_i]->SR_ADDR[SR_i], &MMIO[mod_i]->SR[SR_i], 4)){
 					printf("Failed to set bit for SR1 at module %d. Quit\n", mod_i);
 					exit(1);
@@ -521,96 +656,6 @@ int setFlags(uc_engine *uc, toml_table_t* flag_tab, int mod_i){
 
 }
 
-void parseKeys(toml_table_t* mod_tab, const char* mod_key, int SR_count, int mod_i){
-
- 		int SR_i=0;				// Status Register Index
- 		int DR_i=0;				// Data Register Index
- 		int key_i=0;			// Key Index
- 		
- 		uint32_t base_addr;     // Need base address to check if user entered and offset or absolute address.
- 		uint32_t data;			// Key Data to store.
- 		
- 		// TODO: Can place this loop in "addr" and "reset" if-statements so we aren't redundantly checking them each loop.				
- 		for (key_i=0; ; key_i++){
- 			const char* key = toml_key_in(mod_tab, key_i);
-    		//printf("key: %s\n", key);
-    		
-    		if (!key) 
-    			break;
-    		 		
- 			// Get data from the current key
-    		toml_datum_t key_data = toml_int_in(mod_tab, key);
-    		if (!key_data.ok)
-    			error("Cannot read key data", "");
-    		data = (uint32_t)key_data.u.i;
-    		
-    		// Skip Storing data if 0xFFFF
-    		if (data == 0xFFFF){
-    			if (SR_i < SR_count)
-    				SR_i++;
-    			else
-    				DR_i++;
-    				
-    			continue;
-    		}
- 			//printf("data: %x\n", data);
- 				
- 			// Get base addr
-			if (!strcmp(mod_key, "addr") && key_i == 0){
-    			base_addr = data;				
-    			MMIO[mod_i]->BASE_ADDR = base_addr;				 
-    		}
-    		
-    		// Store data/addr key values
-    		else{
-    			
-    			if (!strcmp(mod_key, "config"))
-    				; // TODO. Make this read config table)
-    			else if (!strcmp(mod_key, "addr")){
-
-					// Check if user entered offset and convert to absolute address.
-					if (data < base_addr)
-						data = data + base_addr;
-
-					// Store addr data	
-					if (SR_i < SR_count){
-						MMIO[mod_i]->SR_ADDR[SR_i] = data;
-						SR_i++;	
-					}
-					else{
-						MMIO[mod_i]->DR_ADDR[DR_i] = data;
-						DR_i++;
-					} 
-					
-					// TODO: May store min,max addr for each module.
-					// Keep track of lowest and highest addr.
-					if (data < minPeriphaddr)
-						minPeriphaddr = data;
-					else if (data > maxPeriphaddr)
-						maxPeriphaddr = data;					
-					
-				}	
-    			else if(!strcmp(mod_key, "reset")){
-					if (SR_i < SR_count){
-						MMIO[mod_i]->SR[SR_i] = data;
-						SR_i++;	
-					}
-					else{
-						MMIO[mod_i]->DR_RESET[DR_i] = data;
-						DR_i++;
-					}
-				
-				}
-				
-				// Deal with flag data in another function "setFlags".
-    			else if (!strcmp(mod_key, "flags"))
-    				break;
-    			else
-    				error("Trying to access a module table that doesn't exist.");    		
-    		} 
-    			
- 		}
-}
 
 void error(const char *msg, const char* msg1, const char* msg2)
 {

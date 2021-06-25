@@ -4,13 +4,12 @@ Configurable Peripheral Emulator for ARM
 TODO
 ----
 
-1) Automation
-   - Auto generate mmio for emulatorConfig.toml
-      - This includes mmio modules for each mmio.
-      
-2) Configuration
-   - Make config functions more neat and optimized
-      - Have config, addr, reset, and flags for each peripheral. Can call parseKeys for each and handle each accordingly.
+1) Testing Firmware
+   - Research firmware samples to test
+   - When testing, find out
+      1) What needs to be added to emulator
+      2) What needs to be added to configuration
+      3) What can we automate to make user's life easier
       
 DONE
 ----
@@ -18,7 +17,11 @@ DONE
 1) Callbacks
    - Got rid of UART specific callbacks. Doing callbacks for entire ARM mmio range.
    
+2) Automation
+   - Generates mmio for emulatorConfig.toml
    
+3) Configuration
+   - Parses emulatorConfig.toml and stores to appropriate data structure/emulator memory   
          
 
 Projects Referenced or Used

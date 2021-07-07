@@ -25,6 +25,7 @@ int main(int argc, char **argv, char **envp)
 	uc_hook handle3; 
 	uc_hook handle4;   
 
+	/* Variables for reading code and data */
 	char *save_addr;
 	int byte;
 	int code_size;			// Size of code
@@ -51,7 +52,6 @@ int main(int argc, char **argv, char **envp)
 	}	
 	readBinFile(g, &arm_data, &data_size);
 	
-	// 
 	printf("   - Complete\n\n");
 	
 	/*** SANITY CHECK ***/

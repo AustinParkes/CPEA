@@ -254,10 +254,10 @@ void reg_init(){
 	r_r8 = 0x0008;     	// r8
 	r_r9 = 0x0009;     	// r9
 	r_r10 = 0x000A;    	// r10
-	FP = SRAM_ADDR + SRAM_SIZE - 0x1000;	// r11  
+	FP = SRAM_ADDR + SRAM_SIZE - 0x1000;	// r11  // TODO: Initialize better
 	r_r12 = 0x000C;    	// r12
 	SP = FP;      		// r13	// TODO:	Find better way to init SP and FP
-	LR = 0;				// r14	// TODO: 	Set to function after main(). 
+	LR = 0;				// r14	// TODO: 	See if this needs set. I think not.  
 	 
 }
 

@@ -10,6 +10,9 @@ TODO
       1) What needs to be added to emulator
       2) What needs to be added to configuration
       3) What can we automate to make user's life easier
+           
+2) Add some debugging option for following execution of code (is gdb an option?)  
+      
       
 DONE
 ----
@@ -30,3 +33,7 @@ Projects Referenced or Used
 2) P2IM [P2IM Github](https://github.com/RiS3-Lab/p2im)
 3) QEMU [QEMU Github](https://github.com/qemu/qemu)
 4) TOML [TOML](https://toml.io/en/)  
+
+Code Referenced or Used
+-----------------------
+1) RIOT Console FW (P2IM used this) [Console]https://github.com/RIOT-OS/RIOT/tree/master/examples/default

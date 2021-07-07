@@ -4,8 +4,8 @@
 // Test configuration values in emulatorConfig.h to see if they match emulatorConfig.toml
 void show_config(){
 	printf("\n*** Emulator Config ***\n");
-	printf("FLASH_ADDR: 0x%x\n", FLASH_ADDR);
-	printf("FLASH_SIZE: 0x%x\n", FLASH_SIZE);
+	printf("CODE_ADDR: 0x%x\n", CODE_ADDR);
+	printf("CODE_SIZE: 0x%x\n", CODE_SIZE);
 	printf("SRAM_ADDR:  0x%x\n", SRAM_ADDR);
 	printf("SRAM_SIZE:  0x%x\n", SRAM_SIZE);
 	printf("MMIO_ADDR:  0x%x\n", MMIO_ADDR);

@@ -11,7 +11,7 @@ Write a Unicorn program that executes a firmware
          - 	
          	
    MMIO Callbacks 
-      - Currently issued between the min and max UART register addresses specified by the user.  
+      - // TODO: Document how this is done. 
    
    User Configurations
       - Think about what needs to be configured by the user specifically to configure their emulator
@@ -26,6 +26,69 @@ Write a Unicorn program that executes a firmware
                   - I want to know if we can keep 32 bit or if we need to have two different modes for 8 bit and 32 bit
                      (May very well need an 8 bit mode.)
                      - How do 32 bit UARTs compare to each other and how do 8 bit  UARTS compare to each other
+
+
+
+/* Firmware Testing */                     
+Testing Emulator with Real Firmware
+   Researching Firmware to Test
+      - FW details
+         - Should allow ELF or Raw Binary
+         - Should be for ARM Cortex-M devices. (for now)        
+      - Where to find FW?
+	     - Find FW that other papers tested 
+	        -> Find all the papers that Austin sent last summer                  
+		 - How did other papers find FW?
+		    - Unit Tests
+		       - They found examples from OS libraries. 
+		    - Real Firmware
+		       - Lots of Github source code that was compiled with some IDE
+		       - binaries are available as ARM ELF files. No, raw binaries.   
+		       
+		          		          
+   Testing Peripherals
+      - Which peripherals to test?
+         - Most popular?, P2IM mentions: SPI, USART, I2C, GPIO, ADC, DAC, TIMER, PWM
+   		 -> Any, just want to see if the SR values pass.
+   		     
+   Testing Binaries
+      - What form does binary need to be in? ELF or Raw Binary?
+         - P2IM uses ELF files         
+      -> Want to be able to support ELF or raw binaries. (ELF first)
+         ELF Files
+            -> Could execute ELF by just providing it
+               -> Could gather ELF info and execute from entry point and auto generate memory map with Python script.
+               
+            -> Can additionally allow user to manually execute points of interest like with Raw binary option below. 
+               
+         Raw Binary 
+            -> Will require manual intervention from user to provide start/stop points, processor state,
+              memory map, etc.
+
+
+   // Things TODO in order for FW execution to work
+   TODO
+      1) [ ] Init SP/FP given ELF file (ARM ELF for Linux and barebones MCU) and Raw Binary
+                - Need to ELF file's code and SRAM regions for this to work.
+      2) [x] Map in memory the generic flash/SRAM regions for Cortex-M devices (so it doesn't need to be automated from ELF. Reduces complexity)
+      3) [ ] Read multiple data sections from ELF and store them all. 
+      4) [ ] For Stripped ELFs/Raw binaries, Need an automated way to read code and data sections into emulator by having user provide the 
+             address and size of these sections. 
+    
+   
+   // Things Completed from list above
+   Done   
+      1) 
+	  2) Map in memory the generic flash/SRAM regions for Cortex-M devices (so it doesn't need to be automated from ELF. Reduces complexity) 
+
+   Queries
+      1) [IMPORTANT] Does the memory map have to be specific to MCU? Or can we make it expand the range specified for ARM Cortex-M MCUs. 
+         See [mem_map] in emulatorConfig.toml as example.
+         Is there a generic Cortex-M manual for all Cortex-M devices? Probably, not. Can read them individually though. 
+      2) [IMPORTANT] How will we handle Raw binaries and stripped ELF files? 
+         Can handle ELF files with symbols first, then move on to the latter.    
+               
+
 
 
 /* Compiling the Emulators */
@@ -90,9 +153,4 @@ To Convert to Raw Binary
     - 'xxd -r -p input.opcode output.bin' to get raw binary
 	  - Read this into Unicorn and store in char array. :)
 	 
-
-
-
-
-
 

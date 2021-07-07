@@ -6,6 +6,7 @@ void error();					// Prints Error Messages in parsing
 void emuConfig();				// Configure Emulator.
 toml_table_t* parseTOML();		// Gather data from TOML file.
 void map_memory();				// Create memory map for the emulator.
+void flash_init();				// Initialize flash memory with code and data
 void reg_init();				// Initialize all ARM registers.
 int mmioConfig();				// Configure peripheral emulation.
 int setFlags();					// Sets the configured status register values.
@@ -17,20 +18,20 @@ void parseKeys();				// Gathers key data and stores it.
 #define SET_BIT(reg, k)		(reg |= (1<<k))	
 
 /* Memory Map */
-uint32_t FLASH_ADDR;
-uint32_t FLASH_SIZE;
+uint32_t CODE_ADDR;
+uint32_t CODE_SIZE;
 uint32_t SRAM_ADDR;
 uint32_t SRAM_SIZE;
 uint32_t MMIO_ADDR;
 uint32_t MMIO_SIZE;
 
 /* Firmware */
-uint32_t CODE_ADDR;
+uint32_t CODE_ADDR;				// Start address of code
 //uint32_t CODE_SIZE;   Determined by file at the moment
-uint32_t DATA_ADDR;
+uint32_t DATA_ADDR;				// Start address of data
 //uint32_t DATA_SIZE;   Determine by file at the moment
-uint32_t START;
-uint32_t END;
+uint32_t START;					// Start addr of FW execution
+uint32_t END;                   // End addr of FW execution
 
 /* ARM Core Registers */	
 uint32_t r_r0;     		// r0

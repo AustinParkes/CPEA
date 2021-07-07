@@ -25,6 +25,7 @@ int main(int argc, char **argv, char **envp)
 	uc_hook handle3; 
 	uc_hook handle4;   
 
+	/* Variables for reading code and data */
 	char *save_addr;
 	int byte;
 	int code_size;			// Size of code
@@ -35,23 +36,24 @@ int main(int argc, char **argv, char **envp)
   	
 	printf("***Read ARM code and data***\n");
 
+	
+
 	// Read ARM code
-	FILE *f = fopen("SimpleUart.code.bin", "rb");
+	FILE *f = fopen("firmware.code.bin", "rb");
 	if (f == NULL){
-		printf("Error opening SimpleUart.code.bin");
+		printf("Error opening firmware.code.bin");
 		exit(1);	
 	}	
 	readBinFile(f, &arm_code, &code_size);
 	
 	// Read ARM data
-	FILE *g = fopen("SimpleUart.data.bin", "rb");
+	FILE *g = fopen("firmware.data.bin", "rb");
 	if (g == NULL){
-		printf("Error opening SimpleUart.data.bin");
+		printf("Error opening firmware.data.bin");
 		exit(1);	
 	}	
 	readBinFile(g, &arm_data, &data_size);
 	
-	// 
 	printf("   - Complete\n\n");
 	
 	/*** SANITY CHECK ***/
@@ -67,33 +69,16 @@ int main(int argc, char **argv, char **envp)
 		exit(1);
 	}
 	
-	// Configure emulator and emulator's peripherals.
-	emuConfig(uc, arm_code, arm_data);
+	// Configure emulator memory and peripherals.
+	emuConfig(uc, arm_code, arm_data, code_size, data_size);
 	
 	/*** SANITY CHECKS ***/
 	
 	/* View config variables to check if they match emulatorConfig.toml */
-	//show_config();
+	show_config();
 	
 	/* Show memory contents of mmio to check if they match reset values.*/
-	//show_mmio(uc);
-	
-	/*** Memory Init ***/	
-	// Write code to flash!	
-	if (uc_mem_write(uc, CODE_ADDR, arm_code, code_size)){ 
-		printf("Failed to write code to memory. Quit\n");
-		exit(1);
-	}
-	free(arm_code);
-	arm_code = NULL;
-	
-	// Write data to flash!
-	if (uc_mem_write(uc, DATA_ADDR, arm_data, data_size)){ 
-		printf("Failed to write code to memory. Quit\n");
-		exit(1);
-	}
-	free(arm_data);
-	arm_data = NULL;	
+	//show_mmio(uc);	
 	
 	// Callback to handle FW reads before they happen.
 	uc_hook_add(uc, &handle1, UC_HOOK_MEM_READ, pre_read_MMIO, NULL, minPeriphaddr, maxPeriphaddr);
@@ -105,7 +90,7 @@ int main(int argc, char **argv, char **envp)
 	uc_hook_add(uc, &handle3, UC_HOOK_MEM_WRITE, write_MMIO, NULL, minPeriphaddr, maxPeriphaddr);		
 	
 	// Callback to check memory/debug at any code address (specific addresses can be defined in callback)
-	uc_hook_add(uc, &handle4, UC_HOOK_CODE, read_mem, NULL, FLASH_ADDR, FLASH_ADDR + FLASH_SIZE);	
+	uc_hook_add(uc, &handle4, UC_HOOK_CODE, read_mem, NULL, CODE_ADDR, CODE_ADDR + CODE_SIZE);	
 					
 	// Commit register variables to emulator.
 	uc_reg_write(uc, UC_ARM_REG_R0, &r_r0);		// r0
@@ -238,7 +223,7 @@ void write_MMIO(uc_engine *uc, uc_mem_type type,
 
 }
 
-// Read binary data from a file. 
+// Read binary data from a file for fsize bytes
 static void readBinFile(FILE *f, char **fdata, int *fsize){
 
 	char *data;								// File Data

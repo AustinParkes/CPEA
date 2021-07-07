@@ -13,7 +13,7 @@
 #include "toml.h"
 
 // Read config file, parse emulator configurations, and configure emulator
-void emuConfig(uc_engine *uc, char *arm_code, char *arm_data){
+void emuConfig(uc_engine *uc, char *arm_code, char *arm_data, int code_size, int data_size){
  	
  	/***********************************
 		Parse Configuration File and Store configurations   
@@ -40,13 +40,16 @@ void emuConfig(uc_engine *uc, char *arm_code, char *arm_data){
     /***********************************
 		General Emulator Configurations.   
     ************************************/
-    
+     
     // Memory Map for Emulator
     map_memory(uc);
     
+    // Initialize flash memory with firmware (code and data)
+    flash_init(uc, arm_code, arm_data, code_size, data_size);
+    
     // Init ARM Registers (includes SP, LR)
     // TODO: See if there is a more legitimate way to init SP.
-    // TODO: Init LR to function after main(). 
+    // TODO: Check if LR needs init. I think not. 
     reg_init(uc);
     
     /***********************************
@@ -74,36 +77,39 @@ toml_table_t* parseTOML(toml_table_t* root_table){
  	} 
  	
     /*
+    	TODO: Can probably get rid of this, but keep for now incase it's of use
     	Extract values from memory map
     */
     
-    // flash address
-    toml_datum_t flash_addr = toml_int_in(mem_map, "flash_addr");
-    if (!flash_addr.ok){
-    	error("Cannot read mem_map.flash_addr", "");
+    /*
+    // code addresses
+    toml_datum_t code_addr = toml_int_in(mem_map, "code_addr");
+    if (!code_addr.ok){
+    	error("Cannot read mem_map.code_addr", "");
     }
-    FLASH_ADDR = (uint32_t)flash_addr.u.i;   // Get integer from union  
+    CODE_ADDR = (uint32_t)code_addr.u.i;   // Get integer from union  
     
-    // flash size
-    toml_datum_t flash_size = toml_int_in(mem_map, "flash_size");
-    if (!flash_size.ok){
-    	error("Cannot read mem_map.flash_size", "");
+    // code size
+    toml_datum_t code_size = toml_int_in(mem_map, "code_size");
+    if (!code_size.ok){
+    	error("Cannot read mem_map.code_size", "");
     }
-    FLASH_SIZE = (uint32_t)flash_size.u.i;     
+    CODE_SIZE = (uint32_t)code_size.u.i;     
     
-    // sram addr
+    // SRAM addr
     toml_datum_t sram_addr = toml_int_in(mem_map, "sram_addr");
     if (!sram_addr.ok){
     	error("Cannot read mem_map.sram_addr", "");
     }
     SRAM_ADDR = (uint32_t)sram_addr.u.i;   
     
-    // sram size
+    // SRAM size
     toml_datum_t sram_size = toml_int_in(mem_map, "sram_size");
     if (!sram_size.ok){
     	error("Cannot read mem_map.sram_size", "");
     }
     SRAM_SIZE = (uint32_t)sram_size.u.i;    
+    */
     
     /*
     	Done reading general memory map information
@@ -179,11 +185,15 @@ toml_table_t* parseTOML(toml_table_t* root_table){
  	}        	
     	
  	// entry point
+ 	/*
+ 	TODO: See if we need this for ELF files not specific to an MCU. 
+ 	      Currently, reading Reset Handler from Vector Table. 
     toml_datum_t entry = toml_int_in(execution, "entry");
     if (!entry.ok){
     	error("Cannot read execution.entry", "");
     }
     START = (uint32_t)entry.u.i; 
+    */
     
  	// end of execution
     toml_datum_t end = toml_int_in(execution, "end");
@@ -196,20 +206,28 @@ toml_table_t* parseTOML(toml_table_t* root_table){
 
 }
 
+
+// TODO: Check if we can make ADDR and SIZE for FLASH/SRAM hardcoded to the ARM Cortex-M specification
 void map_memory(uc_engine *uc){
+
+	// CODE and SRAM regions mapped according to Cortex-M specifications. 
+	CODE_ADDR = 0;
+	CODE_SIZE = 0x20000000;
+	SRAM_ADDR = 0x20000000;	
+	SRAM_SIZE = 0x20000000;  
 
 	// MMIO range for all Cortex-M Devices
 	MMIO_ADDR = 0x40000000;
 	MMIO_SIZE = 0x20000000;
 
-	// Map Flash region
-	if (uc_mem_map(uc, FLASH_ADDR, FLASH_SIZE, UC_PROT_ALL)){
-		printf("Failed to map flash region to memory. Quit\n");
+	// Map Code region
+	if (uc_mem_map(uc, CODE_ADDR, CODE_SIZE, UC_PROT_ALL)){
+		printf("Failed to map code region to memory. Quit\n");
 		exit(1);
 	}
 	
-	// Map SRAM region (Not executable)
-	if (uc_mem_map(uc, SRAM_ADDR, SRAM_SIZE, UC_PROT_READ | UC_PROT_WRITE )){
+	// Map SRAM region 
+	if (uc_mem_map(uc, SRAM_ADDR, SRAM_SIZE, UC_PROT_ALL)){
 		printf("Failed to map sram region to memory. Quit\n");
 		exit(1);	
 	}	
@@ -240,8 +258,40 @@ void map_memory(uc_engine *uc){
 	
 }
 
-void reg_init(){
+// TODO: Will need to write multiple 
+// Initialize flash memory (code and data)
+void flash_init(uc_engine *uc, char *arm_code, char *arm_data, int code_size, int data_size){
+	
+	// Write code to flash!	
+	if (uc_mem_write(uc, CODE_ADDR, arm_code, code_size)){ 
+		printf("Failed to write code to memory. Quit\n");
+		exit(1);
+	}
+	free(arm_code);
+	arm_code = NULL;
+	
+	// Write data to flash!
+	if (uc_mem_write(uc, DATA_ADDR, arm_data, data_size)){ 
+		printf("Failed to write code to memory. Quit\n");
+		exit(1);
+	}
+	free(arm_data);
+	arm_data = NULL;
+}
 
+
+// Initialize all ARM Core Registers. 
+void reg_init(uc_engine *uc){
+
+	// Read SP and Reset Handler (PC) from Vector Table
+	
+	// Read SP from address 0x0000 0000
+	uc_mem_read(uc, 0, &SP, 4);
+	
+	// Read Reset Handler (PC) from address 0x0000 0004
+	uc_mem_read(uc, 4, &START, 4);
+
+	// TODO: Find what they are reset to upon reset
 	/* ARM Core Registers */	
 	r_r0 = 0x0000;     	// r0
 	r_r1 = 0x0001;     	// r1
@@ -254,10 +304,10 @@ void reg_init(){
 	r_r8 = 0x0008;     	// r8
 	r_r9 = 0x0009;     	// r9
 	r_r10 = 0x000A;    	// r10
-	FP = SRAM_ADDR + SRAM_SIZE - 0x1000;	// r11  
+	FP = SP;	        // r11  // TODO: Would FW do this assignment for us?
 	r_r12 = 0x000C;    	// r12
-	SP = FP;      		// r13	// TODO:	Find better way to init SP and FP
-	LR = 0;				// r14	// TODO: 	Set to function after main(). 
+	SP = SP;      		// r13
+	LR = 0xffffffff;	// r14	Reset Value // TODO: See if this needs set. I think not.  
 	 
 }
 

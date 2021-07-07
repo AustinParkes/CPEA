@@ -335,89 +335,108 @@ def del_DR(p_config, addr_tab, reset_tab, DR_count, DR_exist):
 # If using elf file, extract useful FW and Emulator information from elf file
 def extract_elf(elf):
 	# Get emulator and firmware configuration details
-	#elf = "SimpleUart.elf"
-	
-	with open(elf, 'rb') as f:
-	
+    """
+    What do I need from ELF File
+       - 
+    1) We need all of the LOAD segments written into the emulator memory.
+    2) 
+    3)
+    4)
+    """
+	# Check if elf file was given
+    with open(elf, 'rb') as f:     
+        f.seek(0)
+        if f.read(4) != b"\x7fELF":
+            f.seek(0)
+            print("File given is not an ELF file.")
+            return		
+        f.seek(0)
+        elffile = ELFFile(f)
 		
-		# Check if elf file was given
-		f.seek(0)
-		if f.read(4) != b"\x7fELF":
-			f.seek(0)
-			print("File given is not an ELF file.")
-			return
+        # Store Load header info
+        load_list = []			# Store lists of load members
+        load_mems = []			# Store members for each load header
 		
-		f.seek(0)
-		elffile = ELFFile(f)		
-		# Get Segment Headers for memory map. Headers stored as dictionaries.
-		for segment in elffile.iter_segments():	
-			header = segment.header				# Get the header dictionary
-			if header['p_type'] == 'PT_LOAD':
-		
-				# Get Exectuable Virtual Address
-				if header['p_flags'] == 5:		# R E (Executable Header)
-					ExecVAddr = header['p_vaddr']
+		# Get LOAD segment headers for writing file to emulator memory (and memory map maybe)
+        max_vaddr = 0	
+        for segment in elffile.iter_segments():	
+            header = segment.header				# Get the header dictionary
+            #print(header)
+            if header['p_type'] == 'PT_LOAD':
+                offset = header['p_offset']     # File offset
+                v_addr = header['p_vaddr']      
+                fsize = header['p_filesz']
+                memsz = header['p_memsz']
+                flag = header['p_flags']        # Memory permission (RWE)
 				
-				# Get Data Virtual Address and Size	
-				elif header['p_flags'] == 6:	# RW  (Data Header)
-					DataVAddr = header['p_vaddr']
-					DataSize = header['p_memsz']
-
-			
-		# Calculate Total Memory Size for emulator
-		fw_mem_size = ExecVAddr + DataVAddr + DataSize	# Total Size
-		align = 4096 - (fw_mem_size%4096)				# Align to 4096 for unicorn
-		emu_mem_size = fw_mem_size + align				# Total Emulator Memory
-	
-		# Get Section Headers for code and data (.text and .data). Headers stored as dictionaries.
-		for section in elffile.iter_sections():
-	
-			# Get entry and exit points
-			if isinstance(section, SymbolTableSection):
-				for symbol in section.iter_symbols():
-					if symbol.name == 'main':
-						func_addr = symbol.entry['st_value']
-						MainAddr = func_addr
-
-					elif symbol.name == 'exit':
-						func_addr = symbol.entry['st_value']
-						ExitAddr = func_addr
-				
-			header = section.header	
-			# Get .text section info (.text == 33)
-			if header['sh_name'] == 33:
-				TextAddr = header['sh_addr']
-				TextSize = header['sh_size']
+                load_mems = [offset, v_addr, fsize, memsz, flag]
+                load_list.append(load_mems)
 		
-			# Get .data section info (.data == 98)
-			elif header['sh_name'] == 98:
-				DataAddr = header['sh_addr']
-				DataSize = header['sh_size']
-			
+		        # Get max virtual address and memsz
+                if v_addr > max_vaddr:
+                    max_vaddr = v_addr
+                    max_memsz = memsz   
 
-						
-	# Generate .text and .data binary files for Unicorn
-	elf_name = elf.split('.')				# Remove ".elf" extension from elf file
-	TextBin = elf_name[0] + ".code.bin"
-	DataBin = elf_name[0] + ".data.bin"
+        # Will write to this file            		
+        bin_file = bytearray(max_vaddr + max_memsz)
+        
+        # Load bytes from ELF into firmware file
+        for load_seg in load_list:
+            offset = load_seg[0]
+            v_addr = load_seg[1]
+            fsize = load_seg[2]
+            
+            # Load bytes from ELF into byte array
+            f.seek(offset)
+            load_bin = f.read(fsize)
+            for i, byte in enumerate(load_bin):                                
+                bin_file[v_addr + i] = byte
+                       
+        # SANITY CHECKS: Make sure bin_file has correct ELF contents.
+        """
+        # .vector 
+        v_addr = load_list[0][1]
+        print(".vector: ", end = "")
+        print(bin_file[v_addr:v_addr + 16])
+        # .fcfield
+        v_addr = load_list[1][1]
+        print(".fcfield: ", end = "")
+        print(bin_file[v_addr:v_addr + 16])        
+        # .test and .ARM.exidc 
+        v_addr = load_list[2][1]
+        print(".text: ", end = "")
+        print(bin_file[v_addr:v_addr + 16])         
+        # .relocate and .bss
+        v_addr = load_list[3][1]
+        print(".relocate: ", end = "")
+        print(bin_file[v_addr:v_addr + 16])         
+        # .stack
+        v_addr = load_list[4][1]
+        print(".stack: ", end = "")
+        print(bin_file[v_addr:v_addr + 16])
+        # Out of load range 1
+        v_addr = 0x8000
+        print("Out Of R1: ", end = "")
+        print(bin_file[v_addr:v_addr + 16])
+        # Out of load range 2
+        v_addr = 0x1fff0000
+        print("Out Of R2: ", end = "")
+        print(bin_file[v_addr:v_addr + 16])
+        # Out of load range 3
+        v_addr = 0x1fff0200 + 0x150
+        print("Out Of R3: ", end = "")
+        print(bin_file[v_addr:v_addr + 16])
+        """           
 
-	# .text binary
-	out = subprocess.run(['arm-none-eabi-objcopy', '-O', 'binary', '-j', '.text', elf, TextBin],
-					   stderr=subprocess.PIPE,	# Pipe to stdout object
-					   text=True)	   			# Use text and not binary
-	if (out.stdout):
-		print("objcopy error: Couldn't produce .text binary")
-	
-	# .data binary					   								
-	out = subprocess.run(['arm-none-eabi-objcopy', '-O', 'binary', '-j', '.data', elf, DataBin],
-					   stderr=subprocess.PIPE,	# Pipe to stdout object
-					   text=True)	   			# Use text and not binary
-	if (out.stdout):
-		print("objcopy error: Couldn't produce .data binary")
-
-
-
+    # Generate firmware binary from LOAD segments.
+    f = open("firmware.bin", "wb")
+    f.write(bin_file)
+    f.close
+    quit()
+    
+	# TODO: Keep for editing later.
 	# Print Relevant Unicorn Information extracted from ELF
+    """
 	print("Memory Map")
 	print("   Start: " + hex(ExecVAddr))
 	print("   Size:  " + hex(emu_mem_size))
@@ -435,66 +454,62 @@ def extract_elf(elf):
 	print("\nGenerated Binary Files for Unicorn:")
 	print("   " + TextBin)
 	print("   " + DataBin)
-
-
-	# Update toml dictionary with ELF data
-
-	# Load entire TOML as a dictionary
-	config = parse(open('emulatorConfig.toml').read())
-
-	# Update flash addr
-	config['mem_map']['flash_addr'] = hex(ExecVAddr)
-	config['mem_map']['flash_addr'].comment(" Generated by emulatorSetup.py")
-
-	# Update flash size
-	config['mem_map']['flash_size'] = hex(emu_mem_size)
-	config['mem_map']['flash_size'].comment(" Generated by emulatorSetup.py")
-
-	config['mem_map']['mmio']['reg_count'] = 13
-
-	# Update .text start
-	config['firmware']['code']['code_addr'] = hex(TextAddr)
-	config['firmware']['code']['code_addr'].comment(" Generated by emulatorSetup.py")
-
-	# .text size determine by emulator at the moment.
-	config['firmware']['code']['code_size'] = hex(TextSize)
-	config['firmware']['code']['code_size'].comment(" Generated by emulatorSetup.py")
-
-	# Update .data start
-	config['firmware']['data']['data_addr'] = hex(DataAddr)
-	config['firmware']['data']['data_addr'].comment(" Generated by emulatorSetup.py")
-
-	# .data size determine by emulator at the moment.
-	config['firmware']['data']['data_size'] = hex(DataSize)
-	config['firmware']['data']['data_size'].comment(" Generated by emulatorSetup.py")
-
-	# Update entry point
-	config['firmware']['execution']['entry'] = hex(MainAddr)
-	config['firmware']['execution']['entry'].comment(" Generated by emulatorSetup.py")
-
-	# Update exit point (NOT updating since this hasn't been tested to work)
-	config['firmware']['execution']['end'] = hex(ExitAddr)
-	config['firmware']['execution']['end'].comment(" Generated by emulatorSetup.py")
-
-	# Write new configurations to a test TOML file
-
-	# Dumps the .toml file as a string while preserving formatting
-	config = dumps(config)
-	#print(config)
-
-
-
-	stop_index = config.find("[mmio]")
-
-					 
+    """
 	
-	# Get rid of all quotations from the TOML file by re-writing a new block of string without them.
-	parsed_config = del_quotes(config)
-	print("Check if \'del_quotes\' works correctly. Delete this print statement if it does.")
-	#print(parsed_config)
+    # Update toml dictionary with ELF data
 
-	with open('testConfig.toml', 'w') as f:
-		f.write(parsed_config)
+    # Load entire TOML as a dictionary
+    config = parse(open('emulatorConfig.toml').read())
+
+    # Update flash addr
+    config['mem_map']['flash_addr'] = hex(ExecVAddr)
+    config['mem_map']['flash_addr'].comment(" Generated by emulatorSetup.py")
+
+    # Update flash size
+    config['mem_map']['flash_size'] = hex(emu_mem_size)
+    config['mem_map']['flash_size'].comment(" Generated by emulatorSetup.py")
+
+    config['mem_map']['mmio']['reg_count'] = 13
+
+    # Update .text start
+    config['firmware']['code']['code_addr'] = hex(TextAddr)
+    config['firmware']['code']['code_addr'].comment(" Generated by emulatorSetup.py")
+
+    # .text size determine by emulator at the moment.
+    config['firmware']['code']['code_size'] = hex(TextSize)
+    config['firmware']['code']['code_size'].comment(" Generated by emulatorSetup.py")
+
+    # Update .data start
+    config['firmware']['data']['data_addr'] = hex(DataAddr)
+    config['firmware']['data']['data_addr'].comment(" Generated by emulatorSetup.py")
+
+    # .data size determine by emulator at the moment.
+    config['firmware']['data']['data_size'] = hex(DataSize)
+    config['firmware']['data']['data_size'].comment(" Generated by emulatorSetup.py")
+
+    # Update entry point
+    config['firmware']['execution']['entry'] = hex(MainAddr)
+    config['firmware']['execution']['entry'].comment(" Generated by emulatorSetup.py")
+
+    # Update exit point (NOT updating since this hasn't been tested to work)
+    config['firmware']['execution']['end'] = hex(ExitAddr)
+    config['firmware']['execution']['end'].comment(" Generated by emulatorSetup.py")
+    
+    # Write new configurations to a test TOML file
+
+    # Dumps the .toml file as a string while preserving formatting
+    config = dumps(config)
+    #print(config)
+
+    stop_index = config.find("[mmio]")
+	
+    # Get rid of all quotations from the TOML file by re-writing a new block of string without them.
+    parsed_config = del_quotes(config)
+    print("Check if \'del_quotes\' works correctly. Delete this print statement if it does.")
+    #print(parsed_config)
+
+    #with open('emulatorConfig.toml', 'w') as f:
+    #	f.write(parsed_config)
 
 # Remove unwanted quotations around hexadecimal values.
 def del_quotes(config):

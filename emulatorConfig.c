@@ -304,10 +304,13 @@ void reg_init(uc_engine *uc){
 	r_r8 = 0x0008;     	// r8
 	r_r9 = 0x0009;     	// r9
 	r_r10 = 0x000A;    	// r10
+
 	FP = SP;	        // r11  // TODO: Would FW do this assignment for us?
 	r_r12 = 0x000C;    	// r12
 	SP = SP;      		// r13
 	LR = 0xffffffff;	// r14	Reset Value // TODO: See if this needs set. I think not.  
+
+
 	 
 }
 

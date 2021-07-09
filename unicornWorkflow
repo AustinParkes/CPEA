@@ -68,6 +68,7 @@ Testing Emulator with Real Firmware
 
    // Things TODO in order for FW execution to work
    TODO
+
       1) [ ] Init SP/FP given ELF file (ARM ELF for Linux and barebones MCU) and Raw Binary
                 - Need to ELF file's code and SRAM regions for this to work.
       2) [x] Map in memory the generic flash/SRAM regions for Cortex-M devices (so it doesn't need to be automated from ELF. Reduces complexity)
@@ -75,10 +76,14 @@ Testing Emulator with Real Firmware
       4) [ ] For Stripped ELFs/Raw binaries, Need an automated way to read code and data sections into emulator by having user provide the 
              address and size of these sections. 
     
+      1) Init SP/FP given ELF file (ARM ELF for Linux and barebones MCU) and Raw Binary
+      2) 
+
    
    // Things Completed from list above
    Done   
       1) 
+
 	  2) Map in memory the generic flash/SRAM regions for Cortex-M devices (so it doesn't need to be automated from ELF. Reduces complexity) 
 
    Queries
@@ -87,7 +92,6 @@ Testing Emulator with Real Firmware
          Is there a generic Cortex-M manual for all Cortex-M devices? Probably, not. Can read them individually though. 
       2) [IMPORTANT] How will we handle Raw binaries and stripped ELF files? 
          Can handle ELF files with symbols first, then move on to the latter.    
-               
 
 
 

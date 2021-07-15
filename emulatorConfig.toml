@@ -1,18 +1,22 @@
+# TODO
+# 1) Find better way to ignore keys than '0xFFFF' when user doesn't want to use the key.
+#
+
 # Details code & data to be written to memory. Defines entry/exit points.
 [firmware]
-	[firmware.code]
-	code_addr	= 0xFFFF		#
-	code_size	= 0xFFFF	    # 
+    [firmware.code]
+    code_addr	= 0xFFFF		#
+    code_size	= 0xFFFF	    # 
 
-	# TODO: There could be multiple data sections. 
-	[firmware.data]
-	data_addr	= 0xFFFF		# 
-	data_size	= 0xFFFF		# 
+    # TODO: There could be multiple data sections. 
+    [firmware.data]
+    data_addr	= 0xFFFF		# 
+    data_size	= 0xFFFF		# 
 	
-	[firmware.execution]
-	# Currently reading Reset Handler from vector table
-	entry		= 0xFFFF		# start of main
-	end  		= 0xFFFF		# end of main
+    [firmware.execution]
+    # Currently reading Reset Handler from vector table
+    entry		= 0xFFFF		# start of main
+    end  		= 0xFFFF		# end of main
 
 # Define memory map for your MCU
 # Does this need to be so specific? Can we just use generic map that ARM Cortex-M specifies?
@@ -26,125 +30,32 @@
 #sram_size 	= 0x00020000
 
 # ARM mmio map 0x40000000 - 0x5fffffff
+[mmio]
 [mmio.count]
-uart_count	= 2								
-gpio_count 	= 3								
-	
-	[mmio.uart.0.config]
-	SR_count = 2
-	DR_count = 2
-	
-	[mmio.uart.0.addr]
-	base_addr 	= 0x40013800	# Base address for uart0		
-	SR1_addr	= 0x1c			# ISR
-	SR2_addr	= 0xFFFF		# SKIP
-	DR1_addr	= 0x24			# TDR
-	DR2_addr	= 0x28			# RDR
-		
-	[mmio.uart.0.reset]
-	SR1_reset	= 0x020000C0
-	SR2_reset	= 0x00			# SKIP
-	DR1_reset	= 0x00
-	DR2_reset	= 0x00
-	
-	[mmio.uart.0.flags]
-	TX_data_empty = {reg = "SR1", bit = 7}
-	RX_data_full  = {reg = "SR1", bit = 5}
-	TX_Complete   = {reg = "SR1", bit = 6}
-	RX_enable_ack = {reg = "SR1", bit = 22}
-	TX_enable_ack = {reg = "SR1", bit = 21}
-	
-    [mmio.uart.1]
-    [mmio.uart.1.config]
-    SR_count = 2
-    DR_count = 2
+uart_count	= 0								
+gpio_count 	= 0
+generic_count = 1							
 
-    [mmio.uart.1.addr]
-    base_addr = 0x40000000
-    SR1_addr = 0x0
-    SR2_addr = 0x0
-    DR1_addr = 0x0
-    DR2_addr = 0x0
 
-    [mmio.uart.1.reset]
+    [mmio.generic]
+    [mmio.generic.0]
+    [mmio.generic.0.config]
+    SR_count = 1
+    DR_count = 0
+
+    [mmio.generic.0.addr]
+    base_addr = 0x40064000
+    SR1_addr = 0x40064006
+
+    [mmio.generic.0.reset]
     SR1_reset = 0x0
-    SR2_reset = 0x0
-    DR1_reset = 0x0
-    DR2_reset = 0x0
 
-    [mmio.uart.1.flags]
-    TX_data_empty = {reg = "reg", bit = 0}
-    RX_data_full = {reg = "reg", bit = 0}
-    TX_Complete = {reg = "reg", bit = 0}
-    RX_enable_ack = {reg = "reg", bit = 0}
-    TX_enable_ack = {reg = "reg", bit = 0}
-
-    [mmio.gpio]
-    [mmio.gpio.0]
-    [mmio.gpio.0.config]
-    SR_count = 2
-    DR_count = 2
-
-    [mmio.gpio.0.addr]
-    base_addr = 0x40000000
-    SR1_addr = 0x0
-    SR2_addr = 0x0
-    DR1_addr = 0x0
-    DR2_addr = 0x0
-
-    [mmio.gpio.0.reset]
-    SR1_reset = 0x0
-    SR2_reset = 0x0
-    DR1_reset = 0x0
-    DR2_reset = 0x0
-
-    [mmio.gpio.0.flags]
-    Generic_Flag1 = {reg = "reg", bit = 0}
-    Generic_Flag2 = {reg = "reg", bit = 0}
-    Generic_Flag3 = {reg = "reg", bit = 0}
-
-    [mmio.gpio.1]
-    [mmio.gpio.1.config]
-    SR_count = 2
-    DR_count = 2
-
-    [mmio.gpio.1.addr]
-    base_addr = 0x40000000
-    SR1_addr = 0x0
-    SR2_addr = 0x0
-    DR1_addr = 0x0
-    DR2_addr = 0x0
-
-    [mmio.gpio.1.reset]
-    SR1_reset = 0x0
-    SR2_reset = 0x0
-    DR1_reset = 0x0
-    DR2_reset = 0x0
-
-    [mmio.gpio.1.flags]
-    Generic_Flag1 = {reg = "reg", bit = 0}
-    Generic_Flag2 = {reg = "reg", bit = 0}
-    Generic_Flag3 = {reg = "reg", bit = 0}
-
-    [mmio.gpio.2]
-    [mmio.gpio.2.config]
-    SR_count = 2
-    DR_count = 2
-
-    [mmio.gpio.2.addr]
-    base_addr = 0x40000000
-    SR1_addr = 0x0
-    SR2_addr = 0x0
-    DR1_addr = 0x0
-    DR2_addr = 0x0
-
-    [mmio.gpio.2.reset]
-    SR1_reset = 0x0
-    SR2_reset = 0x0
-    DR1_reset = 0x0
-    DR2_reset = 0x0
-
-    [mmio.gpio.2.flags]
-    Generic_Flag1 = {reg = "reg", bit = 0}
-    Generic_Flag2 = {reg = "reg", bit = 0}
-    Generic_Flag3 = {reg = "reg", bit = 0}
+    [mmio.generic.0.flags]
+    Generic_Flag1 = {reg = "SR1", bit = 4, val = 1, addr = "optional"}
+    Generic_Flag2 = {reg = "SR1", bit = 3, val = 1, addr = 0x19f2}
+    Generic_Flag3 = {reg = "SR1", bit = 5, val = 1, addr = "optional"}
+    Generic_Flag4 = {reg = "SR1", bit = 6, val = 1, addr = "optional"}
+    Generic_Flag5 = {reg = "SR1", bit = 2, val = 1, addr = 0x1aec}
+    Generic_Flag6 = {reg = "reg", bit = 0, val = 1, addr = "optional"}
+    
+    

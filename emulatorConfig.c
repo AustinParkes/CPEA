@@ -13,7 +13,7 @@
 #include "toml.h"
 
 // Read config file, parse emulator configurations, and configure emulator
-void emuConfig(uc_engine *uc, char *arm_code, char *arm_data, int code_size, int data_size){
+void emuConfig(uc_engine *uc, char *arm_code, int code_size){
  	
  	/***********************************
 		Parse Configuration File and Store configurations   
@@ -45,7 +45,7 @@ void emuConfig(uc_engine *uc, char *arm_code, char *arm_data, int code_size, int
     map_memory(uc);
     
     // Initialize flash memory with firmware (code and data)
-    flash_init(uc, arm_code, arm_data, code_size, data_size);
+    flash_init(uc, arm_code, code_size);
     
     // Init ARM Registers (includes SP, LR)
     // TODO: See if there is a more legitimate way to init SP.
@@ -60,7 +60,7 @@ void emuConfig(uc_engine *uc, char *arm_code, char *arm_data, int code_size, int
 	mmioConfig(uc, mmio);
        	     	    	            
     /*** Free Memory for config file ***/
-    free(root_table); 
+    toml_free(root_table); 
       
     printf("   - Complete\n\n");         
 }
@@ -77,7 +77,7 @@ toml_table_t* parseTOML(toml_table_t* root_table){
  	} 
  	
     /*
-    	TODO: Can probably get rid of this, but keep for now incase it's of use
+    	TODO: May keep these incase user wants to optionally enter their memory map in.
     	Extract values from memory map
     */
     
@@ -195,6 +195,8 @@ toml_table_t* parseTOML(toml_table_t* root_table){
     START = (uint32_t)entry.u.i; 
     */
     
+    
+    //TODO: See if we need this for ELF files. We would need for ending at particular points. 
  	// end of execution
     toml_datum_t end = toml_int_in(execution, "end");
     if (!end.ok){
@@ -203,22 +205,43 @@ toml_table_t* parseTOML(toml_table_t* root_table){
     END = (uint32_t)end.u.i;
     
     return mmio;
-
+    
 }
 
-
+// FIXME: Want to use smaller ranges if we can .. but then user needs to manually enter ranges unless we could automate somehow. 
 // TODO: Check if we can make ADDR and SIZE for FLASH/SRAM hardcoded to the ARM Cortex-M specification
 void map_memory(uc_engine *uc){
 
-	// CODE and SRAM regions mapped according to Cortex-M specifications. 
+    // TODO: Need to make a different variable to signify where firmware will start. It may not always start at 0x0,
+    //       but maybe at 0x0800 0000 for example. Keep CODE_ADDR for mem map, but need a FW start variable for where fw
+    //       exists virtually.
+	// CODE region for Cortex-M
 	CODE_ADDR = 0;
 	CODE_SIZE = 0x20000000;
+	
+	// SRAM region for Cortex-M
 	SRAM_ADDR = 0x20000000;	
 	SRAM_SIZE = 0x20000000;  
 
-	// MMIO range for all Cortex-M Devices
+	// MMIO region for Cortex-M
 	MMIO_ADDR = 0x40000000;
 	MMIO_SIZE = 0x20000000;
+
+    // External Ram region for Cortex-M
+    EXT_RAM_ADDR = 0x60000000;
+    EXT_RAM_SIZE = 0x40000000;
+    
+    // External Device region for Cortex-M
+    EXT_DEV_ADDR = 0xA0000000;
+    EXT_DEV_SIZE = 0x40000000;
+    
+    // Private Peripheral Bus region for Cortex-M
+    PRIV_BUS_ADDR = 0xE0000000;
+    PRIV_BUS_SIZE = 0x00100000;
+    
+    // Vendor-Specific memory region for Cortex-M
+    VENDOR_MEM_ADDR = 0xE0100000;
+    VENDOR_MEM_SIZE = 0x1ff00000;
 
 	// Map Code region
 	if (uc_mem_map(uc, CODE_ADDR, CODE_SIZE, UC_PROT_ALL)){
@@ -232,37 +255,43 @@ void map_memory(uc_engine *uc){
 		exit(1);	
 	}	
 		
-	// Map MMIO region 0x40000000 - 0x5FFFFFFF (Not exectuable)
+	// Map MMIO region
 	if (uc_mem_map(uc, MMIO_ADDR, MMIO_SIZE, UC_PROT_READ | UC_PROT_WRITE )){
 		printf("Failed to map MMIO region to memory. Quit\n");
 		exit(1);
 	}
 	
-	/* 
-		SANITY CHECK - See if we can read from a mapped region AND check if that region is filled with 0s 
-		INDEED, the mapped memory region is autofilled with 0s.
-	*/
+	// Map External RAM region
+	if (uc_mem_map(uc, EXT_RAM_ADDR, EXT_RAM_SIZE, UC_PROT_ALL)){
+		printf("Failed to map external ram region to memory. Quit\n");
+		exit(1);
+	}
 	
-	/*
-	uint32_t var1, var2, var3;
+	// Map External Device region
+	if (uc_mem_map(uc, EXT_DEV_ADDR, EXT_DEV_SIZE, UC_PROT_ALL)){
+		printf("Failed to map external device region to memory. Quit\n");
+		exit(1);
+	}	
 	
-	if (uc_mem_read(uc, 0x40000000, &var1, 4))
-		printf("Failed to read.\n");
-	if (uc_mem_read(uc, 0x40013800, &var2, 4))
-		printf("Failed to read.\n");
-	if (uc_mem_read(uc, 0x40013810, &var3, 4))
-		printf("Failed to read.\n");
-	printf("var1:%d\nvar2:%d\nvar3:%d\n", var1, var2, var3);
-	*/
+	// Map Private Peripheral bus
+	if (uc_mem_map(uc, PRIV_BUS_ADDR, PRIV_BUS_SIZE, UC_PROT_ALL)){
+		printf("Failed to map private peripheral bus region to memory. Quit\n");
+		exit(1);
+	}	
 	
+	// Map Vendor-specific memory
+	if (uc_mem_map(uc, VENDOR_MEM_ADDR, VENDOR_MEM_SIZE, UC_PROT_ALL)){
+		printf("Failed to map vendor-specific region to memory. Quit\n");
+		exit(1);
+	}		
 	
 }
 
-// TODO: Will need to write multiple 
+ 
 // Initialize flash memory (code and data)
-void flash_init(uc_engine *uc, char *arm_code, char *arm_data, int code_size, int data_size){
+void flash_init(uc_engine *uc, char *arm_code, int code_size){
 	
-	// Write code to flash!	
+	// Write fw code to flash!	
 	if (uc_mem_write(uc, CODE_ADDR, arm_code, code_size)){ 
 		printf("Failed to write code to memory. Quit\n");
 		exit(1);
@@ -270,13 +299,6 @@ void flash_init(uc_engine *uc, char *arm_code, char *arm_data, int code_size, in
 	free(arm_code);
 	arm_code = NULL;
 	
-	// Write data to flash!
-	if (uc_mem_write(uc, DATA_ADDR, arm_data, data_size)){ 
-		printf("Failed to write code to memory. Quit\n");
-		exit(1);
-	}
-	free(arm_data);
-	arm_data = NULL;
 }
 
 
@@ -309,17 +331,11 @@ void reg_init(uc_engine *uc){
 	r_r12 = 0x000C;    	// r12
 	SP = SP;      		// r13
 	LR = 0xffffffff;	// r14	Reset Value // TODO: See if this needs set. I think not.  
-
-
-	 
+ 
 }
 
 // Configure MMIO emulation.
-/* 
-	TODO TODO TODO: Fix all the potential bugs and memory problems since changing data structures. 					
-*/
 int mmioConfig(uc_engine *uc, toml_table_t* mmio){
-
 	
 	toml_table_t* periph;		// Ptr to peripheral table
 	toml_table_t* table_ptr;	// Ptr to module tables. e.g. config, addr, reset, flags
@@ -331,27 +347,26 @@ int mmioConfig(uc_engine *uc, toml_table_t* mmio){
 	int tab_i;					// Index to iterate through modules. e.g. config, addr, reset, flags
 	int SR_i;					// Status Register Index - Keeps track of which SR we are storing to.
 	int DR_i;					// Data Register Index - Keeps track of which DR we are storing to.
+	int init_i;                 // Index to initialize MMIO struct.
 	
-	char p_str[10];				// String of a peripheral
+	char p_str[20];				// String of a peripheral
 	int pid;					// Iterable Peripheral Index
 	int p_total;				// Total number of possible peripherals
 	
-	//enum periph_keys {config_key, addr_key, reset_key, flags_key};
 
-	const char periph_str[2][10] = {"uart", "gpio"};
+	const char periph_str[3][10] = {"uart", "gpio", "generic"};
 	p_total = sizeof(periph_str)/sizeof(periph_str[0]);
 
 	mod_count = 0;		
+    inst_i = 0;
 	
-	// These keep track of the address range for each peripheral
-	minPeriphaddr = 0xFFFFFFFF;
-	maxPeriphaddr = 0;					
-	 	 
- 	/*
- 		TODO: Allocate Space for all peripheral structures and modules
- 		1) Generate all at once? Tag IDs for each? 
- 	*/
- 		
+	// Init MMIO callback range.
+	minMMIOaddr = 0x40000000;
+	maxMMIOaddr = 0x5fffffff;
+	
+	// Will keep track of min/max reg addr for modules.
+	minPeriphaddr = 0xffffffff;
+	maxPeriphaddr = 0x0;					
  		   
     toml_table_t* mmio_count = toml_table_in(mmio, "count");
  	if (!mmio){
@@ -362,9 +377,9 @@ int mmioConfig(uc_engine *uc, toml_table_t* mmio){
  	struct_i=0;
  	for (periph_i=0; ;periph_i++){
  	
- 		// Get current peripheral & count
+ 		// Get current peripheral & count. Leave if none.
  		const char* periph_count = toml_key_in(mmio_count, periph_i);
- 		 if (!periph_count)
+ 		if (!periph_count)
  			break;
  			
  		// Get number of Peripheral modules
@@ -384,6 +399,7 @@ int mmioConfig(uc_engine *uc, toml_table_t* mmio){
 		}
     	
     	mod_count = mod_count + (int)num_mods.u.i;	// Get total number of peripheral modules for this periph
+
  		
  		// Get peripheral ID for struct.
  		for (pid=0; pid<=p_total; pid++){
@@ -412,7 +428,7 @@ int mmioConfig(uc_engine *uc, toml_table_t* mmio){
     		if (MMIO[struct_i] == NULL){
     			// TODO: Update message
     			printf("Periph struct memory not allocated for module%d\n", struct_i);
-    		}
+    		}	
     		
     		//printf("periph: %s\n", periph_count);
     		
@@ -423,6 +439,21 @@ int mmioConfig(uc_engine *uc, toml_table_t* mmio){
     		//printf("mod: %d\n", MMIO[struct_i]->modID);
     		MMIO[struct_i]->modCount = (int)num_mods.u.i;
     		//printf("modCount: %d\n", MMIO[struct_i]->modCount);  	
+    		   		
+    		// Initialize MMIO struct
+    		for (init_i=0; init_i<20; init_i++){
+    		    if (init_i < 2){
+    		        MMIO[struct_i]->DR_ADDR[init_i] = 0;
+    		        MMIO[struct_i]->DR_RESET[init_i] = 0;
+    		        MMIO[struct_i]->DR[init_i] = 0;      
+    		    }
+    		        
+    		    MMIO[struct_i]->SR_ADDR[init_i] = 0;
+    		    MMIO[struct_i]->SR_RESET[init_i] = 0;
+    		    MMIO[struct_i]->SR[init_i] = 0;   		    
+    		}    		
+    		MMIO[struct_i]->SR_INST = 0;
+
     		
 			/* Add config, addr, reset, flags to MMIO struct */
 			
@@ -569,12 +600,16 @@ void parseKeys(char* periph_str, const char* module_str, toml_table_t* table_ptr
 					MMIO[mod_i]->DR_ADDR[DR_i] = data;
 					DR_i++;
 				} 
-					
+				
+ 
 				// Keep track of lowest and highest addr.
 				if (data < minPeriphaddr)
-					minPeriphaddr = data;					
+					minPeriphaddr = data;
+					if (maxPeriphaddr == 0)
+					    maxPeriphaddr = data;					
 				else if (data > maxPeriphaddr)
-					maxPeriphaddr = data;
+					maxPeriphaddr = data;					
+	
 			}
 				
  		}
@@ -626,6 +661,7 @@ void parseKeys(char* periph_str, const char* module_str, toml_table_t* table_ptr
  	else
     	error("Trying to access a module table that doesn't exist.");  	
  	
+ 
  	// Get address range for this module
  	MMIO[mod_i]->minAddr = minPeriphaddr;
  	MMIO[mod_i]->maxAddr = maxPeriphaddr;
@@ -636,11 +672,16 @@ int setFlags(uc_engine *uc, toml_table_t* flag_tab, int mod_i){
 	int flag_i;					// SR Flag Index
 	int SR_i;					// String Index for Status Registers
 	int flag_bit;				// Bit location that flag belongs to
+	int flag_val;               // Value of SR bit user chose (optional)
+	uint32_t flag_addr;         // Address location of SR access (optional)
 	const char* flag_name;		// Name of current flag
 	const char* flag_reg;		// Name of register flag belongs to
 	toml_table_t* flag_ptr;		// ptr to flag table
-	toml_datum_t flag_key;		// Holds a key value from flag table
+	toml_datum_t reg_str;		// Holds register string from flag table
+	toml_datum_t flag_int;		// Holds an int value from flag table
+	toml_datum_t addr_str;      // Holds "optional" string from address value.
 	
+	// Access upper/lower case SR string
 	enum letter_case {up_case, low_case};
 	
 	// TODO: Only doing up to 8 str for now. Find better number in future	
@@ -649,9 +690,8 @@ int setFlags(uc_engine *uc, toml_table_t* flag_tab, int mod_i){
 	{{"sr1"},{"sr2"},{"sr3"},{"sr4"},{"sr5"},{"sr6"},{"sr7"},{"sr8"}}
 	};
 	
-	
+	// Loop the "flags" table for current peripheral
 	for (flag_i = 0; ; flag_i++){
-	
  		// Check if table exists and leave when we finish.    
     	flag_name = toml_key_in(flag_tab, flag_i);
     	if (!flag_name) 
@@ -663,46 +703,108 @@ int setFlags(uc_engine *uc, toml_table_t* flag_tab, int mod_i){
  			error("Failed to get Flag table: %s", flag_name);
  			
  		// Get the register the flag belongs to 
-    	flag_key = toml_string_in(flag_ptr, "reg");
-    	if (!flag_key.ok)
+    	reg_str = toml_string_in(flag_ptr, "reg");
+    	if (!reg_str.ok)
     		error("Failed to get flag register from: %s", flag_name);
-    	flag_reg = flag_key.u.s;
-		    		
+    	flag_reg = reg_str.u.s;
+        		
 		// Skip flag and exit.    		 
-    	if (!strcmp(flag_reg, "reg"))
-    		return 0;
-		
- 		// Get the bit location the flag belongs to		
-		flag_key = toml_int_in(flag_ptr, "bit");
-    	if (!flag_key.ok)
+    	if (!strcmp(flag_reg, "reg")){
+            // Need to free string associated with toml_datum_t structure.
+			free(reg_str.u.s);
+    		continue;
+    	}	
+   		
+ 		// Get the bit location the flag belongs to	(must be 0 - 31)	
+		flag_int = toml_int_in(flag_ptr, "bit");
+    	if (!flag_int.ok)
     		error("Failed to get flag bit location from: %s", flag_name);	
-    	flag_bit = flag_key.u.i;
+    	flag_bit = flag_int.u.i;
     	
-    	/* SANITY CHECK - Check register and bit */
-    	//printf("reg: %s\nbit: %d\n",flag_reg, flag_bit);
+    	if (flag_bit < 0 || flag_bit > 31){
+    	    printf("SR bit value must be between 0-31. You put %d at %s", flag_bit, flag_name);
+    	    exit(1);
+    	}
     	
-    	 
-    	// Write current flag to correct SR   	
+    	// Get the flag value (must be 1 or 0)		
+		flag_int = toml_int_in(flag_ptr, "val");
+    	if (!flag_int.ok)
+    		error("Failed to get flag value from: ", flag_name);	
+    	flag_val = flag_int.u.i;
+    	   	
+    	if (flag_val != 0 && flag_val != 1){
+    	    printf("SR flag value must be '0' or '1'. You put %d at %s.", flag_val, flag_name);
+    	    exit(1);
+    	}    	 	
+   	    
+    	// Loop through list of possible reg names and check for matches in flag table.   	
     	for (SR_i=0; SR_i<8; SR_i++){	
     		if (!strcmp(flag_reg, reg_name[up_case][SR_i]) || !strcmp(flag_reg, reg_name[low_case][SR_i])){
-    			// Write to the variable				
-    			SET_BIT(MMIO[mod_i]->SR[SR_i], flag_bit);
-    			// Commit to emulator memory				
-    			if (uc_mem_write(uc, MMIO[mod_i]->SR_ADDR[SR_i], &MMIO[mod_i]->SR[SR_i], 4)){
-					printf("Failed to set bit for SR1 at module %d. Quit\n", mod_i);
-					exit(1);
-				}
-				break;   // Break if match found.	  						
+    		   
+    		   	// Check if user wants to save a SR instance, if not then just commit to memory. 
+		        flag_int = toml_int_in(flag_ptr, "addr");
+		        
+		        // Instance doesn't exist. Commit SR to memory. 
+    	        if (!flag_int.ok){
+                    addr_str = toml_string_in(flag_ptr, "addr");
+                    if(!addr_str.ok)
+                        error("Failed to get addr value from: ", flag_name); 
+                    else{
+                        
+     			        // Set/Clear SR bit and commit to memory. 
+    			        if (flag_val == 1)				
+    			            SET_BIT(MMIO[mod_i]->SR[SR_i], flag_bit);
+    			    
+    			        // Explicitly clear incase reset value is '1' for this bit.    
+    			        else
+    			            CLEAR_BIT(MMIO[mod_i]->SR[SR_i], flag_bit);    
+    			    				
+    			        if (uc_mem_write(uc, MMIO[mod_i]->SR_ADDR[SR_i], &MMIO[mod_i]->SR[SR_i], 4)){
+					        printf("Failed to set bit for SR at module %d. Quit\n", mod_i);
+					        exit(1);
+				        } 
+				        
+				        // Free for TOML. 
+				        free(addr_str.u.s);                      
+                    }                    
+    	        }
+    	
+    	        // Instance exists, so save it for later. 
+    	        else{
+    	            // Allocate space for SR instance.
+    	            SR_INSTANCE[inst_i] = (INST_handle *)malloc(sizeof(INST_handle));
+    		        if (SR_INSTANCE[inst_i] == NULL){
+    		            // TODO: update message to say which periph&module.
+    			        printf("Failed to allocate SR instance for %s", flag_name);
+    			        exit(1);
+    		        }
+    		        
+    		        // There is a SR instance for this module. 
+    		        MMIO[mod_i]->SR_INST = 1;
+    		        
+    		        // Save SR instance		
+    	            flag_addr = flag_int.u.i;
+    	            SR_INSTANCE[inst_i]->PROG_ADDR = flag_addr;
+    	            SR_INSTANCE[inst_i]->BIT = flag_bit;
+    	            SR_INSTANCE[inst_i]->VAL = flag_val;
+    	                	            
+    	            // Get ready for next allocation.
+    	            inst_i++;       	     
+    	        }
+    		   		
+                free(reg_str.u.s);
+				break;   	  						
     		}
     		
     		// Incorrect register naming format	
-    		else{
-    			if (SR_i == 7)
-    				error("Please give \"reg\" name in formats SRx or srx. You gave: ", flag_reg, "");
+    		else{  		
+    			if (SR_i == 7){
+    			    free(reg_str.u.s);
+    				error("Please give \"reg\" name in formats SR(1-8) or sr(1-8). You gave: ", flag_reg, "");
+    			}
     		}	
     	}
-    	
-		
+
 	}	
 
 	return 0;

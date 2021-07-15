@@ -63,35 +63,99 @@ Testing Emulator with Real Firmware
                
          Raw Binary 
             -> Will require manual intervention from user to provide start/stop points, processor state,
-              memory map, etc.
+              memory map, etc. 
 
 
-   // Things TODO in order for FW execution to work
+   // Things TODO in order for FW execution to work and future implementations
    TODO
-
-      1) [ ] Init SP/FP given ELF file (ARM ELF for Linux and barebones MCU) and Raw Binary
-                - Need to ELF file's code and SRAM regions for this to work.
-      2) [x] Map in memory the generic flash/SRAM regions for Cortex-M devices (so it doesn't need to be automated from ELF. Reduces complexity)
-      3) [ ] Read multiple data sections from ELF and store them all. 
-      4) [ ] For Stripped ELFs/Raw binaries, Need an automated way to read code and data sections into emulator by having user provide the 
-             address and size of these sections. 
-    
-      1) Init SP/FP given ELF file (ARM ELF for Linux and barebones MCU) and Raw Binary
-      2) 
-
    
+      Plain FW Execution (No peripheral involvement)
+      1) [p] Init SP/FP given ELF file (ARM ELF for Linux and barebones MCU) and Raw Binary
+                - Need to test with an actual extracted Raw Binary.
+      2) [x] Map in entire memory region for Cortex-M devices (so it doesn't need to be automated from ELF. Reduces complexity)
+      3) [x] Read multiple data sections from ELF and store them all. 
+      4) [ ] For Stripped ELFs/Raw binaries, Need an automated way to read code and data sections into emulator by having user provide the 
+             address and size of these sections.
+      5) [ ] Need to give user option to start/stop ELFs/Raw Binaries from anywhere, instead of the default reset handler.
+      6) [x] Need to let user set SR bits at certain addresses that SRs are accessed.
+             (SR ideal bit values can change over course of FW execution.)
+             Can implement this as callback for 1) Every instruction execution 2) Every mapped MMIO access
+             Bug Checks             
+      7) [ ] Allow user to set starting address of FW. Currently assumed to start at 0, but could start at 0x0800 0000 for example.
+             FW will reference data according to where it's located virtually, so need to account for this.  
+             See map_memory() and flash_init().
+      8) [ ] Consider scenarios where memory region permissions might change in FW. uc_mem_protect() is able 
+             to change memory region protections.
+      9) [IMPORTANT] Need to get past svc calls. Unicorn sees it has an unhandled CPU exception.
+                     "Failed on uc_emu_start() with error returned 21: Unhandled CPU exception (UC_ERR_EXCEPTION)"
+                     
+                         
+      Interrupts
+      1) [ ] Find how to detect which interrupts are enabled in FW via NVIC or vector table.
+      2) [ ] Create an interrupt firing strategy for the interrupts that are enabled.         
+   
+      Debugging
+      1) [ ] Find a way for user to step through code line by line. (GDB stubs an option?)
+             Want something to work for ELFs, Raw Binaries, etc.
+      
+      Automation
+      1) [x] Implement "Generic" peripherals with generic flags
+      2) [x] Add option for user to change polarity of a SR bit so they can set default
+             value to '0' or '1' (observed that status bit can be checked to be 0 or 1).
+             Can add a "Value =" key, for which '0' and '1' are the only values. 
+      3) [ ] Add option for user to specify the SR access address that they want the value to take effect at.
+             - Automate from python: Add to inline table
+             - Parse in C: Need to set SR values in callback when address is accessed.
+             Could infer acceptable values for SR bits for polling scenarios, but there may be other scenarios where instead of polling (hanging),
+             FW could instead crash upon an incorrect SR bit. Therefore, will have user manually specify bits at certain addresses for this reason. 
+      4) [ ] Add a count for number of generic flags the user may want to set for any given peripheral.        
+
+      Misc
+      1) [ ] Find if uc_mem_map() allocates space in host memory. Use valgrind to check.      
+                              
+      Bugs (or potential problems)
+      1) [x] Memory Leak somewhere related to TOML.
+      2) [x] Stack Smashing error in mmioConfig().
+      3) [x] SR "bit" value in config isn't confined to SR limits. Can be any number.
+      4) [x] Init registers in MMIO struct to 0, perhaps other MMIO members as well. 
+      5) [x] Get min/max addr for each module in parseKeys(). Need it for determining which peripheral we've accessed. 
+      6) [x] memory leak related to the root toml table
+                    
    // Things Completed from list above
    Done   
-      1) 
-
+      FW Execution
+      1) Init SP/FP given ELF file. (Read address 0 for SP init.)
 	  2) Map in memory the generic flash/SRAM regions for Cortex-M devices (so it doesn't need to be automated from ELF. Reduces complexity) 
-
+      3) Read multiple data sections from ELF and store them all. 
+         (Reading LOAD program headers into single firmware file)
+      6) User can set SR bits at specific program locations. Checked on MMIO callbacks. 
+         These are called SR instances. 
+           
+      Interrupts
+      
+      Debugging
+      
+      Automation     
+      1) Added to Python script and support for parsing it in C program. 
+      2) "val" key added to allow '0' or '1' as the bit value.
+      
+      Bugs   
+      1) Wasn't freeing string associated with toml_datum_t structure, which TOML requires.
+         Was also overwriting the union associated with the structure.         
+      2) Hadn't allocated enough space in p_str, so strcat(p_str, "_count") was going out of bounds.    
+      3) Made SR bit boundaries between 0-31. Previously, could have been anything.
+      4) Initialized MMIO struct with 0s.
+      5) Have new min/max variables to correctly locate accessed modules in callbacks. 
+      6) Needed to use toml_free() instead of free() to free the root table. 
+      
    Queries
       1) [IMPORTANT] Does the memory map have to be specific to MCU? Or can we make it expand the range specified for ARM Cortex-M MCUs. 
          See [mem_map] in emulatorConfig.toml as example.
          Is there a generic Cortex-M manual for all Cortex-M devices? Probably, not. Can read them individually though. 
       2) [IMPORTANT] How will we handle Raw binaries and stripped ELF files? 
-         Can handle ELF files with symbols first, then move on to the latter.    
+         Stripped ELF files should still have LOAD program headers, so they'd be the same as 
+         non-stripped ELFs. Raw binaries might be the same as the output we get from extracting
+         LOAD sections from the ELF... so might be finished on that front. Just need to double check.     
 
 
 

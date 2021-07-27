@@ -41,15 +41,16 @@ Code Referenced or Used
 
 Other References
 ----------------
-(For defining Flash and SRAM memory map for Cortex-M Devices)
-1) Cortex-M0+ Generic User Guide [M0+ Memory Model]https://developer.arm.com/documentation/dui0662/b/The-Cortex-M0--Processor/Memory-model?lang=en
-2) Cortex-M3 Generic User Guide [M3 Memory Model]https://developer.arm.com/documentation/dui0552/a/the-cortex-m3-processor/memory-model
-3) Cortex-M4 Generic User Guide [M4 Memory Model]https://developer.arm.com/documentation/dui0553/latest/
-4) Cortex-M7 Generic User Guide [M7 Memory Model]https://developer.arm.com/documentation/dui0646/c/the-cortex-m7-processor/memory-model
-5) Cortex-M23 Generic User Guide [M23 Memory Model]https://developer.arm.com/documentation/dui1095/a/The-Cortex-M23-Processor/Memory-model
-6) Cortex-M33 Generic User Guide [M33 Memory Model]https://developer.arm.com/documentation/100235/0100/The-Cortex-M33-Processor/Memory-model
-7) Cortex-M55 Generic User Guide [M55 Memory Model]https://developer.arm.com/documentation/101273/r0p2/The-Cortex-M55-Processor--Reference-Material/Memory-model
+(For defining generic memory map for ARM cortex-M)
+1) ARM Limited. ARM®v7-M Architecture Reference Manual, chapter B3.1.
+(For finding NVIC mapped registers in the SCS)
+2) ARM Limited. ARM®v7-M Architecture Reference Manual, chapter B3.2.
 
 (For Loading emulator FW from ELF)
 1) TIS ELF Specification [ELF Format]https://refspecs.linuxfoundation.org/elf/elf.pdf
+
+(For ARM exceptions and interrupts)
+1) Exception Entry and Return [Cortex-M3 User Guide]https://developer.arm.com/documentation/dui0552/a/the-cortex-m3-processor/exception-model/exception-entry-and-return
+2) ARM and Thumb Mode [ARM-Thumb Modes]https://www.embedded.com/introduction-to-arm-thumb/
+
 

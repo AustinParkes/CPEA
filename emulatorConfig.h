@@ -12,7 +12,8 @@ int mmioConfig();				// Configure peripheral emulation.
 int setFlags();					// Sets the configured status register values.
 void parseKeys();				// Gathers key data and stores it.
 
-#define MAX_MMIO 16				// TODO: Find a better max number (16?)
+#define MAX_MMIO 16				// TODO: Find an appropriate max number (16?)
+#define MAX_SR 20               // TODO: Find an appropriate max number
 #define MAX_INST 1000           // TODO: Find better max number for saved SR instances?
 
 // Set kth bit in a register
@@ -57,7 +58,23 @@ uint32_t FP;            // r11
 uint32_t r_r12;         // r12
 uint32_t SP;            // r13
 uint32_t LR;            // r14
-uint32_t PC;            // r15 Used to check PC periodically.
+uint32_t PC;            // r15
+
+uint32_t CPSR;          // Current Program Status Register
+uint32_t CONTROL;       // CONTROL Register for processor modes
+
+/* Interrupts */
+uc_hook exit_handle;    // Handle for exiting interrupt handlers
+int INTR_EN;            // Interrupt firing enabled/disabled for emulator
+int VToffset;           // Vector Table offset (Default to 0)
+int exc_return;         // Keeps the exc_return value
+
+// Remembers processor mode to return from handlers
+typedef enum proc_mode{
+    ARM = 0,
+    Thumb
+} proc_mode;
+proc_mode mode;
 
 /*******************/
 /*** MMIO Config ***/
@@ -74,10 +91,13 @@ uint32_t maxMMIOaddr;
 uint32_t minPeriphaddr;
 uint32_t maxPeriphaddr;
 
-// MMIO Callback Declarations 
-int pre_read_MMIO();   // Before an MMIO register is read
-int post_read_MMIO();  // After an MMIO register is read
+// Callback Declarations 
+int pre_read_MMIO();    // Before an MMIO register is read
+int post_read_MMIO();   // After an MMIO register is read
 void write_MMIO();      // After an MMIO register is written to
+void enter_SVC();       // Callback to enter SVC handler  
+void exit_intr();       // Callback for leaving interrupt handlers  
+
 
 // Peripherals and their corresponding ID to determine which structures belong to which periph.
 enum periphID {uartID, gpioID, genericID};
@@ -99,15 +119,15 @@ typedef struct MMIO{
 
     uint32_t BASE_ADDR;
 	
-    uint32_t SR_ADDR[20];                   // TODO: Find a reasonable number for possible # of SR addresses
+    uint32_t SR_ADDR[MAX_SR];                   // TODO: Find a reasonable number for possible # of SR addresses
     uint32_t DR_ADDR[2];					
 		
     // Reset values to init memory with		
-    uint32_t SR_RESET[20];                  // TODO: Same as above
+    uint32_t SR_RESET[MAX_SR];                  // TODO: Same as above
     uint32_t DR_RESET[2];
 
     // UART regs to temporarily hold values	
-    uint32_t SR[20];                        // TODO: Same as above above
+    uint32_t SR[MAX_SR];                        // TODO: Same as above above
     uint32_t DR[2];
 	
 	// Instance flag to see if instance exists for this module. 

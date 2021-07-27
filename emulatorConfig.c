@@ -241,7 +241,7 @@ void map_memory(uc_engine *uc){
     
     // Vendor-Specific memory region for Cortex-M
     VENDOR_MEM_ADDR = 0xE0100000;
-    VENDOR_MEM_SIZE = 0x1ff00000;
+    VENDOR_MEM_SIZE = 0x1ff00000; // 0x1ff00000
 
 	// Map Code region
 	if (uc_mem_map(uc, CODE_ADDR, CODE_SIZE, UC_PROT_ALL)){
@@ -268,19 +268,19 @@ void map_memory(uc_engine *uc){
 	}
 	
 	// Map External Device region
-	if (uc_mem_map(uc, EXT_DEV_ADDR, EXT_DEV_SIZE, UC_PROT_ALL)){
+	if (uc_mem_map(uc, EXT_DEV_ADDR, EXT_DEV_SIZE, UC_PROT_READ | UC_PROT_WRITE)){
 		printf("Failed to map external device region to memory. Quit\n");
 		exit(1);
 	}	
 	
 	// Map Private Peripheral bus
-	if (uc_mem_map(uc, PRIV_BUS_ADDR, PRIV_BUS_SIZE, UC_PROT_ALL)){
+	if (uc_mem_map(uc, PRIV_BUS_ADDR, PRIV_BUS_SIZE, UC_PROT_READ | UC_PROT_WRITE)){
 		printf("Failed to map private peripheral bus region to memory. Quit\n");
 		exit(1);
 	}	
 	
 	// Map Vendor-specific memory
-	if (uc_mem_map(uc, VENDOR_MEM_ADDR, VENDOR_MEM_SIZE, UC_PROT_ALL)){
+	if (uc_mem_map(uc, VENDOR_MEM_ADDR, VENDOR_MEM_SIZE, UC_PROT_READ | UC_PROT_WRITE)){
 		printf("Failed to map vendor-specific region to memory. Quit\n");
 		exit(1);
 	}		

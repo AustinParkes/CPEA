@@ -36,7 +36,6 @@ uart_count	= 0
 gpio_count 	= 0
 generic_count = 1							
 
-
     [mmio.generic]
     [mmio.generic.0]
     [mmio.generic.0.config]
@@ -56,6 +55,10 @@ generic_count = 1
     Generic_Flag3 = {reg = "SR1", bit = 5, val = 1, addr = "optional"}
     Generic_Flag4 = {reg = "SR1", bit = 6, val = 1, addr = "optional"}
     Generic_Flag5 = {reg = "SR1", bit = 2, val = 1, addr = 0x1aec}
-    Generic_Flag6 = {reg = "reg", bit = 0, val = 1, addr = "optional"}
-    
+    Generic_Flag6 = {reg = "reg", bit = 3, val = 0, addr = 0x1c5c}
+
+
+
+
+
     

@@ -109,7 +109,6 @@ int main(int argc, char **argv, char **envp)
 	//       Probably scenario for fuzzing, when we want to re-execute certain sections. 
     while(1){
         printf("START:0x%x\n", START);
-
 	    err=uc_emu_start(uc, START, 0xffffffff, 0, 0);
 	    if (err){
 	        // Check for fetch on non-exectuable memory
@@ -117,8 +116,9 @@ int main(int argc, char **argv, char **envp)
 	            // Check for return from inturrupt handler
 	            if ((exc_return & 0xffffffe0) == 0xffffffe0){
 	                exc_return = 0;             // Reset EXC_RETURN
-	                 
-	                // Check which mode we need to return to
+	                	              	                 
+	                // Check which mode we need to return to. 
+	                uc_reg_read(uc, UC_ARM_REG_PC, &PC);
 	                if (mode == ARM)
 	                    START = PC;                 // Begin execution from where interrupt left off
 	                else if (mode == Thumb)
@@ -343,8 +343,7 @@ static MMIO_handle* findMod(uint64_t address, MMIO_handle** periph){
 // Callback for entering Exception Handlers
 // TODO: Rename this from SVC to something more generic to exceptions
 void enter_SVC(uc_engine *uc, uint32_t intno, void *user_data){
-    
-    //proc_mode mode;       // Remembers if in ARM or Thumb mode before handler called
+
     
     // Register IDs for stacking
     uint32_t regID[8] = {UC_ARM_REG_R0, UC_ARM_REG_R1, UC_ARM_REG_R2 ,UC_ARM_REG_R3,
@@ -387,6 +386,7 @@ void enter_SVC(uc_engine *uc, uint32_t intno, void *user_data){
             SP = SP + 4;
         }
         
+        // TODO: See if modifying PC is a problem when emulator isn't stopped. Read that it isn't allowed. 
         // Get SVC Handler address and write to PC
         uc_mem_read(uc, VToffset + 0x2c, &handler_addr, 4);
         printf("SVC Handler: 0x%x\n", handler_addr);     
@@ -394,19 +394,16 @@ void enter_SVC(uc_engine *uc, uint32_t intno, void *user_data){
         
                                          
     }
+    else{
+        printf("Exception Raised other than SVC: %u", intno);
+        exit(1);
+    }
     
 }
 
 
 void exit_intr(uc_engine *uc, uint64_t address, uint32_t size, void *user_data){
-    /*
-    uc_err err;
-    err = uc_emu_stop(uc);
-    if (err){
-        printf("Failed on uc_emu_start() with error returned %u: %s\n", err, uc_strerror(err));
-		exit(1);
-    }
-    */
+
     uc_reg_read(uc, UC_ARM_REG_PC, &PC);
     uc_reg_read(uc, UC_ARM_REG_LR, &LR);
     printf("exit_intr callback\nPC:0x%x\nLR:0x%x\n", PC, LR);
@@ -438,8 +435,8 @@ void exit_intr(uc_engine *uc, uint64_t address, uint32_t size, void *user_data){
         uc_reg_write(uc, UC_ARM_REG_SP, &SP);       // Update SP
         
         // SANITY CHECK: Check if PC is correct from automatic interrupt stacking/unstacking.                                             
-        uc_reg_read(uc, UC_ARM_REG_PC, &PC);
-        printf("PPCC:0x%x\n", PC);
+        //uc_reg_read(uc, UC_ARM_REG_PC, &PC);
+        //printf("PPCC:0x%x\n", PC);
         
 
         // Enable Interrupt Firing

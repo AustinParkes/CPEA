@@ -61,8 +61,7 @@ uint32_t LR;            // r14
 uint32_t PC;            // r15
 
 uint32_t CPSR;          // Current Program Status Register
-uint32_t CONTROL;       // CONTROL Register for processor modes
-
+uint32_t CONTROL;       // CONTROL Register
 /* Interrupts */
 uc_hook exit_handle;    // Handle for exiting interrupt handlers
 int INTR_EN;            // Interrupt firing enabled/disabled for emulator

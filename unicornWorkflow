@@ -95,22 +95,24 @@ Testing Emulator with Real Firmware
                      -> See interrupts section for notes.  
                                                                   
       Interrupts
-      1) [ ] Need to support SVC (and perhaps create an interrupt handling strategy in the meantime)      
-                Callback exists for tracing interrupts. (Just need interrupt number)
-                May need to give generic interrupt support regardless. (to support future interrupts)
-                   - Automatic stacking/unstacking of r0-r3, r12, LR, PC, PSP (this changes with FPU. Assuming no FPU for now)                      
-                   - Updating active/inactive interrupts (NVIC or other means)
-                   - LR determines if data should unstack out of MSP or PSP. (chp 23.1.2 in Yifeng Zhu)
-                   - Ensure other interrupts can't be called during SVC handler. 
-                   - Need to read from the NVIC after certain instructions to ensure they set the flags in ISER, ICER, etc. 
-                   -                   
-                                    
+      1) [ ] Need to support SVC (and perhaps create an interrupt handling strategy in the meantime)  
+                // Need to read ARM manual on how stacking/unstacking via hardware AND software typically works for interrupts    
+                [x] Issue callback for exceptions and determine if it's SVC or not
+                [x] Automatic stacking/unstacking of r0-r3, r12, LR, PC, PSP
+                [x] Leave SVC by using callback for PC trying to execute @ EXC_RETURN value (non-exectuable memory)
+                [x] Set/Clear active/inactive interrupt firing                     
+                [ ] EXC_RETURN determines if we unstack out of MSP or PSP. Need to support this. (chp 21.1.2 in Yifeng Zhu or ARM manual)
+                When SVC returns, it gets stuck in infinite loop. Is there a timer interrupt to perform some sort of scheduling? 
+                
+                                                    
       2) [ ] Find how to detect which interrupts are enabled in FW via NVIC or vector table.
                 Can issue a callback for anytime ISER/ICER are accessed. 
                 Need to emulate these registers to some degree and keep a list of enabled interrupts
-                based on how ISER and ICER are written to.   
+                based on how ISER and ICER are written to. P2IM used some NVIC_PENDING register to help fire? look into it  
                                     
       3) [ ] Create an interrupt firing strategy for the interrupts that are enabled. 
+      
+      Operating Systems
       
 
       Debugging
@@ -151,6 +153,8 @@ Testing Emulator with Real Firmware
          These are called SR instances. 
            
       Interrupts
+      
+      Operating Systems
       
       Debugging
       
@@ -197,20 +201,36 @@ Testing Emulator with Real Firmware
 Handling SVC calls
 NOTE: How does P2IM handle OS level FW 
 
-
    Entering SVC
    1) Need to push r0-r3, r12, LR, PC, and PSR onto stack from callback. 
       Handler may use these from stack, so need to save in emulator stack.
       Reference - (R0 will be lowest addr in stack, PSR will be highest addr in stack)               
    2) Disable Interrupts from happening when in SVC handler. 
-   3) Jump to SVC handler address
+   3) Save whether we were in ARM or Thumb mode before handler, so we know which mode to use when we return. 
+   4) Jump to SVC handler address
    
      
-   Leaving SVC      
-   1) Need to unstack r0-r3, r12, LR, PC, and PSR. (Includes setting the PC to the next instruction after SVC call)
-      Can make a new callback within enter_SVC() that checks if upper 27 bits of PC are '1' to indicate EXC_RETURN.
-      If so, then we can wrap up and leave handler. 
-          
+   Leaving SVC
+   1) Make a callback that triggers when we try to execute a non-executable portion of memory.
+      This is to catch when PC is set to the EXC_RETURN value.
+      This will raise an error and force us out of uc_start_emu()
+            
+   2) Need to unstack r0-r3, r12, LR, PC, and PSR. (Includes setting the PC to the next instruction after SVC call)
+      How to know when to leave handler and unstack?
+
+   3) Make a loop around uc_start_emu() so we can continue execution or exit program depending on the exit reason.
+      We continue execution if the error is because of EXC_RETURN.
+
+   4) Enable Interrupts when leaving. Will use callback method mentioned above.
+    
+   (Based on EXC_RETURN value) (Need CONTROL reg to do steps below)           
+   5) Determine whether to switch to MSP or PSP depending on LR value. (Research how PSP and MSP work in detail)
+   6) Determine if stack frame includes FPU registers.
+      
+      
+      
+       
+      // Additional notes that ended up to the solutions above    
       Problem, PC doesn't update with EXC_RETURN in the Code callback.
       1) Can read the opcode of each PC addr in handlers, search for BX opcode, then search for the register we are branching to,
          then search for EXC_RETURN value. (Decode opcode to know when to return from handler)
@@ -236,10 +256,7 @@ NOTE: How does P2IM handle OS level FW
              
             
           
-   2) Enable Interrupts when leaving. Will use callback method mentioned above. 
-      (Based on EXC_RETURN value) (Need CONTROL reg to do steps below)           
-   3) Determine whether to switch to MSP or PSP depending on LR value. (Research how PSP and MSP work in detail)
-   4) Determine if stack frame includes FPU registers.
+
 
 /* Compiling the Emulators */
 // TODO: Eventually want to make my added files apart of the unicorn library

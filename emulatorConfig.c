@@ -40,6 +40,9 @@ void emuConfig(uc_engine *uc, char *arm_code, int code_size){
     /***********************************
 		General Emulator Configurations.   
     ************************************/
+    
+    // Init some global variables
+    glb_var_init(); 
      
     // Memory Map for Emulator
     map_memory(uc);
@@ -811,6 +814,11 @@ int setFlags(uc_engine *uc, toml_table_t* flag_tab, int mod_i){
 
 }
 
+void glb_var_init(){
+
+    bbl_cnt=0;
+    
+}
 
 void error(const char *msg, const char* msg1, const char* msg2)
 {

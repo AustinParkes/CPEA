@@ -1,17 +1,14 @@
 Configurable Peripheral Emulator for ARM
 ========================================
 
-TODO
-----
+Big TODOs
+---------
 
-1) Testing Firmware
-   - Research firmware samples to test
-   - When testing, find out
-      1) What needs to be added to emulator
-      2) What needs to be added to configuration
-      3) What can we automate to make user's life easier
-           
-2) Add some debugging option for following execution of code (is gdb an option?)  
+1) Integrate Unique Code with QEMU.
+
+2) Debug Interface 
+
+3) Fuzzing Framework
       
       
 DONE
@@ -25,7 +22,15 @@ DONE
    
 3) Configuration
    - Parses emulatorConfig.toml and stores to appropriate data structure/emulator memory   
-         
+
+4) SVC calls and Interrupt Firing (Buggy)
+
+PROBLEMS
+--------
+
+1) Don't switch SP context to MSP or PSP when unstacking.
+
+2) Many meticulous hardware pieces missing that QEMU should already have.        
 
 Projects Referenced or Used
 ---------------------------

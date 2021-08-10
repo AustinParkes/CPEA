@@ -1,0 +1,342 @@
+/* Emulating Firmware */
+Write a Unicorn program that executes a firmware
+   Memory Mapping
+      - ARM defines a standardized address space of 4GB
+         - Code area starts at 0x00000000 and aliases 0x08000000 (routine at 0x080016DC and be accessed from 0x000016DC)
+            - Includes SP, Reset, Vector Table
+            -> Refer to Ghidra/Radare2 to get address ranges for now. May be able to automate this later
+         - MMIO ranges 0x40000000 - 0x5fffffff 
+         - Stack / Heap (0x200xx000 - 0x20000000)
+         	- Resides in SRAM where .data (VMA) and .bss are
+         - 	
+         	
+   MMIO Callbacks 
+      - // TODO: Document how this is done. 
+   
+   User Configurations
+      - Think about what needs to be configured by the user specifically to configure their emulator
+      Peripherals
+         -> User gives
+            1) Give address of a peripheral (e.g. USART1)
+            2) Give the register address a particular bit functionality (e.g. USART1->CR1 mapped to USART1 enable)
+            3) Give the specific bit in that register that triggers that functionality
+            
+            - Registers can be 8 bit, 32 bit, other? (check for 16 bit registers ... just keep reading on other periphs)
+               - How do we emulate for 8 bit registers? (How does fw interact with 8 bit)
+                  - I want to know if we can keep 32 bit or if we need to have two different modes for 8 bit and 32 bit
+                     (May very well need an 8 bit mode.)
+                     - How do 32 bit UARTs compare to each other and how do 8 bit  UARTS compare to each other
+
+
+
+/* Firmware Testing */                     
+Testing Emulator with Real Firmware
+   Researching Firmware to Test
+      - FW details
+         - Should allow ELF or Raw Binary
+         - Should be for ARM Cortex-M devices. (for now)        
+      - Where to find FW?
+	     - Find FW that other papers tested 
+	        -> Find all the papers that Austin sent last summer                  
+		 - How did other papers find FW?
+		    - Unit Tests
+		       - They found examples from OS libraries. 
+		    - Real Firmware
+		       - Lots of Github source code that was compiled with some IDE
+		       - binaries are available as ARM ELF files. No, raw binaries.   
+		       
+		          		          
+   Testing Peripherals
+      - Which peripherals to test?
+         - Most popular?, P2IM mentions: SPI, USART, I2C, GPIO, ADC, DAC, TIMER, PWM
+   		 -> Any, just want to see if the SR values pass.
+   		     
+   Testing Binaries
+      - What form does binary need to be in? ELF or Raw Binary?
+         - P2IM uses ELF files         
+      -> Want to be able to support ELF or raw binaries. (ELF first)
+         ELF Files
+            -> Could execute ELF by just providing it
+               -> Could gather ELF info and execute from entry point and auto generate memory map with Python script.
+               
+            -> Can additionally allow user to manually execute points of interest like with Raw binary option below. 
+               
+         Raw Binary 
+            -> Will require manual intervention from user to provide start/stop points, processor state,
+              memory map, etc. 
+
+
+/* Todo list */
+   TODO
+      General Category
+      1) [p] Init SP/FP given ELF file (ARM ELF for Linux and barebones MCU) and Raw Binary
+                - Need to test with an actual extracted Raw Binary.
+      2) [x] Map in entire memory region for Cortex-M devices (so it doesn't need to be automated from ELF. Reduces complexity)
+      3) [x] Read multiple data sections from ELF and store them all. 
+      4) [ ] To avoid mapping 4GB by default: For memory mapping, could try and map certain memory sections during execution.
+             - Can map memory for each MMIO we do configure.
+             - Can map memory for each unmapped MMIO we don't configure.
+             - Can map memory for the start addr and size of our FW image.
+             - Can map other accessed unmapped regions on the fly. (unkown scenarios with this solution.)
+      5) [ ] Need to give user option to start/stop ELFs/Raw Binaries from anywhere, instead of the default reset handler.
+      6) [x] Need to let user set SR bits at certain addresses that SRs are accessed.
+             (SR ideal bit values can change over course of FW execution.)
+             Can implement this as callback for 1) Every instruction execution 2) Every mapped MMIO access
+             Bug Checks             
+      7) [ ] Allow user to set starting address of FW. Currently assumed to start at 0, but could start at 0x0800 0000 for example.
+             FW will reference data according to where it's located virtually, so need to account for this.  
+             See map_memory() and flash_init().
+      8) [ ] Consider scenarios where memory region permissions might change in FW. uc_mem_protect() is able 
+             to change memory region protections.
+             - Callback exists for handling invalid memory access because of it's protections. 
+      9) [x] Need support for SVC (and other exceptions).
+                     -> See interrupts section for notes.                 
+      10) [IMPORTANT] Need to integrate our unique code into QEMU and use their hardware support that already exists for ARM Cortex-M.
+                      Implementing this hardware emulation is too time consuming, so use QEMU's. 
+                                                                  
+      Interrupts
+      1) [P] Need to fully support SVC (and perhaps create an interrupt handling strategy in the meantime)  
+                // Need to read ARM manual on how stacking/unstacking via hardware AND software typically works for interrupts    
+                [x] Issue callback for exceptions and determine if it's SVC or not
+                [x] Determine which mode to return back to (Thumb or ARM)
+                [P] Automatic stacking/unstacking of r0-r3, r12, LR, PC, xPSP. Still need to determine xPSP part.
+                [x] Leave SVC by using callback for PC trying to execute @ EXC_RETURN value (non-exectuable memory)
+                [x] Set/Clear active/inactive interrupt firing                     
+                [ ] EXC_RETURN determines if we unstack out of MSP or PSP. Need to support this. (chp 21.1.2 in Yifeng Zhu or ARM manual)
+                [ ] Need to generate an EXC_RETURN values for LR upon handler entry. Hardware is supposed to do this. 
+                    Not seeing where hardware generates this in ARMv7 manual... investigate this
+                    Textbook says its generated by processor and is stored in LR automatically.
+                
+                                                                   
+      2) [P] Find how to detect which interrupts are enabled in FW via NVIC or vector table.
+                Can issue a callback for anytime ISER/ICER are accessed. 
+                Need to emulate these registers to some degree and keep a list of enabled interrupts
+                based on how ISER and ICER are written to. P2IM used some NVIC_PENDING register to help fire? look into it
+                                                                     
+      3) [P] Create an interrupt firing strategy for the interrupts that are enabled.
+                Want to figure out why RTC isn't being enabled.
+                Or, why we get stuck in an infinite loop.
+                
+      4) [P] Need to switch SP context between MSP and PSP.
+                                     
+   RTC isn't even reached. (Dead Code?)   
+      
+      Operating Systems (mixes with interrupts)
+      1) [P] Need to do more research on scheduling to be able to read scheduling code better
+      2) [P] Need to research PendSV and exactly how it might be used
+             PendSV handler can only be entered with ICSR.PENDSVSET bit.
+             PendSV's purpose is basically to call the SVC handler, but in an asynchronous manner. Unlike the SVC instruction which calls it
+             synchronously with software.                       
+
+
+      Debugging
+      1) [ ] Find a way for user to step through code line by line. (GDB stubs an option?)
+             Want something to work for ELFs, Raw Binaries, etc.
+      
+      Automation
+      1) [x] Implement "Generic" peripherals with generic flags
+      2) [x] Add option for user to change polarity of a SR bit so they can set default
+             value to '0' or '1' (observed that status bit can be checked to be 0 or 1).
+             Can add a "Value =" key, for which '0' and '1' are the only values. 
+      3) [x] Add option for user to specify the SR access address that they want the value to take effect at.
+             - Automate from python: Add to inline table
+             - Parse in C: Need to set SR values in callback when address is accessed.
+             Could infer acceptable values for SR bits for polling scenarios, but there may be other scenarios where instead of polling (hanging),
+             FW could instead crash upon an incorrect SR bit. Therefore, will have user manually specify bits at certain addresses for this reason. 
+      4) [ ] Add a count for number of generic flags the user may want to set for any given peripheral.        
+
+      Integrating into QEMU
+      1) [ ] Save backup of our current code and document what it does and doesn't do.
+
+      Misc
+      1) [x] Find if uc_mem_map() allocates space in host memory. Use valgrind to check.      
+                              
+      Bugs (or potential problems)
+      1) [x] Memory Leak somewhere related to TOML.
+      2) [x] Stack Smashing error in mmioConfig().
+      3) [x] SR "bit" value in config isn't confined to SR limits. Can be any number.
+      4) [x] Init registers in MMIO struct to 0, perhaps other MMIO members as well. 
+      5) [x] Get min/max addr for each module in parseKeys(). Need it for determining which peripheral we've accessed. 
+      6) [x] memory leak related to the root toml table
+                    
+   // Things Completed from list above
+   Done   
+      FW Execution
+      1) Init SP/FP given ELF file. (Read address 0 for SP init.)
+	  2) Map in memory the generic flash/SRAM regions for Cortex-M devices (so it doesn't need to be automated from ELF. Reduces complexity) 
+      3) Read multiple data sections from ELF and store them all. 
+         (Reading LOAD program headers into single firmware file)
+      6) User can set SR bits at specific program locations. Checked on MMIO callbacks. 
+         These are called SR instances. 
+           
+      Interrupts
+      
+      Operating Systems
+      
+      Debugging
+      
+      Automation     
+      1) Added to Python script and support for parsing it in C program. 
+      2) "val" key added to allow '0' or '1' as the bit value.
+      3) See FW Execution 6) ... Same thing.
+      
+      Misc
+      1) uc_mem_map() does indeed allocate space in host memory. 
+      
+      Bugs   
+      1) Wasn't freeing string associated with toml_datum_t structure, which TOML requires.
+         Was also overwriting the union associated with the structure.         
+      2) Hadn't allocated enough space in p_str, so strcat(p_str, "_count") was going out of bounds.    
+      3) Made SR bit boundaries between 0-31. Previously, could have been anything.
+      4) Initialized MMIO struct with 0s.
+      5) Have new min/max variables to correctly locate accessed modules in callbacks. 
+      6) Needed to use toml_free() instead of free() to free the root table. 
+      
+   Queries
+      1) [HANDLED] Does the memory map have to be specific to MCU? Or can we make it expand the range specified for ARM Cortex-M MCUs. 
+         See [mem_map] in emulatorConfig.toml as example.
+         Used ARMv7 Arch reference manual.  
+      2) [HANDLED] How will we handle Raw binaries and stripped ELF files? 
+         Stripped ELF files should still have LOAD program headers, so they'd be the same as 
+         non-stripped ELFs. Raw binaries might be the same as the output we get from extracting
+         LOAD sections from the ELF... so might be finished on that front. Just need to double check. 
+      3) [IMPORTANT] Investigate. Does the Console FW read/write registers like CONTROL, NVIC regs, etc. (Does it fail upon access?)  
+                     Good to know, because if unicorn doesn't fail to execute them, then we likely have access to them in some way.  
+                     MRS/MSR instructions will likely be used for CONTROL reg but not NVIC. 
+                     NVIC is located within the System Control Space (SCS).                    
+      4) [IMPORTANT] Consider scenario where vector table is offset. Will we need the VTOR to locate it and 
+                     corresponding interrupt handlers. (User would configure VTOR if this happens)   
+                     May use VTOR anyway to help match interrupt numbers to the handler addresses.                                                 
+      5) [CURIOUS] Look for Software Triggered Interrupt Register (STIR) in FW testing to see if we need to emulate it.
+                   May just fire off enabled interrupts in round-robin fashion. 
+      6) [IMPORTANT] Do I need to switch between MSP and PSP? Still don't know how they work with the SP.
+                     (Probably need to switch between the two as well.) 
+                     When are they init? What does it look like when either is used? 
+      7) [CURIOUS] In what context are dynamically linked ELFs used? Currently, we only create binary from statically linked.
+                   Would we need to create binary from dynamically linked?                 
+
+Handling SVC calls
+NOTE: How does P2IM handle OS level FW 
+
+   Entering SVC
+   1) Need to push r0-r3, r12, LR, PC, and PSR onto stack from callback. 
+      Handler may use these from stack, so need to save in emulator stack.
+      Reference - (R0 will be lowest addr in stack, PSR will be highest addr in stack)               
+   2) Disable Interrupts from happening when in SVC handler. 
+   3) Save whether we were in ARM or Thumb mode before handler, so we know which mode to use when we return. 
+   4) Jump to SVC handler address
+   
+     
+   Leaving SVC
+   1) Make a callback that triggers when we try to execute a non-executable portion of memory.
+      This is to catch when PC is set to the EXC_RETURN value.
+      This will raise an error and force us out of uc_start_emu()
+            
+   2) Need to unstack r0-r3, r12, LR, PC, and PSR. (Includes setting the PC to the next instruction after SVC call)
+      How to know when to leave handler and unstack?
+
+   3) Make a loop around uc_start_emu() so we can continue execution or exit program depending on the exit reason.
+      We continue execution if the error is because of EXC_RETURN.
+
+   4) Enable Interrupts when leaving. Will use callback method mentioned above.
+    
+   (Based on EXC_RETURN value) (Need CONTROL reg to do steps below)           
+   5) Determine whether to switch to MSP or PSP depending on LR value. (Research how PSP and MSP work in detail)
+   6) Determine if stack frame includes FPU registers.
+      
+      
+      
+       
+      // Additional notes that ended up to the solutions above    
+      Problem, PC doesn't update with EXC_RETURN in the Code callback.
+      1) Can read the opcode of each PC addr in handlers, search for BX opcode, then search for the register we are branching to,
+         then search for EXC_RETURN value. (Decode opcode to know when to return from handler)
+         (More instructions than BX that could cause SVC handler to leave, so not worthwhile)
+      2) Could place own callbacks in QEMU code to check when certain instructions are processed
+         (too many possible instructions involved with leaving a function or loading the PC to make this worthwhile
+          ... Same issue as above when decoding on our own)
+      3)    
+      Ideas 
+      1) Write an EXC_RETURN val to PC and see what it does in terms of execution.
+            Defaults to 0 when region is executable
+            Fails to execute when region NOT executable 
+      2) See if callback can be issued for this error: Fetch from non-executable memory (UC_ERR_FETCH_PROT)
+         Then, we can see what the PC or address was for which we attempted to execute. If it's EXC_RETURN, perhaps we can resume execution
+         by leaving SVC. (THIS SEEMS TO WORK)
+      NEW PROBLEM
+      When returning to the address after SVC, it doesn't properly execute at PC = 0x936 unless we add 1 to it to make it 0x937 .. which then correctly
+      executes at 0x936 . PC=0x936 will start blindly executing unsupported instructions.
+         1) Might be confused as to whether it's executing ARM instructions instead of Thumb instructions .. should be executing thumb instructions.
+            YES THIS IS IT. The LSB of the destination address determines which state to go to.
+            If LSB of PC is 1 ... switch or stay in thumb state
+            If LSB of PC is 0 ... siwtch or stay in ARM state.
+             
+            
+          
+/* Building QEMU on Linux */
+1) [ ] Installed packages from [https://wiki.qemu.org/Hosts/Linux]
+
+
+/* Compiling the Emulators */
+// TODO: Eventually want to make my added files apart of the unicorn library
+gcc EmulateUart.c emulatorConfig.c toml.c tester.c -lunicorn -lpthread
+
+
+/* Generating ELF file: Compiling the Source Code to emulate */
+arm-none-eabi-gcc -specs=nosys.specs SimpleUart.c -o SimpleUart.elf
+or
+arm-none-eabi-gcc -specs=nosys.specs PollingUart.c -o PollingUart.elf
+
+/* Compiling and Making Unicorn */        
+Command to install and compile Unicorn
+./make.sh (assumes config file only makes for ARM)
+sudo ./make.sh install
+
+/* Setting Unicorn Library path for GCC */
+1.) Undefined References to pthread functions
+    - place lpthread after lunicorn
+2.) Can't find libunicorn.so.1 when running executable
+    - Run 'ldd a.out' to see what libraries are found and where
+    - Add the path of libunicorn.so.1 to GCC library path @ /etc/ld.so.conf.d/x86_64-linux-gnu.conf
+    - run sudo ldconfig to update library cache
+  
+/* Getting TOML to work with CPEA */
+C Parser
+	1) Include toml.h and toml.c files.
+Python3 TOML Parser
+	tomlkit
+	1) pip install tomlkit 
+
+/* Getting ELF Parsing to work with CPEA */
+Python3 ELF Parser
+	pyelftools
+	1) pip install pyelftool  
+  
+  
+/* Deprecated methods for getting Raw Binary to execute */ 
+
+/* Producing Hex String from assembly */   
+Assembly to Hex String
+rasm2 -a arm -C -f arm.asm
+
+/* Manually producing binaries to emulate */
+Compiling C code to 32-bit ARM
+To Produce Assembly:
+	arm-none-eabi-gcc -marm -S (--specs=nosys.specs) SimplePollUart.c -o SimplePollUart.s
+    		  	               (optional, may want to try)
+To Assemble:
+	arm-none-eabi-as -o SimplePollUart.o SimplePollUart.s
+
+To Compile,assemble,link
+	arm-none-eabi-gcc -marm SimplePoll_uart.c
+
+To Print Opcode
+   - Radare2 to print out opcode. Add '00' to end of file to add terminator.
+      - Go to entry point with command
+         'p8 [N]' to print hexpair list for N bytes and remember to add '00' string terminator
+         
+To Convert to Raw Binary
+    - 'xxd -r -p input.opcode output.bin' to get raw binary
+	  - Read this into Unicorn and store in char array. :)
+	 
+

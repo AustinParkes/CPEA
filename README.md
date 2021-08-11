@@ -1,37 +1,32 @@
 Configurable Peripheral Emulator for ARM
 ========================================
 
-Big TODOs
----------
-
-1) Integrate Unique Code with QEMU.
-
-2) Debug Interface 
-
-3) Fuzzing Framework
-      
-      
-DONE
+Version0.2 Details
 ----
 
-1) Callbacks
-   - Got rid of UART specific callbacks. Doing callbacks for entire ARM mmio range.
+1. Automation
+   - Python program CAN extract ELF info to config file
+   - Python program DOES generate raw executable binary "firmware.bin"
+   - Python program DOES automate peripheral modules and register counts
+     
+2. Configuration
+   - Configuration ONLY contains status and data registers.
+   - Configuration CAN read all peripherals
    
-2) Automation
-   - Generates mmio for emulatorConfig.toml
+3. Data Structures
+   - Structures ONLY contain status and data registers
+   - Structure ALLOWS for 8/16/32 bit registers by using arrays to store address/reset values
+   - Structure tailored for all peripherals
+
+4. Emulation
+   - Emulation DOES generically emulate any peripherals via correct SR values.
+   - Emulation does NOT contain configuration registers. (ONLY SR and DR)
    
-3) Configuration
-   - Parses emulatorConfig.toml and stores to appropriate data structure/emulator memory   
-
-4) SVC calls and Interrupt Firing (Buggy)
-
-PROBLEMS
---------
-
-1) Don't switch SP context to MSP or PSP when unstacking.
-
-2) Many meticulous hardware pieces missing that QEMU should already have.        
-
+5. Next Version Goals
+   - Integrate this into QEMU. Drop Unicorn. 
+   - Add more peripherals to configuration (in Python script and config)
+   - Add more SR flags for each peripheral
+ 
 Projects Referenced or Used
 ---------------------------
 1) Unicorn [Unicorn Github](https://github.com/unicorn-engine/unicorn)

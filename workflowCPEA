@@ -72,10 +72,12 @@ Testing Emulator with Real Firmware
 [ ] - Not Started
    TODO     
       Integrating into QEMU
-      1) [ ] Save backup of our current code and document what it does and doesn't do.
-      2) [ ] Make new branch for qemu-integration and get qemu code base into it.
-                How to get qemu in? Clone? Submodule? 
-                Save: On page 308: Working on a Project with Submodules. 
+      1) [x] Save backup of our current code and document what it does and doesn't do.
+      2) [x] Make new branch for qemu-integration and get qemu code base into it.
+                - No submodule, pulling. Instead, downloaded and copied it into repo.
+      3) [x] Move files into repo that won't be compiled with qemu source
+                - Python scripts, firmware, etc.            
+      4) [ ] Figure out how to build QEMU.
       
       General Category
       1) [p] Init SP/FP given ELF file (ARM ELF for Linux and barebones MCU) and Raw Binary

@@ -21,8 +21,12 @@ Version0.2 Details
 4. Emulation
    - Emulation DOES generically emulate any peripherals via correct SR values.
    - Emulation does NOT contain configuration registers. (ONLY SR and DR)
+   - Emulation DOES partially emulate interrupt, firing, SCS, etc. (Going to leave much of this to QEMU in next version)
+
+5. Interrupts
+   - Program DOES fire off interrupts in round-robin fashion based off NVIC.   
    
-5. Next Version Goals
+6. Next Version Goals
    - Integrate this into QEMU. Drop Unicorn. 
    - Add more peripherals to configuration (in Python script and config)
    - Add more SR flags for each peripheral

@@ -708,7 +708,6 @@ static int nvme_init(BlockDriverState *bs, const char *device, int namespace,
     AioContext *aio_context = bdrv_get_aio_context(bs);
     int ret;
     uint64_t cap;
-    uint32_t ver;
     uint64_t timeout_ms;
     uint64_t deadline, now;
     volatile NvmeBar *regs = NULL;
@@ -746,7 +745,7 @@ static int nvme_init(BlockDriverState *bs, const char *device, int namespace,
     trace_nvme_controller_capability("Contiguous Queues Required",
                                      NVME_CAP_CQR(cap));
     trace_nvme_controller_capability("Doorbell Stride",
-                                     1 << (2 + NVME_CAP_DSTRD(cap)));
+                                     2 << (2 + NVME_CAP_DSTRD(cap)));
     trace_nvme_controller_capability("Subsystem Reset Supported",
                                      NVME_CAP_NSSRS(cap));
     trace_nvme_controller_capability("Memory Page Size Minimum",
@@ -764,11 +763,6 @@ static int nvme_init(BlockDriverState *bs, const char *device, int namespace,
     bs->bl.opt_mem_alignment = s->page_size;
     bs->bl.request_alignment = s->page_size;
     timeout_ms = MIN(500 * NVME_CAP_TO(cap), 30000);
-
-    ver = le32_to_cpu(regs->vs);
-    trace_nvme_controller_spec_version(extract32(ver, 16, 16),
-                                       extract32(ver, 8, 8),
-                                       extract32(ver, 0, 8));
 
     /* Reset device to get a clean state. */
     regs->cc = cpu_to_le32(le32_to_cpu(regs->cc) & 0xFE);
@@ -1030,29 +1024,7 @@ try_map:
         r = qemu_vfio_dma_map(s->vfio,
                               qiov->iov[i].iov_base,
                               len, true, &iova);
-        if (r == -ENOSPC) {
-            /*
-             * In addition to the -ENOMEM error, the VFIO_IOMMU_MAP_DMA
-             * ioctl returns -ENOSPC to signal the user exhausted the DMA
-             * mappings available for a container since Linux kernel commit
-             * 492855939bdb ("vfio/type1: Limit DMA mappings per container",
-             * April 2019, see CVE-2019-3882).
-             *
-             * This block driver already handles this error path by checking
-             * for the -ENOMEM error, so we directly replace -ENOSPC by
-             * -ENOMEM. Beside, -ENOSPC has a specific meaning for blockdev
-             * coroutines: it triggers BLOCKDEV_ON_ERROR_ENOSPC and
-             * BLOCK_ERROR_ACTION_STOP which stops the VM, asking the operator
-             * to add more storage to the blockdev. Not something we can do
-             * easily with an IOMMU :)
-             */
-            r = -ENOMEM;
-        }
         if (r == -ENOMEM && retry) {
-            /*
-             * We exhausted the DMA mappings available for our container:
-             * recycle the volatile IOVA mappings.
-             */
             retry = false;
             trace_nvme_dma_flush_queue_wait(s);
             if (s->dma_map_count) {

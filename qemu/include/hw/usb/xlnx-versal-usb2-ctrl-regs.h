@@ -23,8 +23,8 @@
  * THE SOFTWARE.
  */
 
-#ifndef XLNX_USB2_REGS_H
-#define XLNX_USB2_REGS_H
+#ifndef _XLNX_USB2_REGS_H_
+#define _XLNX_USB2_REGS_H_
 
 #define TYPE_XILINX_VERSAL_USB2_CTRL_REGS "xlnx.versal-usb2-ctrl-regs"
 

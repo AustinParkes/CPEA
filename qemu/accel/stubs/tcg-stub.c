@@ -11,6 +11,7 @@
  */
 
 #include "qemu/osdep.h"
+#include "cpu.h"
 #include "exec/exec-all.h"
 
 void tb_flush(CPUState *cpu)
@@ -26,14 +27,4 @@ void *probe_access(CPUArchState *env, target_ulong addr, int size,
 {
      /* Handled by hardware accelerator. */
      g_assert_not_reached();
-}
-
-void QEMU_NORETURN cpu_loop_exit(CPUState *cpu)
-{
-    g_assert_not_reached();
-}
-
-void QEMU_NORETURN cpu_loop_exit_restore(CPUState *cpu, uintptr_t pc)
-{
-    g_assert_not_reached();
 }

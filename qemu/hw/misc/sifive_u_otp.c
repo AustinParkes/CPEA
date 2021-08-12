@@ -23,7 +23,6 @@
 #include "hw/qdev-properties.h"
 #include "hw/qdev-properties-system.h"
 #include "hw/sysbus.h"
-#include "qemu/error-report.h"
 #include "qemu/log.h"
 #include "qemu/module.h"
 #include "hw/misc/sifive_u_otp.h"
@@ -66,7 +65,8 @@ static uint64_t sifive_u_otp_read(void *opaque, hwaddr addr, unsigned int size)
 
                 if (blk_pread(s->blk, s->pa * SIFIVE_U_OTP_FUSE_WORD, &buf,
                               SIFIVE_U_OTP_FUSE_WORD) < 0) {
-                    error_report("read error index<%d>", s->pa);
+                    qemu_log_mask(LOG_GUEST_ERROR,
+                                  "read error index<%d>\n", s->pa);
                     return 0xff;
                 }
 
@@ -169,7 +169,8 @@ static void sifive_u_otp_write(void *opaque, hwaddr addr,
                 if (blk_pwrite(s->blk, s->pa * SIFIVE_U_OTP_FUSE_WORD,
                                &s->fuse[s->pa], SIFIVE_U_OTP_FUSE_WORD,
                                0) < 0) {
-                    error_report("write error index<%d>", s->pa);
+                    qemu_log_mask(LOG_GUEST_ERROR,
+                                  "write error index<%d>\n", s->pa);
                 }
             }
 
@@ -227,7 +228,7 @@ static void sifive_u_otp_realize(DeviceState *dev, Error **errp)
 
         if (s->blk) {
             perm = BLK_PERM_CONSISTENT_READ |
-                   (blk_supports_write_perm(s->blk) ? BLK_PERM_WRITE : 0);
+                   (blk_is_read_only(s->blk) ? 0 : BLK_PERM_WRITE);
             ret = blk_set_perm(s->blk, perm, BLK_PERM_ALL, errp);
             if (ret < 0) {
                 return;
@@ -259,13 +260,15 @@ static void sifive_u_otp_reset(DeviceState *dev)
         serial_data = s->serial;
         if (blk_pwrite(s->blk, index * SIFIVE_U_OTP_FUSE_WORD,
                        &serial_data, SIFIVE_U_OTP_FUSE_WORD, 0) < 0) {
-            error_report("write error index<%d>", index);
+            qemu_log_mask(LOG_GUEST_ERROR,
+                          "write error index<%d>\n", index);
         }
 
         serial_data = ~(s->serial);
         if (blk_pwrite(s->blk, (index + 1) * SIFIVE_U_OTP_FUSE_WORD,
                        &serial_data, SIFIVE_U_OTP_FUSE_WORD, 0) < 0) {
-            error_report("write error index<%d>", index + 1);
+            qemu_log_mask(LOG_GUEST_ERROR,
+                          "write error index<%d>\n", index + 1);
         }
     }
 

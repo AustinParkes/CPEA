@@ -144,20 +144,16 @@ void qmp_job_dismiss(const char *id, Error **errp)
 static JobInfo *job_query_single(Job *job, Error **errp)
 {
     JobInfo *info;
-    uint64_t progress_current;
-    uint64_t progress_total;
 
     assert(!job_is_internal(job));
-    progress_get_snapshot(&job->progress, &progress_current,
-                          &progress_total);
 
     info = g_new(JobInfo, 1);
     *info = (JobInfo) {
         .id                 = g_strdup(job->id),
         .type               = job_type(job),
         .status             = job->status,
-        .current_progress   = progress_current,
-        .total_progress     = progress_total,
+        .current_progress   = job->progress.current,
+        .total_progress     = job->progress.total,
         .has_error          = !!job->err,
         .error              = job->err ? \
                               g_strdup(error_get_pretty(job->err)) : NULL,
@@ -168,25 +164,28 @@ static JobInfo *job_query_single(Job *job, Error **errp)
 
 JobInfoList *qmp_query_jobs(Error **errp)
 {
-    JobInfoList *head = NULL, **tail = &head;
+    JobInfoList *head = NULL, **p_next = &head;
     Job *job;
 
     for (job = job_next(NULL); job; job = job_next(job)) {
-        JobInfo *value;
+        JobInfoList *elem;
         AioContext *aio_context;
 
         if (job_is_internal(job)) {
             continue;
         }
+        elem = g_new0(JobInfoList, 1);
         aio_context = job->aio_context;
         aio_context_acquire(aio_context);
-        value = job_query_single(job, errp);
+        elem->value = job_query_single(job, errp);
         aio_context_release(aio_context);
-        if (!value) {
+        if (!elem->value) {
+            g_free(elem);
             qapi_free_JobInfoList(head);
             return NULL;
         }
-        QAPI_LIST_APPEND(tail, value);
+        *p_next = elem;
+        p_next = &elem->next;
     }
 
     return head;

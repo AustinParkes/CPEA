@@ -93,7 +93,7 @@ def _guess_engine_command():
                     commands_txt)
 
 
-def _copy_with_mkdir(src, root_dir, sub_path='.', name=None):
+def _copy_with_mkdir(src, root_dir, sub_path='.'):
     """Copy src into root_dir, creating sub_path as needed."""
     dest_dir = os.path.normpath("%s/%s" % (root_dir, sub_path))
     try:
@@ -102,13 +102,8 @@ def _copy_with_mkdir(src, root_dir, sub_path='.', name=None):
         # we can safely ignore already created directories
         pass
 
-    dest_file = "%s/%s" % (dest_dir, name if name else os.path.basename(src))
-
-    try:
-        copy(src, dest_file)
-    except FileNotFoundError:
-        print("Couldn't copy %s to %s" % (src, dest_file))
-        pass
+    dest_file = "%s/%s" % (dest_dir, os.path.basename(src))
+    copy(src, dest_file)
 
 
 def _get_so_libs(executable):
@@ -125,7 +120,7 @@ def _get_so_libs(executable):
             search = ldd_re.search(line)
             if search:
                 try:
-                    libs.append(search.group(1))
+                    libs.append(s.group(1))
                 except IndexError:
                     pass
     except subprocess.CalledProcessError:
@@ -155,9 +150,8 @@ def _copy_binary_with_libs(src, bin_dest, dest_dir):
     if libs:
         for l in libs:
             so_path = os.path.dirname(l)
-            name = os.path.basename(l)
             real_l = os.path.realpath(l)
-            _copy_with_mkdir(real_l, dest_dir, so_path, name)
+            _copy_with_mkdir(real_l, dest_dir, so_path)
 
 
 def _check_binfmt_misc(executable):
@@ -228,9 +222,7 @@ class Docker(object):
     def __init__(self):
         self._command = _guess_engine_command()
 
-        if ("docker" in self._command and
-            "TRAVIS" not in os.environ and
-            "GITLAB_CI" not in os.environ):
+        if "docker" in self._command and "TRAVIS" not in os.environ:
             os.environ["DOCKER_BUILDKIT"] = "1"
             self._buildkit = True
         else:
@@ -440,9 +432,6 @@ class BuildCommand(SubCommand):
                             help="""Specify a binary that will be copied to the
                             container together with all its dependent
                             libraries""")
-        parser.add_argument("--skip-binfmt",
-                            action="store_true",
-                            help="""Skip binfmt entry check (used for testing)""")
         parser.add_argument("--extra-files", nargs='*',
                             help="""Specify files that will be copied in the
                             Docker image, fulfilling the ADD directive from the
@@ -471,9 +460,7 @@ class BuildCommand(SubCommand):
             docker_dir = tempfile.mkdtemp(prefix="docker_build")
 
             # Validate binfmt_misc will work
-            if args.skip_binfmt:
-                qpath = args.include_executable
-            elif args.include_executable:
+            if args.include_executable:
                 qpath, enabled = _check_binfmt_misc(args.include_executable)
                 if not enabled:
                     return 1
@@ -517,36 +504,16 @@ class BuildCommand(SubCommand):
 
         return 0
 
-class FetchCommand(SubCommand):
-    """ Fetch a docker image from the registry. Args: <tag> <registry>"""
-    name = "fetch"
-
-    def args(self, parser):
-        parser.add_argument("tag",
-                            help="Local tag for image")
-        parser.add_argument("registry",
-                            help="Docker registry")
-
-    def run(self, args, argv):
-        dkr = Docker()
-        dkr.command(cmd="pull", quiet=args.quiet,
-                    argv=["%s/%s" % (args.registry, args.tag)])
-        dkr.command(cmd="tag", quiet=args.quiet,
-                    argv=["%s/%s" % (args.registry, args.tag), args.tag])
-
 
 class UpdateCommand(SubCommand):
-    """ Update a docker image. Args: <tag> <actions>"""
+    """ Update a docker image with new executables. Args: <tag> <executable>"""
     name = "update"
 
     def args(self, parser):
         parser.add_argument("tag",
                             help="Image Tag")
-        parser.add_argument("--executable",
+        parser.add_argument("executable",
                             help="Executable to copy")
-        parser.add_argument("--add-current-user", "-u", dest="user",
-                            action="store_true",
-                            help="Add the current user to image's passwd")
 
     def run(self, args, argv):
         # Create a temporary tarball with our whole build context and
@@ -554,44 +521,28 @@ class UpdateCommand(SubCommand):
         tmp = tempfile.NamedTemporaryFile(suffix="dckr.tar.gz")
         tmp_tar = TarFile(fileobj=tmp, mode='w')
 
+        # Add the executable to the tarball, using the current
+        # configured binfmt_misc path. If we don't get a path then we
+        # only need the support libraries copied
+        ff, enabled = _check_binfmt_misc(args.executable)
+
+        if not enabled:
+            print("binfmt_misc not enabled, update disabled")
+            return 1
+
+        if ff:
+            tmp_tar.add(args.executable, arcname=ff)
+
+        # Add any associated libraries
+        libs = _get_so_libs(args.executable)
+        if libs:
+            for l in libs:
+                tmp_tar.add(os.path.realpath(l), arcname=l)
+
         # Create a Docker buildfile
         df = StringIO()
         df.write(u"FROM %s\n" % args.tag)
-
-        if args.executable:
-            # Add the executable to the tarball, using the current
-            # configured binfmt_misc path. If we don't get a path then we
-            # only need the support libraries copied
-            ff, enabled = _check_binfmt_misc(args.executable)
-
-            if not enabled:
-                print("binfmt_misc not enabled, update disabled")
-                return 1
-
-            if ff:
-                tmp_tar.add(args.executable, arcname=ff)
-
-            # Add any associated libraries
-            libs = _get_so_libs(args.executable)
-            if libs:
-                for l in libs:
-                    so_path = os.path.dirname(l)
-                    name = os.path.basename(l)
-                    real_l = os.path.realpath(l)
-                    try:
-                        tmp_tar.add(real_l, arcname="%s/%s" % (so_path, name))
-                    except FileNotFoundError:
-                        print("Couldn't add %s/%s to archive" % (so_path, name))
-                        pass
-
-            df.write(u"ADD . /\n")
-
-        if args.user:
-            uid = os.getuid()
-            uname = getpwuid(uid).pw_name
-            df.write("\n")
-            df.write("RUN id %s 2>/dev/null || useradd -u %d -U %s" %
-                     (uname, uid, uname))
+        df.write(u"ADD . /\n")
 
         df_bytes = BytesIO(bytes(df.getvalue(), "UTF-8"))
 

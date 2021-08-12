@@ -8,6 +8,8 @@
 # This work is licensed under the terms of the GNU GPL, version 2 or
 # later.  See the COPYING file in the top-level directory.
 
+import logging
+
 from avocado_qemu import Test
 
 class QueryCPUModelExpansion(Test):
@@ -25,7 +27,7 @@ class QueryCPUModelExpansion(Test):
 
         cpus = self.vm.command('query-cpu-definitions')
         for c in cpus:
-            self.log.info("Checking CPU: %s", c)
+            print(repr(c))
             self.assertNotIn('', c['unavailable-features'], c['name'])
 
         for c in cpus:

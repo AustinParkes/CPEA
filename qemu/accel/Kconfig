@@ -1,9 +1,6 @@
 config WHPX
     bool
 
-config NVMM
-    bool
-
 config HAX
     bool
 

@@ -24,6 +24,7 @@
 #include "hw/audio/wm8750.h"
 #include "audio/audio.h"
 #include "exec/address-spaces.h"
+#include "sysemu/qtest.h"
 #include "cpu.h"
 #include "qom/object.h"
 
@@ -162,7 +163,7 @@ static void zipit_lcd_realize(SSIPeripheral *dev, Error **errp)
     z->pos = 0;
 }
 
-static const VMStateDescription vmstate_zipit_lcd_state = {
+static VMStateDescription vmstate_zipit_lcd_state = {
     .name = "zipit-lcd",
     .version_id = 2,
     .minimum_version_id = 2,
@@ -268,7 +269,7 @@ static uint8_t aer915_recv(I2CSlave *slave)
     return retval;
 }
 
-static const VMStateDescription vmstate_aer915_state = {
+static VMStateDescription vmstate_aer915_state = {
     .name = "aer915",
     .version_id = 1,
     .minimum_version_id = 1,

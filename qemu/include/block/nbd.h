@@ -364,7 +364,7 @@ static inline int nbd_read(QIOChannel *ioc, void *buffer, size_t size,
         if (desc) {
             error_prepend(errp, "Failed to read %s: ", desc);
         }
-        return ret;
+        return -1;
     }
 
     return 0;
@@ -375,9 +375,8 @@ static inline int nbd_read##bits(QIOChannel *ioc,                       \
                                  uint##bits##_t *val,                   \
                                  const char *desc, Error **errp)        \
 {                                                                       \
-    int ret = nbd_read(ioc, val, sizeof(*val), desc, errp);             \
-    if (ret < 0) {                                                      \
-        return ret;                                                     \
+    if (nbd_read(ioc, val, sizeof(*val), desc, errp) < 0) {             \
+        return -1;                                                      \
     }                                                                   \
     *val = be##bits##_to_cpu(*val);                                     \
     return 0;                                                           \
@@ -405,23 +404,5 @@ const char *nbd_rep_lookup(uint32_t rep);
 const char *nbd_info_lookup(uint16_t info);
 const char *nbd_cmd_lookup(uint16_t info);
 const char *nbd_err_lookup(int err);
-
-/* nbd/client-connection.c */
-typedef struct NBDClientConnection NBDClientConnection;
-
-void nbd_client_connection_enable_retry(NBDClientConnection *conn);
-
-NBDClientConnection *nbd_client_connection_new(const SocketAddress *saddr,
-                                               bool do_negotiation,
-                                               const char *export_name,
-                                               const char *x_dirty_bitmap,
-                                               QCryptoTLSCreds *tlscreds);
-void nbd_client_connection_release(NBDClientConnection *conn);
-
-QIOChannel *coroutine_fn
-nbd_co_establish_connection(NBDClientConnection *conn, NBDExportInfo *info,
-                            bool blocking, Error **errp);
-
-void coroutine_fn nbd_co_establish_connection_cancel(NBDClientConnection *conn);
 
 #endif

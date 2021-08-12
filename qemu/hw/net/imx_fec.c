@@ -283,8 +283,9 @@ static uint32_t imx_phy_read(IMXFECState *s, int reg)
     uint32_t phy = reg / 32;
 
     if (phy != s->phy_num) {
-        trace_imx_phy_read_num(phy, s->phy_num);
-        return 0xffff;
+        qemu_log_mask(LOG_GUEST_ERROR, "[%s.phy]%s: Bad phy num %u\n",
+                      TYPE_IMX_FEC, __func__, phy);
+        return 0;
     }
 
     reg %= 32;
@@ -344,7 +345,8 @@ static void imx_phy_write(IMXFECState *s, int reg, uint32_t val)
     uint32_t phy = reg / 32;
 
     if (phy != s->phy_num) {
-        trace_imx_phy_write_num(phy, s->phy_num);
+        qemu_log_mask(LOG_GUEST_ERROR, "[%s.phy]%s: Bad phy num %u\n",
+                      TYPE_IMX_FEC, __func__, phy);
         return;
     }
 
@@ -559,18 +561,22 @@ static void imx_enet_do_tx(IMXFECState *s, uint32_t index)
         ptr += len;
         frame_size += len;
         if (bd.flags & ENET_BD_L) {
-            int csum = 0;
-
             if (bd.option & ENET_BD_PINS) {
-                csum |= (CSUM_TCP | CSUM_UDP);
+                struct ip_header *ip_hd = PKT_GET_IP_HDR(s->frame);
+                if (IP_HEADER_VERSION(ip_hd) == 4) {
+                    net_checksum_calculate(s->frame, frame_size);
+                }
             }
             if (bd.option & ENET_BD_IINS) {
-                csum |= CSUM_IP;
+                struct ip_header *ip_hd = PKT_GET_IP_HDR(s->frame);
+                /* We compute checksum only for IPv4 frames */
+                if (IP_HEADER_VERSION(ip_hd) == 4) {
+                    uint16_t csum;
+                    ip_hd->ip_sum = 0;
+                    csum = net_raw_checksum((uint8_t *)ip_hd, sizeof(*ip_hd));
+                    ip_hd->ip_sum = cpu_to_be16(csum);
+                }
             }
-            if (csum) {
-                net_checksum_calculate(s->frame, frame_size, csum);
-            }
-
             /* Last buffer in frame.  */
 
             qemu_send_packet(qemu_get_queue(s->nic), s->frame, frame_size);

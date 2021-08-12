@@ -78,7 +78,8 @@ typedef struct CURLAIOCB {
 
 typedef struct CURLSocket {
     int fd;
-    struct BDRVCURLState *s;
+    struct CURLState *state;
+    QLIST_ENTRY(CURLSocket) next;
 } CURLSocket;
 
 typedef struct CURLState
@@ -86,6 +87,7 @@ typedef struct CURLState
     struct BDRVCURLState *s;
     CURLAIOCB *acb[CURL_NUM_ACB];
     CURL *curl;
+    QLIST_HEAD(, CURLSocket) sockets;
     char *orig_buf;
     uint64_t buf_start;
     size_t buf_off;
@@ -100,7 +102,6 @@ typedef struct BDRVCURLState {
     QEMUTimer timer;
     uint64_t len;
     CURLState states[CURL_NUM_STATES];
-    GHashTable *sockets; /* GINT_TO_POINTER(fd) -> socket */
     char *url;
     size_t readahead_size;
     bool sslverify;
@@ -118,21 +119,6 @@ typedef struct BDRVCURLState {
 
 static void curl_clean_state(CURLState *s);
 static void curl_multi_do(void *arg);
-
-static gboolean curl_drop_socket(void *key, void *value, void *opaque)
-{
-    CURLSocket *socket = value;
-    BDRVCURLState *s = socket->s;
-
-    aio_set_fd_handler(s->aio_context, socket->fd, false,
-                       NULL, NULL, NULL, NULL);
-    return true;
-}
-
-static void curl_drop_all_sockets(GHashTable *sockets)
-{
-    g_hash_table_foreach_remove(sockets, curl_drop_socket, NULL);
-}
 
 /* Called from curl_multi_do_locked, with s->mutex held.  */
 static int curl_timer_cb(CURLM *multi, long timeout_ms, void *opaque)
@@ -161,12 +147,16 @@ static int curl_sock_cb(CURL *curl, curl_socket_t fd, int action,
     curl_easy_getinfo(curl, CURLINFO_PRIVATE, (char **)&state);
     s = state->s;
 
-    socket = g_hash_table_lookup(s->sockets, GINT_TO_POINTER(fd));
+    QLIST_FOREACH(socket, &state->sockets, next) {
+        if (socket->fd == fd) {
+            break;
+        }
+    }
     if (!socket) {
         socket = g_new0(CURLSocket, 1);
         socket->fd = fd;
-        socket->s = s;
-        g_hash_table_insert(s->sockets, GINT_TO_POINTER(fd), socket);
+        socket->state = state;
+        QLIST_INSERT_HEAD(&state->sockets, socket, next);
     }
 
     trace_curl_sock_cb(action, (int)fd);
@@ -190,7 +180,8 @@ static int curl_sock_cb(CURL *curl, curl_socket_t fd, int action,
     }
 
     if (action == CURL_POLL_REMOVE) {
-        g_hash_table_remove(s->sockets, GINT_TO_POINTER(fd));
+        QLIST_REMOVE(socket, next);
+        g_free(socket);
     }
 
     return 0;
@@ -394,7 +385,7 @@ static void curl_multi_check_completion(BDRVCURLState *s)
 /* Called with s->mutex held.  */
 static void curl_multi_do_locked(CURLSocket *socket)
 {
-    BDRVCURLState *s = socket->s;
+    BDRVCURLState *s = socket->state->s;
     int running;
     int r;
 
@@ -410,7 +401,7 @@ static void curl_multi_do_locked(CURLSocket *socket)
 static void curl_multi_do(void *arg)
 {
     CURLSocket *socket = arg;
-    BDRVCURLState *s = socket->s;
+    BDRVCURLState *s = socket->state->s;
 
     qemu_mutex_lock(&s->mutex);
     curl_multi_do_locked(socket);
@@ -507,6 +498,7 @@ static int curl_init_state(BDRVCURLState *s, CURLState *state)
 #endif
     }
 
+    QLIST_INIT(&state->sockets);
     state->s = s;
 
     return 0;
@@ -522,6 +514,13 @@ static void curl_clean_state(CURLState *s)
 
     if (s->s->multi)
         curl_multi_remove_handle(s->s->multi, s->curl);
+
+    while (!QLIST_EMPTY(&s->sockets)) {
+        CURLSocket *socket = QLIST_FIRST(&s->sockets);
+
+        QLIST_REMOVE(socket, next);
+        g_free(socket);
+    }
 
     s->in_use = 0;
 
@@ -540,7 +539,6 @@ static void curl_detach_aio_context(BlockDriverState *bs)
     int i;
 
     WITH_QEMU_LOCK_GUARD(&s->mutex) {
-        curl_drop_all_sockets(s->sockets);
         for (i = 0; i < CURL_NUM_STATES; i++) {
             if (s->states[i].in_use) {
                 curl_clean_state(&s->states[i]);
@@ -747,7 +745,6 @@ static int curl_open(BlockDriverState *bs, QDict *options, int flags,
     qemu_co_queue_init(&s->free_state_waitq);
     s->aio_context = bdrv_get_aio_context(bs);
     s->url = g_strdup(file);
-    s->sockets = g_hash_table_new_full(NULL, NULL, NULL, g_free);
     qemu_mutex_lock(&s->mutex);
     state = curl_find_state(s);
     qemu_mutex_unlock(&s->mutex);
@@ -821,8 +818,6 @@ out_noclean:
     g_free(s->username);
     g_free(s->proxyusername);
     g_free(s->proxypassword);
-    curl_drop_all_sockets(s->sockets);
-    g_hash_table_destroy(s->sockets);
     qemu_opts_del(opts);
     return -EINVAL;
 }
@@ -921,7 +916,6 @@ static void curl_close(BlockDriverState *bs)
     curl_detach_aio_context(bs);
     qemu_mutex_destroy(&s->mutex);
 
-    g_hash_table_destroy(s->sockets);
     g_free(s->cookie);
     g_free(s->url);
     g_free(s->username);

@@ -3,7 +3,6 @@ config PSERIES
     imply PCI_DEVICES
     imply TEST_DEVICES
     imply VIRTIO_VGA
-    imply NVDIMM
     select DIMM
     select PCI
     select SPAPR_VSCSI
@@ -13,7 +12,6 @@ config PSERIES
     select MSI_NONBROKEN
     select FDT_PPC
     select CHRP_NVRAM
-    select VOF
 
 config SPAPR_RNG
     bool
@@ -70,23 +68,12 @@ config SAM460EX
     select USB_OHCI
     select FDT_PPC
 
-config PEGASOS2
-    bool
-    select MV64361
-    select VT82C686
-    select IDE_VIA
-    select SMBUS_EEPROM
-    select VOF
-# This should come with VT82C686
-    select ACPI_X86
-    imply ATI_VGA
-
 config PREP
     bool
     imply PCI_DEVICES
     imply TEST_DEVICES
     select CS4231A
-    select RAVEN_PCI
+    select PREP_PCI
     select I82378
     select LSI_SCSI_PCI
     select M48T59
@@ -131,7 +118,6 @@ config E500
     select SERIAL
     select MPC_I2C
     select FDT_PPC
-    select DS1338
 
 config VIRTEX
     bool
@@ -147,7 +133,4 @@ config FW_CFG_PPC
     bool
 
 config FDT_PPC
-    bool
-
-config VOF
     bool

@@ -24,7 +24,6 @@ struct EventNotifier {
 #else
     int rfd;
     int wfd;
-    bool initialized;
 #endif
 };
 

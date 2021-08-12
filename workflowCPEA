@@ -161,6 +161,14 @@ Testing Emulator with Real Firmware
                    Would we need to create binary from dynamically linked?                             
           
 
+/* Building QEMU on Ubuntu 20.04 */
+1) [ ] Installed sudo apt-get install libnfs-dev libiscsi-dev from QEMU's build page
+2) [ ] Clone QEMU. Get Submodule Code. Remove repositories for QEMU and submodules, but keep their relevant code.
+       1) [ ] Remove qemu/ as repo. (rm -r .git)
+       2) [ ] Remove submodules from qemu/ (rm .gitmodules AND rm .git for each submodule)
+                 meson/, capstone/, dtc/, slirp/, roms/., tests/fp/. 
+                 
+
 /* Compiling the Emulators */
 // TODO: Eventually want to make my added files apart of the unicorn library
 gcc EmulateUart.c emulatorConfig.c toml.c tester.c -lunicorn -lpthread

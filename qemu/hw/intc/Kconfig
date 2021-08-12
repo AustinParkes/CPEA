@@ -53,9 +53,6 @@ config OMPIC
 config PPC_UIC
     bool
 
-config SH_INTC
-    bool
-
 config RX_ICU
     bool
 
@@ -66,10 +63,4 @@ config SIFIVE_CLINT
     bool
 
 config SIFIVE_PLIC
-    bool
-
-config GOLDFISH_PIC
-    bool
-
-config M68K_IRQC
     bool

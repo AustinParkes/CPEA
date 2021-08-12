@@ -39,12 +39,6 @@
 #define HV_ACCESS_REENLIGHTENMENTS_CONTROL  (1u << 13)
 
 /*
- * HV_CPUID_FEATURES.EBX bits
- */
-#define HV_POST_MESSAGES             (1u << 4)
-#define HV_SIGNAL_EVENTS             (1u << 5)
-
-/*
  * HV_CPUID_FEATURES.EDX bits
  */
 #define HV_MWAIT_AVAILABLE                      (1u << 0)
@@ -145,7 +139,6 @@
  * Reenlightenment notification MSRs
  */
 #define HV_X64_MSR_REENLIGHTENMENT_CONTROL      0x40000106
-#define HV_REENLIGHTENMENT_ENABLE_BIT           (1u << 16)
 #define HV_X64_MSR_TSC_EMULATION_CONTROL        0x40000107
 #define HV_X64_MSR_TSC_EMULATION_STATUS         0x40000108
 

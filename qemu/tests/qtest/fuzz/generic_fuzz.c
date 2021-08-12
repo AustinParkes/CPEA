@@ -19,14 +19,15 @@
 #include "tests/qtest/libqos/pci-pc.h"
 #include "fuzz.h"
 #include "fork_fuzz.h"
+#include "exec/address-spaces.h"
 #include "string.h"
 #include "exec/memory.h"
 #include "exec/ramblock.h"
+#include "exec/address-spaces.h"
 #include "hw/qdev-core.h"
 #include "hw/pci/pci.h"
 #include "hw/boards.h"
 #include "generic_fuzz_configs.h"
-#include "hw/mem/sparse-mem.h"
 
 /*
  * SEPARATOR is used to separate "operations" in the fuzz input
@@ -63,8 +64,6 @@ static useconds_t timeout = DEFAULT_TIMEOUT_US;
 
 static bool qtest_log_enabled;
 
-MemoryRegion *sparse_mem_mr;
-
 /*
  * A pattern used to populate a DMA region or perform a memwrite. This is
  * useful for e.g. populating tables of unique addresses.
@@ -96,22 +95,19 @@ struct get_io_cb_info {
     address_range result;
 };
 
-static bool get_io_address_cb(Int128 start, Int128 size,
-                              const MemoryRegion *mr,
-                              hwaddr offset_in_region,
-                              void *opaque)
-{
+static int get_io_address_cb(Int128 start, Int128 size,
+                          const MemoryRegion *mr, void *opaque) {
     struct get_io_cb_info *info = opaque;
     if (g_hash_table_lookup(fuzzable_memoryregions, mr)) {
         if (info->index == 0) {
             info->result.addr = (ram_addr_t)start;
             info->result.size = (ram_addr_t)size;
             info->found = 1;
-            return true;
+            return 1;
         }
         info->index--;
     }
-    return false;
+    return 0;
 }
 
 /*
@@ -179,7 +175,7 @@ static int memory_access_size(MemoryRegion *mr, unsigned l, hwaddr addr)
  * generic_fuzz(), avoiding potential race-conditions, which we don't have
  * a good way for reproducing right now.
  */
-void fuzz_dma_read_cb(size_t addr, size_t len, MemoryRegion *mr)
+void fuzz_dma_read_cb(size_t addr, size_t len, MemoryRegion *mr, bool is_write)
 {
     /* Are we in the generic-fuzzer or are we using another fuzz-target? */
     if (!qts_global) {
@@ -191,11 +187,15 @@ void fuzz_dma_read_cb(size_t addr, size_t len, MemoryRegion *mr)
      * - We have no DMA patterns defined
      * - The length of the DMA read request is zero
      * - The DMA read is hitting an MR other than the machine's main RAM
+     * - The DMA request is not a read (what happens for a address_space_map
+     *   with is_write=True? Can the device use the same pointer to do reads?)
      * - The DMA request hits past the bounds of our RAM
      */
     if (dma_patterns->len == 0
         || len == 0
-        || (mr != current_machine->ram && mr != sparse_mem_mr)) {
+        || mr != current_machine->ram
+        || is_write
+        || addr > current_machine->ram_size) {
         return;
     }
 
@@ -213,12 +213,12 @@ void fuzz_dma_read_cb(size_t addr, size_t len, MemoryRegion *mr)
             double_fetch = true;
             if (addr < region.addr
                 && avoid_double_fetches) {
-                fuzz_dma_read_cb(addr, region.addr - addr, mr);
+                fuzz_dma_read_cb(addr, region.addr - addr, mr, is_write);
             }
             if (addr + len > region.addr + region.size
                 && avoid_double_fetches) {
                 fuzz_dma_read_cb(region.addr + region.size,
-                        addr + len - (region.addr + region.size), mr);
+                        addr + len - (region.addr + region.size), mr, is_write);
             }
             return;
         }
@@ -241,7 +241,7 @@ void fuzz_dma_read_cb(size_t addr, size_t len, MemoryRegion *mr)
                                       MEMTXATTRS_UNSPECIFIED);
 
         if (!(memory_region_is_ram(mr1) ||
-              memory_region_is_romd(mr1)) && mr1 != sparse_mem_mr) {
+              memory_region_is_romd(mr1))) {
             l = memory_access_size(mr1, l, addr1);
         } else {
             /* ROM/RAM case */
@@ -586,21 +586,6 @@ static void handle_timeout(int sig)
         fprintf(stderr, "[Timeout]\n");
         fflush(stderr);
     }
-
-    /*
-     * If there is a crash, libfuzzer/ASAN forks a child to run an
-     * "llvm-symbolizer" process for printing out a pretty stacktrace. It
-     * communicates with this child using a pipe.  If we timeout+Exit, while
-     * libfuzzer is still communicating with the llvm-symbolizer child, we will
-     * be left with an orphan llvm-symbolizer process. Sometimes, this appears
-     * to lead to a deadlock in the forkserver. Use waitpid to check if there
-     * are any waitable children. If so, exit out of the signal-handler, and
-     * let libfuzzer finish communicating with the child, and exit, on its own.
-     */
-    if (waitpid(-1, NULL, WNOHANG) == 0) {
-        return;
-    }
-
     _Exit(0);
 }
 
@@ -817,12 +802,6 @@ static void generic_pre_fuzz(QTestState *s)
     }
     qts_global = s;
 
-    /*
-     * Create a special device that we can use to back DMA buffers at very
-     * high memory addresses
-     */
-    sparse_mem_mr = sparse_mem_init(0, UINT64_MAX);
-
     dma_regions = g_array_new(false, false, sizeof(address_range));
     dma_patterns = g_array_new(false, false, sizeof(pattern));
 
@@ -841,9 +820,9 @@ static void generic_pre_fuzz(QTestState *s)
 
     g_hash_table_iter_init(&iter, fuzzable_memoryregions);
     while (g_hash_table_iter_next(&iter, (gpointer)&mr, NULL)) {
-        printf("  * %s (size 0x%" PRIx64 ")\n",
+        printf("  * %s (size %lx)\n",
                object_get_canonical_path_component(&(mr->parent_obj)),
-               memory_region_size(mr));
+               (uint64_t)mr->size);
     }
 
     if (!g_hash_table_size(fuzzable_memoryregions)) {
@@ -957,20 +936,12 @@ static GString *generic_fuzz_cmdline(FuzzTarget *t)
 
 static GString *generic_fuzz_predefined_config_cmdline(FuzzTarget *t)
 {
-    gchar *args;
     const generic_fuzz_config *config;
     g_assert(t->opaque);
 
     config = t->opaque;
     setenv("QEMU_AVOID_DOUBLE_FETCH", "1", 1);
-    if (config->argfunc) {
-        args = config->argfunc();
-        setenv("QEMU_FUZZ_ARGS", args, 1);
-        g_free(args);
-    } else {
-        g_assert_nonnull(config->args);
-        setenv("QEMU_FUZZ_ARGS", config->args, 1);
-    }
+    setenv("QEMU_FUZZ_ARGS", config->args, 1);
     setenv("QEMU_FUZZ_OBJECTS", config->objects, 1);
     return generic_fuzz_cmdline(t);
 }

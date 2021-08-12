@@ -13,44 +13,22 @@
 #include "event-internal.h"
 
 typedef struct TraceEventIter {
-    /* iter state */
     size_t event;
     size_t group;
-    /* filter conditions */
-    size_t group_id;
     const char *pattern;
 } TraceEventIter;
 
 
 /**
- * trace_event_iter_init_all:
+ * trace_event_iter_init:
  * @iter: the event iterator struct
+ * @pattern: optional pattern to filter events on name
  *
  * Initialize the event iterator struct @iter,
- * for all events.
- */
-void trace_event_iter_init_all(TraceEventIter *iter);
-
-/**
- * trace_event_iter_init_pattern:
- * @iter: the event iterator struct
- * @pattern: pattern to filter events on name
- *
- * Initialize the event iterator struct @iter,
- * using @pattern to filter out events
+ * optionally using @pattern to filter out events
  * with non-matching names.
  */
-void trace_event_iter_init_pattern(TraceEventIter *iter, const char *pattern);
-
-/**
- * trace_event_iter_init_group:
- * @iter: the event iterator struct
- * @group_id: group_id to filter events by group.
- *
- * Initialize the event iterator struct @iter,
- * using @group_id to filter for events in the group.
- */
-void trace_event_iter_init_group(TraceEventIter *iter, size_t group_id);
+void trace_event_iter_init(TraceEventIter *iter, const char *pattern);
 
 /**
  * trace_event_iter_next:

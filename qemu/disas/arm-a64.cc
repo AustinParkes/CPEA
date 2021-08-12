@@ -17,8 +17,10 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
+extern "C" {
 #include "qemu/osdep.h"
 #include "disas/dis-asm.h"
+}
 
 #include "vixl/a64/disasm-a64.h"
 

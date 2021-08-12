@@ -85,17 +85,12 @@ static void free_dev_ring(PCIDevice *pci_dev, PvrdmaRing *ring,
     rdma_pci_dma_unmap(pci_dev, ring_state, TARGET_PAGE_SIZE);
 }
 
-static int init_dev_ring(PvrdmaRing *ring, PvrdmaRingState **ring_state,
+static int init_dev_ring(PvrdmaRing *ring, struct pvrdma_ring **ring_state,
                          const char *name, PCIDevice *pci_dev,
                          dma_addr_t dir_addr, uint32_t num_pages)
 {
     uint64_t *dir, *tbl;
     int rc = 0;
-
-    if (!num_pages) {
-        rdma_error_report("Ring pages count must be strictly positive");
-        return -EINVAL;
-    }
 
     dir = rdma_pci_dma_map(pci_dev, dir_addr, TARGET_PAGE_SIZE);
     if (!dir) {
@@ -119,7 +114,7 @@ static int init_dev_ring(PvrdmaRing *ring, PvrdmaRingState **ring_state,
     /* RX ring is the second */
     (*ring_state)++;
     rc = pvrdma_ring_init(ring, name, pci_dev,
-                          (PvrdmaRingState *)*ring_state,
+                          (struct pvrdma_ring *)*ring_state,
                           (num_pages - 1) * TARGET_PAGE_SIZE /
                           sizeof(struct pvrdma_cqne),
                           sizeof(struct pvrdma_cqne),

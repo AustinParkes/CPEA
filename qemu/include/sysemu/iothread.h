@@ -37,9 +37,6 @@ struct IOThread {
     int64_t poll_max_ns;
     int64_t poll_grow;
     int64_t poll_shrink;
-
-    /* AioContext AIO engine parameters */
-    int64_t aio_max_batch;
 };
 typedef struct IOThread IOThread;
 
@@ -59,11 +56,5 @@ GMainContext *iothread_get_g_main_context(IOThread *iothread);
 IOThread *iothread_create(const char *id, Error **errp);
 void iothread_stop(IOThread *iothread);
 void iothread_destroy(IOThread *iothread);
-
-/*
- * Returns true if executing withing IOThread context,
- * false otherwise.
- */
-bool qemu_in_iothread(void);
 
 #endif /* IOTHREAD_H */

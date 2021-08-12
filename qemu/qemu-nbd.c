@@ -43,7 +43,6 @@
 #include "io/channel-socket.h"
 #include "io/net-listener.h"
 #include "crypto/init.h"
-#include "crypto/tlscreds.h"
 #include "trace/control.h"
 #include "qemu-version.h"
 
@@ -329,7 +328,7 @@ static void *nbd_client_thread(void *arg)
 
 static int nbd_can_accept(void)
 {
-    return state == RUNNING && (shared == 0 || nb_fds < shared);
+    return state == RUNNING && nb_fds < shared;
 }
 
 static void nbd_update_server_watch(void);
@@ -402,6 +401,24 @@ static QemuOptsList file_opts = {
     },
 };
 
+static QemuOptsList qemu_object_opts = {
+    .name = "object",
+    .implied_opt_name = "qom-type",
+    .head = QTAILQ_HEAD_INITIALIZER(qemu_object_opts.head),
+    .desc = {
+        { }
+    },
+};
+
+static bool qemu_nbd_object_print_help(const char *type, QemuOpts *opts)
+{
+    if (user_creatable_print_help(type, opts)) {
+        exit(0);
+    }
+    return true;
+}
+
+
 static QCryptoTLSCreds *nbd_get_tls_creds(const char *id, bool list,
                                           Error **errp)
 {
@@ -423,12 +440,18 @@ static QCryptoTLSCreds *nbd_get_tls_creds(const char *id, bool list,
         return NULL;
     }
 
-    if (!qcrypto_tls_creds_check_endpoint(creds,
-                                          list
-                                          ? QCRYPTO_TLS_CREDS_ENDPOINT_CLIENT
-                                          : QCRYPTO_TLS_CREDS_ENDPOINT_SERVER,
-                                          errp)) {
-        return NULL;
+    if (list) {
+        if (creds->endpoint != QCRYPTO_TLS_CREDS_ENDPOINT_CLIENT) {
+            error_setg(errp,
+                       "Expecting TLS credentials with a client endpoint");
+            return NULL;
+        }
+    } else {
+        if (creds->endpoint != QCRYPTO_TLS_CREDS_ENDPOINT_SERVER) {
+            error_setg(errp,
+                       "Expecting TLS credentials with a server endpoint");
+            return NULL;
+        }
     }
     object_ref(obj);
     return creds;
@@ -480,7 +503,6 @@ static const char *socket_activation_validate_opts(const char *device,
 static void qemu_nbd_shutdown(void)
 {
     job_cancel_sync_all();
-    blk_exp_close_all();
     bdrv_close_all();
 }
 
@@ -571,6 +593,7 @@ int main(int argc, char **argv)
     qcrypto_init(&error_fatal);
 
     module_call_init(MODULE_INIT_QOM);
+    qemu_add_opts(&qemu_object_opts);
     qemu_add_opts(&qemu_trace_opts);
     qemu_init_exec_dir(argv[0]);
 
@@ -683,7 +706,7 @@ int main(int argc, char **argv)
             break;
         case 'e':
             if (qemu_strtoi(optarg, NULL, 0, &shared) < 0 ||
-                shared < 0) {
+                shared < 1) {
                 error_report("Invalid shared device number '%s'", optarg);
                 exit(EXIT_FAILURE);
             }
@@ -723,9 +746,14 @@ int main(int argc, char **argv)
         case '?':
             error_report("Try `%s --help' for more information.", argv[0]);
             exit(EXIT_FAILURE);
-        case QEMU_NBD_OPT_OBJECT:
-            user_creatable_process_cmdline(optarg);
-            break;
+        case QEMU_NBD_OPT_OBJECT: {
+            QemuOpts *opts;
+            opts = qemu_opts_parse_noisily(&qemu_object_opts,
+                                           optarg, true);
+            if (!opts) {
+                exit(EXIT_FAILURE);
+            }
+        }   break;
         case QEMU_NBD_OPT_TLSCREDS:
             tlscredsid = optarg;
             break;
@@ -772,6 +800,10 @@ int main(int argc, char **argv)
     } else if (!export_name) {
         export_name = "";
     }
+
+    qemu_opts_foreach(&qemu_object_opts,
+                      user_creatable_add_opts_foreach,
+                      qemu_nbd_object_print_help, &error_fatal);
 
     if (!trace_init_backends()) {
         exit(1);
@@ -931,16 +963,8 @@ int main(int argc, char **argv)
 
     server = qio_net_listener_new();
     if (socket_activation == 0) {
-        int backlog;
-
-        if (persistent || shared == 0) {
-            backlog = SOMAXCONN;
-        } else {
-            backlog = MIN(shared, SOMAXCONN);
-        }
         saddr = nbd_build_socket_address(sockpath, bindto, port);
-        if (qio_net_listener_open_sync(server, saddr, backlog,
-                                       &local_err) < 0) {
+        if (qio_net_listener_open_sync(server, saddr, 1, &local_err) < 0) {
             object_unref(OBJECT(server));
             error_report_err(local_err);
             exit(EXIT_FAILURE);

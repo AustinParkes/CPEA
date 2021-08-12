@@ -72,7 +72,8 @@
 
 #if defined(TARGET_I386) || defined(TARGET_ARM) || defined(TARGET_SH4) \
     || defined(TARGET_M68K) || defined(TARGET_CRIS) \
-    || defined(TARGET_S390X) || defined(TARGET_OPENRISC) \
+    || defined(TARGET_S390X) \
+    || defined(TARGET_OPENRISC) || defined(TARGET_TILEGX) \
     || defined(TARGET_NIOS2) || defined(TARGET_RISCV) \
     || defined(TARGET_XTENSA)
 
@@ -102,14 +103,6 @@
 #define TARGET_IOC_NONE   0U
 #define TARGET_IOC_WRITE  2U
 #define TARGET_IOC_READ   1U
-
-#elif defined(TARGET_HEXAGON)
-
-#define TARGET_IOC_SIZEBITS     14
-
-#define TARGET_IOC_NONE   0U
-#define TARGET_IOC_WRITE  1U
-#define TARGET_IOC_READ          2U
 
 #else
 #error unsupported CPU
@@ -492,7 +485,7 @@ void target_to_host_old_sigset(sigset_t *sigset,
                                const abi_ulong *old_sigset);
 struct target_sigaction;
 int do_sigaction(int sig, const struct target_sigaction *act,
-                 struct target_sigaction *oact, abi_ulong ka_restorer);
+                 struct target_sigaction *oact);
 
 #include "target_signal.h"
 
@@ -501,12 +494,27 @@ int do_sigaction(int sig, const struct target_sigaction *act,
 #endif
 
 #if defined(TARGET_ALPHA)
-typedef int32_t target_old_sa_flags;
-#else
-typedef abi_ulong target_old_sa_flags;
-#endif
+struct target_old_sigaction {
+    abi_ulong _sa_handler;
+    abi_ulong sa_mask;
+    int32_t sa_flags;
+};
 
-#if defined(TARGET_MIPS)
+struct target_rt_sigaction {
+    abi_ulong _sa_handler;
+    abi_ulong sa_flags;
+    target_sigset_t sa_mask;
+};
+
+/* This is the struct used inside the kernel.  The ka_restorer
+   field comes from the 5th argument to sys_rt_sigaction.  */
+struct target_sigaction {
+    abi_ulong _sa_handler;
+    abi_ulong sa_flags;
+    target_sigset_t sa_mask;
+    abi_ulong sa_restorer;
+};
+#elif defined(TARGET_MIPS)
 struct target_sigaction {
 	uint32_t	sa_flags;
 #if defined(TARGET_ABI_MIPSN32)
@@ -524,7 +532,7 @@ struct target_sigaction {
 struct target_old_sigaction {
         abi_ulong _sa_handler;
         abi_ulong sa_mask;
-        target_old_sa_flags sa_flags;
+        abi_ulong sa_flags;
 #ifdef TARGET_ARCH_HAS_SA_RESTORER
         abi_ulong sa_restorer;
 #endif
@@ -675,6 +683,10 @@ typedef struct target_siginfo {
 #define TARGET_ILL_PRVREG	(6)	/* privileged register */
 #define TARGET_ILL_COPROC	(7)	/* coprocessor error */
 #define TARGET_ILL_BADSTK	(8)	/* internal stack error */
+#ifdef TARGET_TILEGX
+#define TARGET_ILL_DBLFLT       (9)     /* double fault */
+#define TARGET_ILL_HARDWALL     (10)    /* user networks hardwall violation */
+#endif
 
 /*
  * SIGFPE si_codes
@@ -1299,7 +1311,6 @@ struct target_winsize {
 
 #ifdef TARGET_AARCH64
 #define TARGET_PROT_BTI         0x10
-#define TARGET_PROT_MTE         0x20
 #endif
 
 /* Common */
@@ -2129,7 +2140,8 @@ struct target_stat64  {
     abi_ulong __unused5;
 };
 
-#elif defined(TARGET_OPENRISC) || defined(TARGET_NIOS2) || defined(TARGET_RISCV)
+#elif defined(TARGET_OPENRISC) || defined(TARGET_TILEGX) || \
+      defined(TARGET_NIOS2) || defined(TARGET_RISCV)
 
 /* These are the asm-generic versions of the stat and stat64 structures */
 
@@ -2238,31 +2250,6 @@ struct target_stat64 {
     abi_int    target_st_ctime;
     abi_uint   target_st_ctime_nsec;
     uint64_t   st_ino;
-};
-
-#elif defined(TARGET_HEXAGON)
-
-struct target_stat {
-    unsigned long long st_dev;
-    unsigned long long st_ino;
-    unsigned int st_mode;
-    unsigned int st_nlink;
-    unsigned int st_uid;
-    unsigned int st_gid;
-    unsigned long long st_rdev;
-    target_ulong __pad1;
-    long long st_size;
-    target_long st_blksize;
-    int __pad2;
-    long long st_blocks;
-
-    target_long target_st_atime;
-    target_long target_st_atime_nsec;
-    target_long target_st_mtime;
-    target_long target_st_mtime_nsec;
-    target_long target_st_ctime;
-    target_long target_st_ctime_nsec;
-    int __unused[2];
 };
 
 #else
@@ -2751,7 +2738,7 @@ struct target_drm_i915_getparam {
 
 #include "socket.h"
 
-#include "target_errno_defs.h"
+#include "errno_defs.h"
 
 #define FUTEX_WAIT              0
 #define FUTEX_WAKE              1

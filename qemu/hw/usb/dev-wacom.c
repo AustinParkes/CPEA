@@ -301,7 +301,7 @@ static void usb_wacom_handle_control(USBDevice *dev, USBPacket *p,
 static void usb_wacom_handle_data(USBDevice *dev, USBPacket *p)
 {
     USBWacomState *s = (USBWacomState *) dev;
-    g_autofree uint8_t *buf = g_malloc(p->iov.size);
+    uint8_t buf[p->iov.size];
     int len = 0;
 
     switch (p->pid) {

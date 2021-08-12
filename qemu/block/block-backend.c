@@ -18,6 +18,7 @@
 #include "hw/qdev-core.h"
 #include "sysemu/blockdev.h"
 #include "sysemu/runstate.h"
+#include "sysemu/sysemu.h"
 #include "sysemu/replay.h"
 #include "qapi/error.h"
 #include "qapi/qapi-events-block.h"
@@ -141,18 +142,19 @@ static void blk_root_set_aio_ctx(BdrvChild *child, AioContext *ctx,
 static char *blk_root_get_parent_desc(BdrvChild *child)
 {
     BlockBackend *blk = child->opaque;
-    g_autofree char *dev_id = NULL;
+    char *dev_id;
 
     if (blk->name) {
-        return g_strdup_printf("block device '%s'", blk->name);
+        return g_strdup(blk->name);
     }
 
     dev_id = blk_get_attached_dev_id(blk);
     if (*dev_id) {
-        return g_strdup_printf("block device '%s'", dev_id);
+        return dev_id;
     } else {
         /* TODO Callback into the BB owner for something more detailed */
-        return g_strdup("an unnamed block device");
+        g_free(dev_id);
+        return g_strdup("a block device");
     }
 }
 
@@ -161,7 +163,7 @@ static const char *blk_root_get_name(BdrvChild *child)
     return blk_name(child->opaque);
 }
 
-static void blk_vm_state_changed(void *opaque, bool running, RunState state)
+static void blk_vm_state_changed(void *opaque, int running, RunState state)
 {
     Error *local_err = NULL;
     BlockBackend *blk = opaque;
@@ -296,13 +298,6 @@ static void blk_root_detach(BdrvChild *child)
     }
 }
 
-static AioContext *blk_root_get_parent_aio_context(BdrvChild *c)
-{
-    BlockBackend *blk = c->opaque;
-
-    return blk_get_aio_context(blk);
-}
-
 static const BdrvChildClass child_root = {
     .inherit_options    = blk_root_inherit_options,
 
@@ -323,8 +318,6 @@ static const BdrvChildClass child_root = {
 
     .can_set_aio_ctx    = blk_root_can_set_aio_ctx,
     .set_aio_ctx        = blk_root_set_aio_ctx,
-
-    .get_parent_aio_context = blk_root_get_parent_aio_context,
 };
 
 /*
@@ -405,19 +398,15 @@ BlockBackend *blk_new_open(const char *filename, const char *reference,
     BlockBackend *blk;
     BlockDriverState *bs;
     uint64_t perm = 0;
-    uint64_t shared = BLK_PERM_ALL;
 
-    /*
-     * blk_new_open() is mainly used in .bdrv_create implementations and the
-     * tools where sharing isn't a major concern because the BDS stays private
-     * and the file is generally not supposed to be used by a second process,
-     * so we just request permission according to the flags.
+    /* blk_new_open() is mainly used in .bdrv_create implementations and the
+     * tools where sharing isn't a concern because the BDS stays private, so we
+     * just request permission according to the flags.
      *
      * The exceptions are xen_disk and blockdev_init(); in these cases, the
      * caller of blk_new_open() doesn't make use of the permissions, but they
      * shouldn't hurt either. We can still share everything here because the
-     * guest devices will add their own blockers if they can't share.
-     */
+     * guest devices will add their own blockers if they can't share. */
     if ((flags & BDRV_O_NO_IO) == 0) {
         perm |= BLK_PERM_CONSISTENT_READ;
         if (flags & BDRV_O_RDWR) {
@@ -427,11 +416,8 @@ BlockBackend *blk_new_open(const char *filename, const char *reference,
     if (flags & BDRV_O_RESIZE) {
         perm |= BLK_PERM_RESIZE;
     }
-    if (flags & BDRV_O_NO_SHARE) {
-        shared = BLK_PERM_CONSISTENT_READ | BLK_PERM_WRITE_UNCHANGED;
-    }
 
-    blk = blk_new(qemu_get_aio_context(), perm, shared);
+    blk = blk_new(qemu_get_aio_context(), perm, BLK_PERM_ALL);
     bs = bdrv_open(filename, reference, options, flags, errp);
     if (!bs) {
         blk_unref(blk);
@@ -440,7 +426,7 @@ BlockBackend *blk_new_open(const char *filename, const char *reference,
 
     blk->root = bdrv_root_attach_child(bs, "root", &child_root,
                                        BDRV_CHILD_FILTERED | BDRV_CHILD_PRIMARY,
-                                       perm, shared, blk, errp);
+                                       blk->ctx, perm, BLK_PERM_ALL, blk, errp);
     if (!blk->root) {
         blk_unref(blk);
         return NULL;
@@ -854,7 +840,7 @@ int blk_insert_bs(BlockBackend *blk, BlockDriverState *bs, Error **errp)
     bdrv_ref(bs);
     blk->root = bdrv_root_attach_child(bs, "root", &child_root,
                                        BDRV_CHILD_FILTERED | BDRV_CHILD_PRIMARY,
-                                       blk->perm, blk->shared_perm,
+                                       blk->ctx, blk->perm, blk->shared_perm,
                                        blk, errp);
     if (blk->root == NULL) {
         return -EPERM;
@@ -1840,28 +1826,15 @@ void blk_error_action(BlockBackend *blk, BlockErrorAction action,
     }
 }
 
-/*
- * Returns true if the BlockBackend can support taking write permissions
- * (because its root node is not read-only).
- */
-bool blk_supports_write_perm(BlockBackend *blk)
+bool blk_is_read_only(BlockBackend *blk)
 {
     BlockDriverState *bs = blk_bs(blk);
 
     if (bs) {
-        return !bdrv_is_read_only(bs);
+        return bdrv_is_read_only(bs);
     } else {
-        return blk->root_state.open_flags & BDRV_O_RDWR;
+        return blk->root_state.read_only;
     }
-}
-
-/*
- * Returns true if the BlockBackend can be written to in its current
- * configuration (i.e. if write permission have been requested)
- */
-bool blk_is_writable(BlockBackend *blk)
-{
-    return blk->perm & BLK_PERM_WRITE;
 }
 
 bool blk_is_sg(BlockBackend *blk)
@@ -1953,29 +1926,16 @@ uint32_t blk_get_request_alignment(BlockBackend *blk)
     return bs ? bs->bl.request_alignment : BDRV_SECTOR_SIZE;
 }
 
-/* Returns the maximum hardware transfer length, in bytes; guaranteed nonzero */
-uint64_t blk_get_max_hw_transfer(BlockBackend *blk)
-{
-    BlockDriverState *bs = blk_bs(blk);
-    uint64_t max = INT_MAX;
-
-    if (bs) {
-        max = MIN_NON_ZERO(max, bs->bl.max_hw_transfer);
-        max = MIN_NON_ZERO(max, bs->bl.max_transfer);
-    }
-    return ROUND_DOWN(max, blk_get_request_alignment(blk));
-}
-
 /* Returns the maximum transfer length, in bytes; guaranteed nonzero */
 uint32_t blk_get_max_transfer(BlockBackend *blk)
 {
     BlockDriverState *bs = blk_bs(blk);
-    uint32_t max = INT_MAX;
+    uint32_t max = 0;
 
     if (bs) {
-        max = MIN_NON_ZERO(max, bs->bl.max_transfer);
+        max = bs->bl.max_transfer;
     }
-    return ROUND_DOWN(max, blk_get_request_alignment(blk));
+    return MIN_NON_ZERO(max, INT_MAX);
 }
 
 int blk_get_max_iov(BlockBackend *blk)
@@ -2281,6 +2241,7 @@ void blk_update_root_state(BlockBackend *blk)
     assert(blk->root);
 
     blk->root_state.open_flags    = blk->root->bs->open_flags;
+    blk->root_state.read_only     = blk->root->bs->read_only;
     blk->root_state.detect_zeroes = blk->root->bs->detect_zeroes;
 }
 
@@ -2299,7 +2260,12 @@ bool blk_get_detect_zeroes_from_root_state(BlockBackend *blk)
  */
 int blk_get_open_flags_from_root_state(BlockBackend *blk)
 {
-    return blk->root_state.open_flags;
+    int bs_flags;
+
+    bs_flags = blk->root_state.read_only ? 0 : BDRV_O_RDWR;
+    bs_flags |= blk->root_state.open_flags & ~BDRV_O_RDWR;
+
+    return bs_flags;
 }
 
 BlockBackendRootState *blk_get_root_state(BlockBackend *blk)
@@ -2399,13 +2365,8 @@ static void blk_root_drained_begin(BdrvChild *child)
 static bool blk_root_drained_poll(BdrvChild *child)
 {
     BlockBackend *blk = child->opaque;
-    bool busy = false;
     assert(blk->quiesce_counter);
-
-    if (blk->dev_ops && blk->dev_ops->drained_poll) {
-        busy = blk->dev_ops->drained_poll(blk->dev_opaque);
-    }
-    return busy || !!blk->in_flight;
+    return !!blk->in_flight;
 }
 
 static void blk_root_drained_end(BdrvChild *child, int *drained_end_counter)

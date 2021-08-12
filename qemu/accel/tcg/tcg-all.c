@@ -30,13 +30,9 @@
 #include "tcg/tcg.h"
 #include "qapi/error.h"
 #include "qemu/error-report.h"
-#include "qemu/accel.h"
-#include "qapi/qapi-builtin-visit.h"
-#include "qemu/units.h"
-#if !defined(CONFIG_USER_ONLY)
 #include "hw/boards.h"
-#endif
-#include "internal.h"
+#include "qapi/qapi-builtin-visit.h"
+#include "tcg-cpus.h"
 
 struct TCGState {
     AccelState parent_obj;
@@ -101,7 +97,7 @@ static void tcg_accel_instance_init(Object *obj)
     s->mttcg_enabled = default_mttcg_enabled();
 
     /* If debugging enabled, default "auto on", otherwise off. */
-#if defined(CONFIG_DEBUG_TCG) && !defined(CONFIG_USER_ONLY)
+#ifdef CONFIG_DEBUG_TCG
     s->splitwx_enabled = -1;
 #else
     s->splitwx_enabled = 0;
@@ -110,30 +106,25 @@ static void tcg_accel_instance_init(Object *obj)
 
 bool mttcg_enabled;
 
-static int tcg_init_machine(MachineState *ms)
+static int tcg_init(MachineState *ms)
 {
     TCGState *s = TCG_STATE(current_accel());
-#ifdef CONFIG_USER_ONLY
-    unsigned max_cpus = 1;
-#else
-    unsigned max_cpus = ms->smp.max_cpus;
-#endif
 
-    tcg_allowed = true;
+    tcg_exec_init(s->tb_size * 1024 * 1024, s->splitwx_enabled);
     mttcg_enabled = s->mttcg_enabled;
 
-    page_init();
-    tb_htable_init();
-    tcg_init(s->tb_size * MiB, s->splitwx_enabled, max_cpus);
-
-#if defined(CONFIG_SOFTMMU)
     /*
-     * There's no guest base to take into account, so go ahead and
-     * initialize the prologue now.
+     * Initialize TCG regions
      */
-    tcg_prologue_init(tcg_ctx);
-#endif
+    tcg_region_init();
 
+    if (mttcg_enabled) {
+        cpus_register_accel(&tcg_cpus_mttcg);
+    } else if (icount_enabled()) {
+        cpus_register_accel(&tcg_cpus_icount);
+    } else {
+        cpus_register_accel(&tcg_cpus_rr);
+    }
     return 0;
 }
 
@@ -212,7 +203,7 @@ static void tcg_accel_class_init(ObjectClass *oc, void *data)
 {
     AccelClass *ac = ACCEL_CLASS(oc);
     ac->name = "tcg";
-    ac->init_machine = tcg_init_machine;
+    ac->init_machine = tcg_init;
     ac->allowed = &tcg_allowed;
 
     object_class_property_add_str(oc, "thread",
@@ -238,7 +229,6 @@ static const TypeInfo tcg_accel_type = {
     .class_init = tcg_accel_class_init,
     .instance_size = sizeof(TCGState),
 };
-module_obj(TYPE_TCG_ACCEL);
 
 static void register_accel_types(void)
 {

@@ -10,7 +10,7 @@
 
 #include "qemu/osdep.h"
 #include "cpu.h"
-#include "s390x-internal.h"
+#include "internal.h"
 #include "sysemu/hw_accel.h"
 #include "sysemu/runstate.h"
 #include "exec/address-spaces.h"
@@ -235,8 +235,7 @@ static void sigp_restart(CPUState *cs, run_on_cpu_data arg)
         cpu_synchronize_state(cs);
         /*
          * Set OPERATING (and unhalting) before loading the restart PSW.
-         * s390_cpu_set_psw() will then properly halt the CPU again if
-         * necessary (TCG).
+         * load_psw() will then properly halt the CPU again if necessary (TCG).
          */
         s390_cpu_set_state(S390_CPU_STATE_OPERATING, cpu);
         do_restart_interrupt(&cpu->env);

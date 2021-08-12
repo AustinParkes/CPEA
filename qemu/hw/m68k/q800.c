@@ -26,16 +26,17 @@
 #include "qemu/datadir.h"
 #include "sysemu/sysemu.h"
 #include "cpu.h"
+#include "hw/hw.h"
 #include "hw/boards.h"
+#include "hw/irq.h"
 #include "hw/or-irq.h"
 #include "elf.h"
 #include "hw/loader.h"
 #include "ui/console.h"
+#include "exec/address-spaces.h"
 #include "hw/char/escc.h"
 #include "hw/sysbus.h"
 #include "hw/scsi/esp.h"
-#include "standard-headers/asm-m68k/bootinfo.h"
-#include "standard-headers/asm-m68k/bootinfo-mac.h"
 #include "bootinfo.h"
 #include "hw/misc/mac_via.h"
 #include "hw/input/adb.h"
@@ -54,6 +55,14 @@
 
 #define MACROM_FILENAME "MacROM.bin"
 
+#define Q800_MACHINE_ID 35
+#define Q800_CPU_ID (1 << 2)
+#define Q800_FPU_ID (1 << 2)
+#define Q800_MMU_ID (1 << 2)
+
+#define MACH_MAC        3
+#define Q800_MAC_CPU_ID 2
+
 #define IO_BASE               0x50000000
 #define IO_SLICE              0x00040000
 #define IO_SIZE               0x04000000
@@ -69,8 +78,6 @@
 
 #define NUBUS_SUPER_SLOT_BASE 0x60000000
 #define NUBUS_SLOT_BASE       0xf0000000
-
-#define SONIC_PROM_SIZE       0x1000
 
 /*
  * the video base, whereas it a Nubus address,
@@ -213,10 +220,8 @@ static void q800_init(MachineState *machine)
     int32_t initrd_size;
     MemoryRegion *rom;
     MemoryRegion *io;
-    MemoryRegion *dp8393x_prom = g_new(MemoryRegion, 1);
-    uint8_t *prom;
     const int io_slice_nb = (IO_SIZE / IO_SLICE) - 1;
-    int i, checksum;
+    int i;
     ram_addr_t ram_size = machine->ram_size;
     const char *kernel_filename = machine->kernel_filename;
     const char *initrd_filename = machine->initrd_filename;
@@ -323,21 +328,8 @@ static void q800_init(MachineState *machine)
     sysbus = SYS_BUS_DEVICE(dev);
     sysbus_realize_and_unref(sysbus, &error_fatal);
     sysbus_mmio_map(sysbus, 0, SONIC_BASE);
+    sysbus_mmio_map(sysbus, 1, SONIC_PROM_BASE);
     sysbus_connect_irq(sysbus, 0, qdev_get_gpio_in(glue, 2));
-
-    memory_region_init_rom(dp8393x_prom, NULL, "dp8393x-q800.prom",
-                           SONIC_PROM_SIZE, &error_fatal);
-    memory_region_add_subregion(get_system_memory(), SONIC_PROM_BASE,
-                                dp8393x_prom);
-
-    /* Add MAC address with valid checksum to PROM */
-    prom = memory_region_get_ram_ptr(dp8393x_prom);
-    checksum = 0;
-    for (i = 0; i < 6; i++) {
-        prom[i] = revbit8(nd_table[0].macaddr.a[i]);
-        checksum ^= prom[i];
-    }
-    prom[7] = 0xff - checksum;
 
     /* SCC */
 
@@ -364,8 +356,8 @@ static void q800_init(MachineState *machine)
 
     /* SCSI */
 
-    dev = qdev_new(TYPE_SYSBUS_ESP);
-    sysbus_esp = SYSBUS_ESP(dev);
+    dev = qdev_new(TYPE_ESP);
+    sysbus_esp = ESP(dev);
     esp = &sysbus_esp->esp;
     esp->dma_memory_read = NULL;
     esp->dma_memory_write = NULL;
@@ -423,11 +415,11 @@ static void q800_init(MachineState *machine)
         parameters_base = (high + 1) & ~1;
 
         BOOTINFO1(cs->as, parameters_base, BI_MACHTYPE, MACH_MAC);
-        BOOTINFO1(cs->as, parameters_base, BI_FPUTYPE, FPU_68040);
-        BOOTINFO1(cs->as, parameters_base, BI_MMUTYPE, MMU_68040);
-        BOOTINFO1(cs->as, parameters_base, BI_CPUTYPE, CPU_68040);
-        BOOTINFO1(cs->as, parameters_base, BI_MAC_CPUID, CPUB_68040);
-        BOOTINFO1(cs->as, parameters_base, BI_MAC_MODEL, MAC_MODEL_Q800);
+        BOOTINFO1(cs->as, parameters_base, BI_FPUTYPE, Q800_FPU_ID);
+        BOOTINFO1(cs->as, parameters_base, BI_MMUTYPE, Q800_MMU_ID);
+        BOOTINFO1(cs->as, parameters_base, BI_CPUTYPE, Q800_CPU_ID);
+        BOOTINFO1(cs->as, parameters_base, BI_MAC_CPUID, Q800_MAC_CPU_ID);
+        BOOTINFO1(cs->as, parameters_base, BI_MAC_MODEL, Q800_MACHINE_ID);
         BOOTINFO1(cs->as, parameters_base,
                   BI_MAC_MEMSIZE, ram_size >> 20); /* in MB */
         BOOTINFO2(cs->as, parameters_base, BI_MEMCHUNK, 0, ram_size);

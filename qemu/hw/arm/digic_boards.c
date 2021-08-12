@@ -27,11 +27,14 @@
 #include "qapi/error.h"
 #include "qemu-common.h"
 #include "qemu/datadir.h"
+#include "cpu.h"
 #include "hw/boards.h"
+#include "exec/address-spaces.h"
 #include "qemu/error-report.h"
 #include "hw/arm/digic.h"
 #include "hw/block/flash.h"
 #include "hw/loader.h"
+#include "sysemu/sysemu.h"
 #include "sysemu/qtest.h"
 #include "qemu/units.h"
 #include "qemu/cutils.h"
@@ -139,7 +142,7 @@ static void canon_a1100_init(MachineState *machine)
 
 static void canon_a1100_machine_init(MachineClass *mc)
 {
-    mc->desc = "Canon PowerShot A1100 IS (ARM946)";
+    mc->desc = "Canon PowerShot A1100 IS";
     mc->init = &canon_a1100_init;
     mc->ignore_memory_transaction_failures = true;
     mc->default_ram_size = 64 * MiB;

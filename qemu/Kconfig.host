@@ -37,7 +37,3 @@ config VIRTFS
 
 config PVRDMA
     bool
-
-config MULTIPROCESS_ALLOWED
-    bool
-    imply MULTIPROCESS

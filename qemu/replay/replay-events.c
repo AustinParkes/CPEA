@@ -15,7 +15,6 @@
 #include "replay-internal.h"
 #include "block/aio.h"
 #include "ui/input.h"
-#include "hw/core/cpu.h"
 
 typedef struct Event {
     ReplayAsyncEventKind event_kind;
@@ -127,7 +126,6 @@ void replay_add_event(ReplayAsyncEventKind event_kind,
 
     g_assert(replay_mutex_locked());
     QTAILQ_INSERT_TAIL(&events_list, event, events);
-    qemu_cpu_kick(first_cpu);
 }
 
 void replay_bh_schedule_event(QEMUBH *bh)

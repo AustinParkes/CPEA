@@ -34,7 +34,6 @@
 #include "qapi/qapi-events-ui.h"
 #include "qemu/notify.h"
 #include "qemu/option.h"
-#include "crypto/secret_common.h"
 #include "migration/misc.h"
 #include "hw/pci/pci_bus.h"
 #include "ui/spice-display.h"
@@ -355,11 +354,11 @@ static const char *wan_compression_names[] = {
 
 static SpiceChannelList *qmp_query_spice_channels(void)
 {
-    SpiceChannelList *head = NULL, **tail = &head;
+    SpiceChannelList *cur_item = NULL, *head = NULL;
     ChannelList *item;
 
     QTAILQ_FOREACH(item, &channel_list, link) {
-        SpiceChannel *chan;
+        SpiceChannelList *chan;
         char host[NI_MAXHOST], port[NI_MAXSERV];
         struct sockaddr *paddr;
         socklen_t plen;
@@ -367,22 +366,29 @@ static SpiceChannelList *qmp_query_spice_channels(void)
         assert(item->info->flags & SPICE_CHANNEL_EVENT_FLAG_ADDR_EXT);
 
         chan = g_malloc0(sizeof(*chan));
+        chan->value = g_malloc0(sizeof(*chan->value));
 
         paddr = (struct sockaddr *)&item->info->paddr_ext;
         plen = item->info->plen_ext;
         getnameinfo(paddr, plen,
                     host, sizeof(host), port, sizeof(port),
                     NI_NUMERICHOST | NI_NUMERICSERV);
-        chan->host = g_strdup(host);
-        chan->port = g_strdup(port);
-        chan->family = inet_netfamily(paddr->sa_family);
+        chan->value->host = g_strdup(host);
+        chan->value->port = g_strdup(port);
+        chan->value->family = inet_netfamily(paddr->sa_family);
 
-        chan->connection_id = item->info->connection_id;
-        chan->channel_type = item->info->type;
-        chan->channel_id = item->info->id;
-        chan->tls = item->info->flags & SPICE_CHANNEL_EVENT_FLAG_TLS;
+        chan->value->connection_id = item->info->connection_id;
+        chan->value->channel_type = item->info->type;
+        chan->value->channel_id = item->info->id;
+        chan->value->tls = item->info->flags & SPICE_CHANNEL_EVENT_FLAG_TLS;
 
-        QAPI_LIST_APPEND(tail, chan);
+       /* XXX: waiting for the qapi to support GSList */
+        if (!cur_item) {
+            head = cur_item = chan;
+        } else {
+            cur_item->next = chan;
+            cur_item = chan;
+        }
     }
 
     return head;
@@ -415,9 +421,6 @@ static QemuOptsList qemu_spice_opts = {
 #endif
         },{
             .name = "password",
-            .type = QEMU_OPT_STRING,
-        },{
-            .name = "password-secret",
             .type = QEMU_OPT_STRING,
         },{
             .name = "disable-ticketing",
@@ -619,7 +622,7 @@ static int add_channel(void *opaque, const char *name, const char *value,
     return 0;
 }
 
-static void vm_change_state_handler(void *opaque, bool running,
+static void vm_change_state_handler(void *opaque, int running,
                                     RunState state)
 {
     if (running) {
@@ -629,20 +632,10 @@ static void vm_change_state_handler(void *opaque, bool running,
     }
 }
 
-void qemu_spice_display_init_done(void)
-{
-    if (runstate_is_running()) {
-        qemu_spice_display_start();
-    }
-    qemu_add_vm_change_state_handler(vm_change_state_handler, NULL);
-}
-
 static void qemu_spice_init(void)
 {
     QemuOpts *opts = QTAILQ_FIRST(&qemu_spice_opts.head);
-    char *password = NULL;
-    const char *passwordSecret;
-    const char *str, *x509_dir, *addr,
+    const char *password, *str, *x509_dir, *addr,
         *x509_key_password = NULL,
         *x509_dh_file = NULL,
         *tls_ciphers = NULL;
@@ -669,28 +662,7 @@ static void qemu_spice_init(void)
         error_report("spice tls-port is out of range");
         exit(1);
     }
-    passwordSecret = qemu_opt_get(opts, "password-secret");
-    if (passwordSecret) {
-        Error *local_err = NULL;
-        if (qemu_opt_get(opts, "password")) {
-            error_report("'password' option is mutually exclusive with "
-                         "'password-secret'");
-            exit(1);
-        }
-        password = qcrypto_secret_lookup_as_utf8(passwordSecret,
-                                                 &local_err);
-        if (!password) {
-            error_report_err(local_err);
-            exit(1);
-        }
-    } else {
-        str = qemu_opt_get(opts, "password");
-        if (str) {
-            warn_report("'password' option is deprecated and insecure, "
-                        "use 'password-secret' instead");
-            password = g_strdup(str);
-        }
-    }
+    password = qemu_opt_get(opts, "password");
 
     if (tls_port) {
         x509_dir = qemu_opt_get(opts, "x509-dir");
@@ -831,12 +803,12 @@ static void qemu_spice_init(void)
 
     qemu_spice_input_init();
 
+    qemu_add_vm_change_state_handler(vm_change_state_handler, NULL);
     qemu_spice_display_stop();
 
     g_free(x509_key_file);
     g_free(x509_cert_file);
     g_free(x509_cacert_file);
-    g_free(password);
 
 #ifdef HAVE_SPICE_GL
     if (qemu_opt_get_bool(opts, "gl", 0)) {
@@ -1037,8 +1009,3 @@ static void spice_register_config(void)
     qemu_add_opts(&qemu_spice_opts);
 }
 opts_init(spice_register_config);
-module_opts("spice");
-
-#ifdef HAVE_SPICE_GL
-module_dep("ui-opengl");
-#endif

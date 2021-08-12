@@ -11,7 +11,8 @@
  */
 
 #include "qemu/osdep.h"
-#include "semihosting/console.h"
+#include "cpu.h"
+#include "hw/semihosting/console.h"
 #include "qemu.h"
 #include <termios.h>
 

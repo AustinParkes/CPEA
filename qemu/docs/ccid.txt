@@ -34,14 +34,15 @@ reader and smart card (i.e. not backed by a physical device) using this device.
 
 2. Building
 
-The cryptographic functions and access to the physical card is done via the
-libcacard library, whose development package must be installed prior to
-building QEMU:
+The cryptographic functions and access to the physical card is done via NSS.
+
+Installing NSS:
 
 In redhat/fedora:
-    yum install libcacard-devel
-In ubuntu:
-    apt-get install libcacard-dev
+    yum install nss-devel
+In ubuntu/debian:
+    apt-get install libnss3-dev
+    (not tested on ubuntu)
 
 Configuring and building:
     ./configure --enable-smartcard && make
@@ -50,7 +51,7 @@ Configuring and building:
 3. Using ccid-card-emulated with hardware
 
 Assuming you have a working smartcard on the host with the current
-user, using libcacard, QEMU acts as another client using ccid-card-emulated:
+user, using NSS, qemu acts as another NSS client using ccid-card-emulated:
 
     qemu -usb -device usb-ccid -device ccid-card-emulated
 
@@ -108,8 +109,7 @@ NSS.  Registration can be done from Firefox or the command line:
 
 on the host specify the ccid-card-passthru device with a suitable chardev:
 
-    qemu -chardev socket,server=on,host=0.0.0.0,port=2001,id=ccid,wait=off \
-         -usb -device usb-ccid -device ccid-card-passthru,chardev=ccid
+    qemu -chardev socket,server,host=0.0.0.0,port=2001,id=ccid,nowait -usb -device usb-ccid -device ccid-card-passthru,chardev=ccid
 
 on the client run vscclient, built when you built QEMU:
 
@@ -125,8 +125,7 @@ Follow instructions as per #4, except run QEMU and vscclient as follows:
 Run qemu as per #5, and run vscclient from the "fake-smartcard"
 directory as follows:
 
-    qemu -chardev socket,server=on,host=0.0.0.0,port=2001,id=ccid,wait=off \
-         -usb -device usb-ccid -device ccid-card-passthru,chardev=ccid
+    qemu -chardev socket,server,host=0.0.0.0,port=2001,id=ccid,nowait -usb -device usb-ccid -device ccid-card-passthru,chardev=ccid
     vscclient -e "db=\"sql:$PWD\" use_hw=no soft=(,Test,CAC,,id-cert,signing-cert,encryption-cert)" <qemu-host> 2001
 
 

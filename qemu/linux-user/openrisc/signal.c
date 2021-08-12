@@ -158,7 +158,10 @@ long do_rt_sigreturn(CPUOpenRISCState *env)
     set_sigmask(&set);
 
     restore_sigcontext(env, &frame->uc.tuc_mcontext);
-    target_restore_altstack(&frame->uc.tuc_stack, env);
+    if (do_sigaltstack(frame_addr + offsetof(target_rt_sigframe, uc.tuc_stack),
+                       0, frame_addr) == -EFAULT) {
+        goto badframe;
+    }
 
     unlock_user_struct(frame, frame_addr, 0);
     return cpu_get_gpr(env, 11);

@@ -228,7 +228,12 @@ enum {
     LOADER_PARAM,
 };
 
-extern const MemMapEntry virt_memmap[];
+struct MemmapEntry {
+    hwaddr base;
+    hwaddr size;
+};
+
+extern const struct MemmapEntry virt_memmap[];
 void init_loongson_params(struct loongson_params *lp, void *p,
                           uint64_t cpu_freq, uint64_t ram_size);
 void init_reset_system(struct efi_reset_system_t *reset);

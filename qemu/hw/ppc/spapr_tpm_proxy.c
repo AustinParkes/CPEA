@@ -15,6 +15,7 @@
 #include "qapi/error.h"
 #include "qemu/error-report.h"
 #include "sysemu/reset.h"
+#include "cpu.h"
 #include "hw/ppc/spapr.h"
 #include "hw/qdev-properties.h"
 #include "trace.h"

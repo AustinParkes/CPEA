@@ -686,7 +686,7 @@ static void periodic_timer(void)
 
 int main(int argc, char **argv)
 {
-    QTestState *s;
+    QTestState *s = NULL;
     int ret;
 
     g_test_init(&argc, &argv, NULL);
@@ -712,7 +712,9 @@ int main(int argc, char **argv)
 
     ret = g_test_run();
 
-    qtest_quit(s);
+    if (s) {
+        qtest_quit(s);
+    }
 
     return ret;
 }

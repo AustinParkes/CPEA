@@ -6,7 +6,6 @@ config ARM_VIRT
     imply VFIO_PLATFORM
     imply VFIO_XGMAC
     imply TPM_TIS_SYSBUS
-    imply NVDIMM
     select ARM_GIC
     select ACPI
     select ARM_SMMUV3
@@ -18,7 +17,6 @@ config ARM_VIRT
     select PL011 # UART
     select PL031 # RTC
     select PL061 # GPIO
-    select GPIO_PWR
     select PLATFORM_BUS
     select SMBIOS
     select VIRTIO_MMIO
@@ -53,7 +51,6 @@ config EXYNOS4
     select PTIMER
     select SDHCI
     select USB_EHCI_SYSBUS
-    select OR_IRQ
 
 config HIGHBANK
     bool
@@ -143,7 +140,6 @@ config PXA2XX
     select SD
     select SSI
     select USB_OHCI
-    select PCMCIA
 
 config GUMSTIX
     bool
@@ -239,10 +235,6 @@ config STELLARIS
     select STELLARIS_ENET # ethernet
     select UNIMP
 
-config STM32VLDISCOVERY
-    bool
-    select STM32F100_SOC
-
 config STRONGARM
     bool
     select PXA2XX
@@ -300,10 +292,7 @@ config ZYNQ
 
 config ARM_V7M
     bool
-    # currently v7M must be included in a TCG build due to translate.c
-    default y if TCG && (ARM || AARCH64)
     select PTIMER
-    select ARM_COMPATIBLE_SEMIHOSTING
 
 config ALLWINNER_A10
     bool
@@ -333,12 +322,6 @@ config RASPI
     select SDHCI
     select USB_DWC2
 
-config STM32F100_SOC
-    bool
-    select ARM_V7M
-    select STM32F2XX_USART
-    select STM32F2XX_SPI
-
 config STM32F205_SOC
     bool
     select ARM_V7M
@@ -352,7 +335,6 @@ config STM32F205_SOC
 config STM32F405_SOC
     bool
     select ARM_V7M
-    select OR_IRQ
     select STM32F4XX_SYSCFG
     select STM32F4XX_EXTI
 
@@ -368,9 +350,7 @@ config XLNX_ZYNQMP_ARM
     select SSI_M25P80
     select XILINX_AXI
     select XILINX_SPIPS
-    select XLNX_CSU_DMA
     select XLNX_ZYNQMP
-    select XLNX_ZDMA
 
 config XLNX_VERSAL
     bool
@@ -379,24 +359,15 @@ config XLNX_VERSAL
     select CADENCE
     select VIRTIO_MMIO
     select UNIMP
-    select XLNX_ZDMA
-    select XLNX_ZYNQMP
-    select OR_IRQ
 
 config NPCM7XX
     bool
     select A9MPCORE
-    select ADM1272
     select ARM_GIC
-    select SMBUS
-    select AT24C  # EEPROM
-    select MAX34451
     select PL310  # cache controller
-    select PMBUS
     select SERIAL
     select SSI
     select UNIMP
-    select PCA954X
 
 config FSL_IMX25
     bool
@@ -404,7 +375,7 @@ config FSL_IMX25
     select IMX_FEC
     select IMX_I2C
     select WDT_IMX2
-    select SDHCI
+    select DS1338
 
 config FSL_IMX31
     bool
@@ -432,7 +403,6 @@ config ASPEED_SOC
     select PCA9552
     select SERIAL
     select SMBUS_EEPROM
-    select PCA954X
     select SSI
     select SSI_M25P80
     select TMP105
@@ -528,7 +498,6 @@ config ARM11MPCORE
 config ARMSSE
     bool
     select ARM_V7M
-    select ARMSSE_CPU_PWRCTRL
     select ARMSSE_CPUID
     select ARMSSE_MHU
     select CMSDK_APB_TIMER
@@ -544,5 +513,9 @@ config ARMSSE
     select TZ_MSC
     select TZ_PPC
     select UNIMP
-    select SSE_COUNTER
-    select SSE_TIMER
+
+config ARMSSE_CPUID
+    bool
+
+config ARMSSE_MHU
+    bool

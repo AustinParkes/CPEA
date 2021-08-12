@@ -34,8 +34,6 @@
 #define AUDIO_CAP "alsa"
 #include "audio_int.h"
 
-#define DEBUG_ALSA 0
-
 struct pollhlp {
     snd_pcm_t *handle;
     struct pollfd *pfds;
@@ -589,12 +587,16 @@ static int alsa_open(bool in, struct alsa_params_req *req,
 
     *handlep = handle;
 
-    if (DEBUG_ALSA || obtfmt != req->fmt ||
-        obt->nchannels != req->nchannels || obt->freq != req->freq) {
+    if (obtfmt != req->fmt ||
+         obt->nchannels != req->nchannels ||
+         obt->freq != req->freq) {
         dolog ("Audio parameters for %s\n", typ);
         alsa_dump_info(req, obt, obtfmt, apdo);
     }
 
+#ifdef DEBUG
+    alsa_dump_info(req, obt, obtfmt, apdo);
+#endif
     return 0;
 
  err:

@@ -274,6 +274,7 @@ ERST
         .args_type  = "",
         .params     = "",
         .help       = "show dynamic compiler info",
+        .cmd        = hmp_info_jit,
     },
 #endif
 
@@ -288,6 +289,7 @@ ERST
         .args_type  = "",
         .params     = "",
         .help       = "show dynamic compiler opcode counters",
+        .cmd        = hmp_info_opcount,
     },
 #endif
 
@@ -366,6 +368,7 @@ ERST
         .args_type  = "",
         .params     = "",
         .help       = "show host USB devices",
+        .cmd        = hmp_info_usbhost,
     },
 
 SRST
@@ -497,6 +500,19 @@ SRST
     Show the current VM UUID.
 ERST
 
+    {
+        .name       = "cpustats",
+        .args_type  = "",
+        .params     = "",
+        .help       = "show CPU statistics",
+        .cmd        = hmp_info_cpustats,
+    },
+
+SRST
+  ``info cpustats``
+    Show CPU statistics.
+ERST
+
 #if defined(CONFIG_SLIRP)
     {
         .name       = "usernet",
@@ -549,6 +565,19 @@ ERST
 SRST
   ``info migrate_parameters``
     Show current migration parameters.
+ERST
+
+    {
+        .name       = "migrate_cache_size",
+        .args_type  = "",
+        .params     = "",
+        .help       = "show current migration xbzrle cache size",
+        .cmd        = hmp_info_migrate_cache_size,
+    },
+
+SRST
+  ``info migrate_cache_size``
+    Show current migration xbzrle cache size.
 ERST
 
     {
@@ -863,17 +892,4 @@ ERST
 SRST
   ``info replay``
     Display the record/replay information: mode and the current icount.
-ERST
-
-    {
-        .name       = "dirty_rate",
-        .args_type  = "",
-        .params     = "",
-        .help       = "show dirty rate information",
-        .cmd        = hmp_info_dirty_rate,
-    },
-
-SRST
-  ``info dirty_rate``
-    Display the vcpu dirty rate information.
 ERST

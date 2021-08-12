@@ -1,8 +1,8 @@
-if 'CONFIG_TOOLS' in config_host and virgl.found() \
+if 'CONFIG_TOOLS' in config_host and 'CONFIG_VIRGL' in config_host \
     and 'CONFIG_GBM' in config_host and 'CONFIG_LINUX' in config_host \
     and pixman.found()
   executable('vhost-user-gpu', files('vhost-user-gpu.c', 'virgl.c', 'vugbm.c'),
-             dependencies: [qemuutil, pixman, gbm, virgl, vhost_user, opengl],
+             dependencies: [qemuutil, pixman, gbm, virgl, vhost_user],
              install: true,
              install_dir: get_option('libexecdir'))
 

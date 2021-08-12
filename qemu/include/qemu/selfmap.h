@@ -6,8 +6,8 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-#ifndef SELFMAP_H
-#define SELFMAP_H
+#ifndef _SELFMAP_H_
+#define _SELFMAP_H_
 
 typedef struct {
     unsigned long start;

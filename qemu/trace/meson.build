@@ -12,21 +12,18 @@ foreach dir : [ '.' ] + trace_events_subdirs
   trace_h = custom_target(fmt.format('trace', 'h'),
                           output: fmt.format('trace', 'h'),
                           input: trace_events_file,
-                          command: [ tracetool, group, '--format=h', '@INPUT@', '@OUTPUT@' ],
-                          depend_files: tracetool_depends)
+                          command: [ tracetool, group, '--format=h', '@INPUT@', '@OUTPUT@' ])
   genh += trace_h
   trace_c = custom_target(fmt.format('trace', 'c'),
                           output: fmt.format('trace', 'c'),
                           input: trace_events_file,
-                          command: [ tracetool, group, '--format=c', '@INPUT@', '@OUTPUT@' ],
-                          depend_files: tracetool_depends)
+                          command: [ tracetool, group, '--format=c', '@INPUT@', '@OUTPUT@' ])
   if 'CONFIG_TRACE_UST' in config_host
     trace_ust_h = custom_target(fmt.format('trace-ust', 'h'),
                                 output: fmt.format('trace-ust', 'h'),
                                 input: trace_events_file,
-                                command: [ tracetool, group, '--format=ust-events-h', '@INPUT@', '@OUTPUT@' ],
-                                depend_files: tracetool_depends)
-    trace_ss.add(trace_ust_h, lttng)
+                                command: [ tracetool, group, '--format=ust-events-h', '@INPUT@', '@OUTPUT@' ])
+    trace_ss.add(trace_ust_h, lttng, urcubp)
     genh += trace_ust_h
   endif
   trace_ss.add(trace_h, trace_c)
@@ -34,8 +31,7 @@ foreach dir : [ '.' ] + trace_events_subdirs
     trace_dtrace = custom_target(fmt.format('trace-dtrace', 'dtrace'),
                                  output: fmt.format('trace-dtrace', 'dtrace'),
                                  input: trace_events_file,
-                                 command: [ tracetool, group, '--format=d', '@INPUT@', '@OUTPUT@' ],
-                                 depend_files: tracetool_depends)
+                                 command: [ tracetool, group, '--format=d', '@INPUT@', '@OUTPUT@' ])
     trace_dtrace_h = custom_target(fmt.format('trace-dtrace', 'h'),
                                    output: fmt.format('trace-dtrace', 'h'),
                                    input: trace_dtrace,
@@ -70,8 +66,7 @@ foreach d : [
   gen = custom_target(d[0],
                 output: d[0],
                 input: meson.source_root() / 'trace-events',
-                command: [ tracetool, '--group=root', '--format=@0@'.format(d[1]), '@INPUT@', '@OUTPUT@' ],
-                depend_files: tracetool_depends)
+                command: [ tracetool, '--group=root', '--format=@0@'.format(d[1]), '@INPUT@', '@OUTPUT@' ])
   specific_ss.add(when: 'CONFIG_TCG', if_true: gen)
 endforeach
 
@@ -79,13 +74,11 @@ if 'CONFIG_TRACE_UST' in config_host
   trace_ust_all_h = custom_target('trace-ust-all.h',
                                   output: 'trace-ust-all.h',
                                   input: trace_events_files,
-                                  command: [ tracetool, '--group=all', '--format=ust-events-h', '@INPUT@', '@OUTPUT@' ],
-                                  depend_files: tracetool_depends)
+                                  command: [ tracetool, '--group=all', '--format=ust-events-h', '@INPUT@', '@OUTPUT@' ])
   trace_ust_all_c = custom_target('trace-ust-all.c',
                                   output: 'trace-ust-all.c',
                                   input: trace_events_files,
-                                  command: [ tracetool, '--group=all', '--format=ust-events-c', '@INPUT@', '@OUTPUT@' ],
-                                  depend_files: tracetool_depends)
+                                  command: [ tracetool, '--group=all', '--format=ust-events-c', '@INPUT@', '@OUTPUT@' ])
   trace_ss.add(trace_ust_all_h, trace_ust_all_c)
   genh += trace_ust_all_h
 endif

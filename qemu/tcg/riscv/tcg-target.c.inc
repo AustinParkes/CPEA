@@ -122,19 +122,6 @@ static const int tcg_target_call_oarg_regs[] = {
 #define TCG_CT_CONST_N12   0x400
 #define TCG_CT_CONST_M12   0x800
 
-#define ALL_GENERAL_REGS      MAKE_64BIT_MASK(0, 32)
-/*
- * For softmmu, we need to avoid conflicts with the first 5
- * argument registers to call the helper.  Some of these are
- * also used for the tlb lookup.
- */
-#ifdef CONFIG_SOFTMMU
-#define SOFTMMU_RESERVE_REGS  MAKE_64BIT_MASK(TCG_REG_A0, 5)
-#else
-#define SOFTMMU_RESERVE_REGS  0
-#endif
-
-
 static inline tcg_target_long sextreg(tcg_target_long val, int pos, int len)
 {
     if (TCG_TARGET_REG_BITS == 32) {
@@ -144,9 +131,50 @@ static inline tcg_target_long sextreg(tcg_target_long val, int pos, int len)
     }
 }
 
-/* test if a constant matches the constraint */
-static bool tcg_target_const_match(int64_t val, TCGType type, int ct)
+/* parse target specific constraints */
+static const char *target_parse_constraint(TCGArgConstraint *ct,
+                                           const char *ct_str, TCGType type)
 {
+    switch (*ct_str++) {
+    case 'r':
+        ct->regs = 0xffffffff;
+        break;
+    case 'L':
+        /* qemu_ld/qemu_st constraint */
+        ct->regs = 0xffffffff;
+        /* qemu_ld/qemu_st uses TCG_REG_TMP0 */
+#if defined(CONFIG_SOFTMMU)
+        tcg_regset_reset_reg(ct->regs, tcg_target_call_iarg_regs[0]);
+        tcg_regset_reset_reg(ct->regs, tcg_target_call_iarg_regs[1]);
+        tcg_regset_reset_reg(ct->regs, tcg_target_call_iarg_regs[2]);
+        tcg_regset_reset_reg(ct->regs, tcg_target_call_iarg_regs[3]);
+        tcg_regset_reset_reg(ct->regs, tcg_target_call_iarg_regs[4]);
+#endif
+        break;
+    case 'I':
+        ct->ct |= TCG_CT_CONST_S12;
+        break;
+    case 'N':
+        ct->ct |= TCG_CT_CONST_N12;
+        break;
+    case 'M':
+        ct->ct |= TCG_CT_CONST_M12;
+        break;
+    case 'Z':
+        /* we can use a zero immediate as a zero register argument. */
+        ct->ct |= TCG_CT_CONST_ZERO;
+        break;
+    default:
+        return NULL;
+    }
+    return ct_str;
+}
+
+/* test if a constant matches the constraint */
+static int tcg_target_const_match(tcg_target_long val, TCGType type,
+                                  const TCGArgConstraint *arg_ct)
+{
+    int ct = arg_ct->ct;
     if (ct & TCG_CT_CONST) {
         return 1;
     }
@@ -852,43 +880,37 @@ static void tcg_out_mb(TCGContext *s, TCGArg a0)
 /* helper signature: helper_ret_ld_mmu(CPUState *env, target_ulong addr,
  *                                     TCGMemOpIdx oi, uintptr_t ra)
  */
-static void * const qemu_ld_helpers[8] = {
-    [MO_UB] = helper_ret_ldub_mmu,
-    [MO_SB] = helper_ret_ldsb_mmu,
-#ifdef HOST_WORDS_BIGENDIAN
-    [MO_UW] = helper_be_lduw_mmu,
-    [MO_SW] = helper_be_ldsw_mmu,
-    [MO_UL] = helper_be_ldul_mmu,
+static void * const qemu_ld_helpers[16] = {
+    [MO_UB]   = helper_ret_ldub_mmu,
+    [MO_SB]   = helper_ret_ldsb_mmu,
+    [MO_LEUW] = helper_le_lduw_mmu,
+    [MO_LESW] = helper_le_ldsw_mmu,
+    [MO_LEUL] = helper_le_ldul_mmu,
 #if TCG_TARGET_REG_BITS == 64
-    [MO_SL] = helper_be_ldsl_mmu,
+    [MO_LESL] = helper_le_ldsl_mmu,
 #endif
-    [MO_Q]  = helper_be_ldq_mmu,
-#else
-    [MO_UW] = helper_le_lduw_mmu,
-    [MO_SW] = helper_le_ldsw_mmu,
-    [MO_UL] = helper_le_ldul_mmu,
+    [MO_LEQ]  = helper_le_ldq_mmu,
+    [MO_BEUW] = helper_be_lduw_mmu,
+    [MO_BESW] = helper_be_ldsw_mmu,
+    [MO_BEUL] = helper_be_ldul_mmu,
 #if TCG_TARGET_REG_BITS == 64
-    [MO_SL] = helper_le_ldsl_mmu,
+    [MO_BESL] = helper_be_ldsl_mmu,
 #endif
-    [MO_Q]  = helper_le_ldq_mmu,
-#endif
+    [MO_BEQ]  = helper_be_ldq_mmu,
 };
 
 /* helper signature: helper_ret_st_mmu(CPUState *env, target_ulong addr,
  *                                     uintxx_t val, TCGMemOpIdx oi,
  *                                     uintptr_t ra)
  */
-static void * const qemu_st_helpers[4] = {
-    [MO_8]   = helper_ret_stb_mmu,
-#ifdef HOST_WORDS_BIGENDIAN
-    [MO_16] = helper_be_stw_mmu,
-    [MO_32] = helper_be_stl_mmu,
-    [MO_64] = helper_be_stq_mmu,
-#else
-    [MO_16] = helper_le_stw_mmu,
-    [MO_32] = helper_le_stl_mmu,
-    [MO_64] = helper_le_stq_mmu,
-#endif
+static void * const qemu_st_helpers[16] = {
+    [MO_UB]   = helper_ret_stb_mmu,
+    [MO_LEUW] = helper_le_stw_mmu,
+    [MO_LEUL] = helper_le_stl_mmu,
+    [MO_LEQ]  = helper_le_stq_mmu,
+    [MO_BEUW] = helper_be_stw_mmu,
+    [MO_BEUL] = helper_be_stl_mmu,
+    [MO_BEQ]  = helper_be_stq_mmu,
 };
 
 /* We don't support oversize guests */
@@ -1003,7 +1025,7 @@ static bool tcg_out_qemu_ld_slow_path(TCGContext *s, TCGLabelQemuLdst *l)
     tcg_out_movi(s, TCG_TYPE_PTR, a2, oi);
     tcg_out_movi(s, TCG_TYPE_PTR, a3, (tcg_target_long)l->raddr);
 
-    tcg_out_call(s, qemu_ld_helpers[opc & MO_SSIZE]);
+    tcg_out_call(s, qemu_ld_helpers[opc & (MO_BSWAP | MO_SSIZE)]);
     tcg_out_mov(s, (opc & MO_SIZE) == MO_64, l->datalo_reg, a0);
 
     tcg_out_goto(s, l->raddr);
@@ -1048,7 +1070,7 @@ static bool tcg_out_qemu_st_slow_path(TCGContext *s, TCGLabelQemuLdst *l)
     tcg_out_movi(s, TCG_TYPE_PTR, a3, oi);
     tcg_out_movi(s, TCG_TYPE_PTR, a4, (tcg_target_long)l->raddr);
 
-    tcg_out_call(s, qemu_st_helpers[opc & MO_SIZE]);
+    tcg_out_call(s, qemu_st_helpers[opc & (MO_BSWAP | MO_SSIZE)]);
 
     tcg_out_goto(s, l->raddr);
     return true;
@@ -1058,8 +1080,10 @@ static bool tcg_out_qemu_st_slow_path(TCGContext *s, TCGLabelQemuLdst *l)
 static void tcg_out_qemu_ld_direct(TCGContext *s, TCGReg lo, TCGReg hi,
                                    TCGReg base, MemOp opc, bool is_64)
 {
-    /* Byte swapping is left to middle-end expansion. */
-    tcg_debug_assert((opc & MO_BSWAP) == 0);
+    const MemOp bswap = opc & MO_BSWAP;
+
+    /* We don't yet handle byteswapping, assert */
+    g_assert(!bswap);
 
     switch (opc & (MO_SSIZE)) {
     case MO_UB:
@@ -1143,8 +1167,10 @@ static void tcg_out_qemu_ld(TCGContext *s, const TCGArg *args, bool is_64)
 static void tcg_out_qemu_st_direct(TCGContext *s, TCGReg lo, TCGReg hi,
                                    TCGReg base, MemOp opc)
 {
-    /* Byte swapping is left to middle-end expansion. */
-    tcg_debug_assert((opc & MO_BSWAP) == 0);
+    const MemOp bswap = opc & MO_BSWAP;
+
+    /* We don't yet handle byteswapping, assert */
+    g_assert(!bswap);
 
     switch (opc & (MO_SSIZE)) {
     case MO_8:
@@ -1212,8 +1238,7 @@ static void tcg_out_qemu_st(TCGContext *s, const TCGArg *args, bool is_64)
 static const tcg_insn_unit *tb_ret_addr;
 
 static void tcg_out_op(TCGContext *s, TCGOpcode opc,
-                       const TCGArg args[TCG_MAX_OP_ARGS],
-                       const int const_args[TCG_MAX_OP_ARGS])
+                       const TCGArg *args, const int *const_args)
 {
     TCGArg a0 = args[0];
     TCGArg a1 = args[1];
@@ -1544,11 +1569,50 @@ static void tcg_out_op(TCGContext *s, TCGOpcode opc,
     }
 }
 
-static TCGConstraintSetIndex tcg_target_op_def(TCGOpcode op)
+static const TCGTargetOpDef *tcg_target_op_def(TCGOpcode op)
 {
+    static const TCGTargetOpDef r
+        = { .args_ct_str = { "r" } };
+    static const TCGTargetOpDef r_r
+        = { .args_ct_str = { "r", "r" } };
+    static const TCGTargetOpDef rZ_r
+        = { .args_ct_str = { "rZ", "r" } };
+    static const TCGTargetOpDef rZ_rZ
+        = { .args_ct_str = { "rZ", "rZ" } };
+    static const TCGTargetOpDef rZ_rZ_rZ_rZ
+        = { .args_ct_str = { "rZ", "rZ", "rZ", "rZ" } };
+    static const TCGTargetOpDef r_r_ri
+        = { .args_ct_str = { "r", "r", "ri" } };
+    static const TCGTargetOpDef r_r_rI
+        = { .args_ct_str = { "r", "r", "rI" } };
+    static const TCGTargetOpDef r_rZ_rN
+        = { .args_ct_str = { "r", "rZ", "rN" } };
+    static const TCGTargetOpDef r_rZ_rZ
+        = { .args_ct_str = { "r", "rZ", "rZ" } };
+    static const TCGTargetOpDef r_rZ_rZ_rZ_rZ
+        = { .args_ct_str = { "r", "rZ", "rZ", "rZ", "rZ" } };
+    static const TCGTargetOpDef r_L
+        = { .args_ct_str = { "r", "L" } };
+    static const TCGTargetOpDef r_r_L
+        = { .args_ct_str = { "r", "r", "L" } };
+    static const TCGTargetOpDef r_L_L
+        = { .args_ct_str = { "r", "L", "L" } };
+    static const TCGTargetOpDef r_r_L_L
+        = { .args_ct_str = { "r", "r", "L", "L" } };
+    static const TCGTargetOpDef LZ_L
+        = { .args_ct_str = { "LZ", "L" } };
+    static const TCGTargetOpDef LZ_L_L
+        = { .args_ct_str = { "LZ", "L", "L" } };
+    static const TCGTargetOpDef LZ_LZ_L
+        = { .args_ct_str = { "LZ", "LZ", "L" } };
+    static const TCGTargetOpDef LZ_LZ_L_L
+        = { .args_ct_str = { "LZ", "LZ", "L", "L" } };
+    static const TCGTargetOpDef r_r_rZ_rZ_rM_rM
+        = { .args_ct_str = { "r", "r", "rZ", "rZ", "rM", "rM" } };
+
     switch (op) {
     case INDEX_op_goto_ptr:
-        return C_O0_I1(r);
+        return &r;
 
     case INDEX_op_ld8u_i32:
     case INDEX_op_ld8s_i32:
@@ -1580,7 +1644,7 @@ static TCGConstraintSetIndex tcg_target_op_def(TCGOpcode op)
     case INDEX_op_extrl_i64_i32:
     case INDEX_op_extrh_i64_i32:
     case INDEX_op_ext_i32_i64:
-        return C_O1_I1(r, r);
+        return &r_r;
 
     case INDEX_op_st8_i32:
     case INDEX_op_st16_i32:
@@ -1589,7 +1653,7 @@ static TCGConstraintSetIndex tcg_target_op_def(TCGOpcode op)
     case INDEX_op_st16_i64:
     case INDEX_op_st32_i64:
     case INDEX_op_st_i64:
-        return C_O0_I2(rZ, r);
+        return &rZ_r;
 
     case INDEX_op_add_i32:
     case INDEX_op_and_i32:
@@ -1599,11 +1663,11 @@ static TCGConstraintSetIndex tcg_target_op_def(TCGOpcode op)
     case INDEX_op_and_i64:
     case INDEX_op_or_i64:
     case INDEX_op_xor_i64:
-        return C_O1_I2(r, r, rI);
+        return &r_r_rI;
 
     case INDEX_op_sub_i32:
     case INDEX_op_sub_i64:
-        return C_O1_I2(r, rZ, rN);
+        return &r_rZ_rN;
 
     case INDEX_op_mul_i32:
     case INDEX_op_mulsh_i32:
@@ -1621,7 +1685,7 @@ static TCGConstraintSetIndex tcg_target_op_def(TCGOpcode op)
     case INDEX_op_rem_i64:
     case INDEX_op_remu_i64:
     case INDEX_op_setcond_i64:
-        return C_O1_I2(r, rZ, rZ);
+        return &r_rZ_rZ;
 
     case INDEX_op_shl_i32:
     case INDEX_op_shr_i32:
@@ -1629,41 +1693,39 @@ static TCGConstraintSetIndex tcg_target_op_def(TCGOpcode op)
     case INDEX_op_shl_i64:
     case INDEX_op_shr_i64:
     case INDEX_op_sar_i64:
-        return C_O1_I2(r, r, ri);
+        return &r_r_ri;
 
     case INDEX_op_brcond_i32:
     case INDEX_op_brcond_i64:
-        return C_O0_I2(rZ, rZ);
+        return &rZ_rZ;
 
     case INDEX_op_add2_i32:
     case INDEX_op_add2_i64:
     case INDEX_op_sub2_i32:
     case INDEX_op_sub2_i64:
-        return C_O2_I4(r, r, rZ, rZ, rM, rM);
+        return &r_r_rZ_rZ_rM_rM;
 
     case INDEX_op_brcond2_i32:
-        return C_O0_I4(rZ, rZ, rZ, rZ);
+        return &rZ_rZ_rZ_rZ;
 
     case INDEX_op_setcond2_i32:
-        return C_O1_I4(r, rZ, rZ, rZ, rZ);
+        return &r_rZ_rZ_rZ_rZ;
 
     case INDEX_op_qemu_ld_i32:
-        return (TARGET_LONG_BITS <= TCG_TARGET_REG_BITS
-                ? C_O1_I1(r, L) : C_O1_I2(r, L, L));
+        return TARGET_LONG_BITS <= TCG_TARGET_REG_BITS ? &r_L : &r_L_L;
     case INDEX_op_qemu_st_i32:
-        return (TARGET_LONG_BITS <= TCG_TARGET_REG_BITS
-                ? C_O0_I2(LZ, L) : C_O0_I3(LZ, L, L));
+        return TARGET_LONG_BITS <= TCG_TARGET_REG_BITS ? &LZ_L : &LZ_L_L;
     case INDEX_op_qemu_ld_i64:
-        return (TCG_TARGET_REG_BITS == 64 ? C_O1_I1(r, L)
-               : TARGET_LONG_BITS <= TCG_TARGET_REG_BITS ? C_O2_I1(r, r, L)
-               : C_O2_I2(r, r, L, L));
+        return TCG_TARGET_REG_BITS == 64 ? &r_L
+               : TARGET_LONG_BITS <= TCG_TARGET_REG_BITS ? &r_r_L
+               : &r_r_L_L;
     case INDEX_op_qemu_st_i64:
-        return (TCG_TARGET_REG_BITS == 64 ? C_O0_I2(LZ, L)
-               : TARGET_LONG_BITS <= TCG_TARGET_REG_BITS ? C_O0_I3(LZ, LZ, L)
-               : C_O0_I4(LZ, LZ, L, L));
+        return TCG_TARGET_REG_BITS == 64 ? &LZ_L
+               : TARGET_LONG_BITS <= TCG_TARGET_REG_BITS ? &LZ_LZ_L
+               : &LZ_LZ_L_L;
 
     default:
-        g_assert_not_reached();
+        return NULL;
     }
 }
 

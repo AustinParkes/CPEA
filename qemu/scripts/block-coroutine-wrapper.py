@@ -98,13 +98,12 @@ def snake_to_camel(func_name: str) -> str:
 
 
 def gen_wrapper(func: FuncDecl) -> str:
-    assert not '_co_' in func.name
+    assert func.name.startswith('bdrv_')
+    assert not func.name.startswith('bdrv_co_')
     assert func.return_type == 'int'
     assert func.args[0].type in ['BlockDriverState *', 'BdrvChild *']
 
-    subsystem, subname = func.name.split('_', 1)
-
-    name = f'{subsystem}_co_{subname}'
+    name = 'bdrv_co_' + func.name[5:]
     bs = 'bs' if func.args[0].type == 'BlockDriverState *' else 'child->bs'
     struct_name = snake_to_camel(name)
 

@@ -14,7 +14,7 @@ SRC_PATH=.
 # we have explicit rules for everything
 MAKEFLAGS += -rR
 
-SHELL = bash -o pipefail
+SHELL = /usr/bin/env bash -o pipefail
 
 # Usage: $(call quiet-command,command and args,"NAME","args to print")
 # This will run "command and args", and either:
@@ -47,11 +47,29 @@ git-submodule-update:
 Makefile: .git-submodule-status
 
 .PHONY: git-submodule-update
+
+git_module_status := $(shell \
+  cd '$(SRC_PATH)' && \
+  GIT="$(GIT)" ./scripts/git-submodule.sh status $(GIT_SUBMODULES); \
+  echo $$?; \
+)
+
+ifeq (1,$(git_module_status))
+ifeq (no,$(GIT_UPDATE))
 git-submodule-update:
-ifneq ($(GIT_SUBMODULES_ACTION),ignore)
 	$(call quiet-command, \
-		(GIT="$(GIT)" "$(SRC_PATH)/scripts/git-submodule.sh" $(GIT_SUBMODULES_ACTION) $(GIT_SUBMODULES)), \
-		"GIT","$(GIT_SUBMODULES)")
+            echo && \
+            echo "GIT submodule checkout is out of date. Please run" && \
+            echo "  scripts/git-submodule.sh update $(GIT_SUBMODULES)" && \
+            echo "from the source directory checkout $(SRC_PATH)" && \
+            echo && \
+            exit 1)
+else
+git-submodule-update:
+	$(call quiet-command, \
+          (cd $(SRC_PATH) && GIT="$(GIT)" ./scripts/git-submodule.sh update $(GIT_SUBMODULES)), \
+          "GIT","$(GIT_SUBMODULES)")
+endif
 endif
 
 # 0. ensure the build tree is okay
@@ -129,11 +147,9 @@ endif
 # 4. Rules to bridge to other makefiles
 
 ifneq ($(NINJA),)
-# Filter out long options to avoid flags like --no-print-directory which
-# may result in false positive match for MAKE.n
-MAKE.n = $(findstring n,$(firstword $(filter-out --%,$(MAKEFLAGS))))
-MAKE.k = $(findstring k,$(firstword $(filter-out --%,$(MAKEFLAGS))))
-MAKE.q = $(findstring q,$(firstword $(filter-out --%,$(MAKEFLAGS))))
+MAKE.n = $(findstring n,$(firstword $(MAKEFLAGS)))
+MAKE.k = $(findstring k,$(firstword $(MAKEFLAGS)))
+MAKE.q = $(findstring q,$(firstword $(MAKEFLAGS)))
 MAKE.nq = $(if $(word 2, $(MAKE.n) $(MAKE.q)),nq)
 NINJAFLAGS = $(if $V,-v) $(if $(MAKE.n), -n) $(if $(MAKE.k), -k0) \
         $(filter-out -j, $(lastword -j1 $(filter -l% -j%, $(MAKEFLAGS)))) \
@@ -153,7 +169,7 @@ $(ninja-targets): run-ninja
 # --output-sync line.
 run-ninja: config-host.mak
 ifneq ($(filter $(ninja-targets), $(ninja-cmd-goals)),)
-	+$(quiet-@)$(if $(MAKE.nq),@:, $(NINJA) -d keepdepfile \
+	+$(quiet-@)$(if $(MAKE.nq),@:, $(NINJA) \
 	   $(NINJAFLAGS) $(sort $(filter $(ninja-targets), $(ninja-cmd-goals))) | cat)
 endif
 endif
@@ -217,9 +233,10 @@ qemu-%.tar.bz2:
 
 distclean: clean
 	-$(quiet-@)test -f build.ninja && $(NINJA) $(NINJAFLAGS) -t clean -g || :
-	rm -f config-host.mak config-host.h* config-poison.h
+	rm -f config-host.mak config-host.h*
 	rm -f tests/tcg/config-*.mak
 	rm -f config-all-disas.mak config.status
+	rm -f tests/qemu-iotests/common.env
 	rm -f roms/seabios/config.mak roms/vgabios/config.mak
 	rm -f qemu-plugins-ld.symbols qemu-plugins-ld64.symbols
 	rm -f *-config-target.h *-config-devices.mak *-config-devices.h
@@ -309,7 +326,7 @@ endif
 	@echo  'Test targets:'
 	$(call print-help,check,Run all tests (check-help for details))
 	$(call print-help,bench,Run all benchmarks)
-	$(call print-help,docker-help,Help about targets running tests inside containers)
+	$(call print-help,docker,Help about targets running tests inside containers)
 	$(call print-help,vm-help,Help about targets running tests inside VM)
 	@echo  ''
 	@echo  'Documentation targets:'
@@ -318,7 +335,9 @@ endif
 ifdef CONFIG_WIN32
 	@echo  'Windows targets:'
 	$(call print-help,installer,Build NSIS-based installer for QEMU)
+ifdef CONFIG_QGA_MSI
 	$(call print-help,msi,Build MSI-based installer for qemu-ga)
+endif
 	@echo  ''
 endif
 	$(call print-help,$(MAKE) [targets],(quiet build, default))

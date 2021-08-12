@@ -23,7 +23,7 @@
 #include <winioctl.h>
 #include <windef.h>
 
-#include "hax-accel-ops.h"
+#include "hax-cpus.h"
 
 #define HAX_INVALID_FD INVALID_HANDLE_VALUE
 

@@ -67,8 +67,10 @@ run_qemu <<EOF
   "arguments": {
     "qom-type": "throttle-group",
     "id": "group0",
-    "limits" : {
-      "iops-total": 1000
+    "props": {
+      "limits" : {
+        "iops-total": 1000
+      }
     }
   }
 }
@@ -94,8 +96,10 @@ run_qemu <<EOF
   "arguments": {
     "qom-type": "throttle-group",
     "id": "group0",
-    "limits": {
-        "iops-total": 1000
+    "props" : {
+      "limits": {
+          "iops-total": 1000
+      }
     }
   }
 }
@@ -132,8 +136,10 @@ run_qemu <<EOF
   "arguments": {
     "qom-type": "throttle-group",
     "id": "group0",
-    "limits": {
-        "iops-total": 1000
+    "props" : {
+      "limits": {
+          "iops-total": 1000
+      }
     }
   }
 }

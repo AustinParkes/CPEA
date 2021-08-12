@@ -772,9 +772,12 @@ static void usb_mtp_add_str(MTPData *data, const char *str)
 
 static void usb_mtp_add_time(MTPData *data, time_t time)
 {
-    g_autoptr(GDateTime) then = g_date_time_new_from_unix_utc(time);
-    g_autofree char *thenstr = g_date_time_format(then, "%Y%m%dT%H%M%S");
-    usb_mtp_add_str(data, thenstr);
+    char buf[16];
+    struct tm tm;
+
+    gmtime_r(&time, &tm);
+    strftime(buf, sizeof(buf), "%Y%m%dT%H%M%S", &tm);
+    usb_mtp_add_str(data, buf);
 }
 
 /* ----------------------------------------------------------------------- */
@@ -904,8 +907,7 @@ static MTPData *usb_mtp_get_object_handles(MTPState *s, MTPControl *c,
                                            MTPObject *o)
 {
     MTPData *d = usb_mtp_data_alloc(c);
-    uint32_t i = 0;
-    g_autofree uint32_t *handles = g_new(uint32_t, o->nchildren);
+    uint32_t i = 0, handles[o->nchildren];
     MTPObject *iter;
 
     trace_usb_mtp_op_get_object_handles(s->dev.addr, o->handle, o->path);

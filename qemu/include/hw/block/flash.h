@@ -74,6 +74,6 @@ typedef struct {
 
 uint8_t ecc_digest(ECCState *s, uint8_t sample);
 void ecc_reset(ECCState *s);
-extern const VMStateDescription vmstate_ecc_state;
+extern VMStateDescription vmstate_ecc_state;
 
 #endif

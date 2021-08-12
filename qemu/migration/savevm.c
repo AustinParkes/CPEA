@@ -43,8 +43,6 @@
 #include "qapi/error.h"
 #include "qapi/qapi-commands-migration.h"
 #include "qapi/qmp/json-writer.h"
-#include "qapi/clone-visitor.h"
-#include "qapi/qapi-builtin-visit.h"
 #include "qapi/qmp/qerror.h"
 #include "qemu/error-report.h"
 #include "sysemu/cpus.h"
@@ -65,7 +63,6 @@
 #include "qemu/bitmap.h"
 #include "net/announce.h"
 #include "qemu/yank.h"
-#include "yank_functions.h"
 
 const unsigned int postcopy_ram_discard_version;
 
@@ -169,9 +166,9 @@ static const QEMUFileOps bdrv_write_ops = {
 static QEMUFile *qemu_fopen_bdrv(BlockDriverState *bs, int is_writable)
 {
     if (is_writable) {
-        return qemu_fopen_ops(bs, &bdrv_write_ops, false);
+        return qemu_fopen_ops(bs, &bdrv_write_ops);
     }
-    return qemu_fopen_ops(bs, &bdrv_read_ops, false);
+    return qemu_fopen_ops(bs, &bdrv_read_ops);
 }
 
 
@@ -318,16 +315,6 @@ static int configuration_pre_save(void *opaque)
     return 0;
 }
 
-static int configuration_post_save(void *opaque)
-{
-    SaveState *state = opaque;
-
-    g_free(state->capabilities);
-    state->capabilities = NULL;
-    state->caps_count = 0;
-    return 0;
-}
-
 static int configuration_pre_load(void *opaque)
 {
     SaveState *state = opaque;
@@ -378,36 +365,24 @@ static int configuration_post_load(void *opaque, int version_id)
 {
     SaveState *state = opaque;
     const char *current_name = MACHINE_GET_CLASS(current_machine)->name;
-    int ret = 0;
 
     if (strncmp(state->name, current_name, state->len) != 0) {
         error_report("Machine type received is '%.*s' and local is '%s'",
                      (int) state->len, state->name, current_name);
-        ret = -EINVAL;
-        goto out;
+        return -EINVAL;
     }
 
     if (state->target_page_bits != qemu_target_page_bits()) {
         error_report("Received TARGET_PAGE_BITS is %d but local is %d",
                      state->target_page_bits, qemu_target_page_bits());
-        ret = -EINVAL;
-        goto out;
+        return -EINVAL;
     }
 
     if (!configuration_validate_capabilities(state)) {
-        ret = -EINVAL;
-        goto out;
+        return -EINVAL;
     }
 
-out:
-    g_free((void *)state->name);
-    state->name = NULL;
-    state->len = 0;
-    g_free(state->capabilities);
-    state->capabilities = NULL;
-    state->caps_count = 0;
-
-    return ret;
+    return 0;
 }
 
 static int get_capability(QEMUFile *f, void *pv, size_t size,
@@ -541,7 +516,6 @@ static const VMStateDescription vmstate_configuration = {
     .pre_load = configuration_pre_load,
     .post_load = configuration_post_load,
     .pre_save = configuration_pre_save,
-    .post_save = configuration_post_save,
     .fields = (VMStateField[]) {
         VMSTATE_UINT32(len, SaveState),
         VMSTATE_VBUFFER_ALLOC_UINT32(name, SaveState, 0, NULL, len),
@@ -1157,19 +1131,6 @@ bool qemu_savevm_state_blocked(Error **errp)
     return false;
 }
 
-void qemu_savevm_non_migratable_list(strList **reasons)
-{
-    SaveStateEntry *se;
-
-    QTAILQ_FOREACH(se, &savevm_state.handlers, entry) {
-        if (se->vmsd && se->vmsd->unmigratable) {
-            QAPI_LIST_PREPEND(*reasons,
-                              g_strdup_printf("non-migratable device: %s",
-                                              se->idstr));
-        }
-    }
-}
-
 void qemu_savevm_state_header(QEMUFile *f)
 {
     trace_savevm_state_header();
@@ -1394,6 +1355,7 @@ int qemu_savevm_state_complete_precopy_iterable(QEMUFile *f, bool in_postcopy)
     return 0;
 }
 
+static
 int qemu_savevm_state_complete_precopy_non_iterable(QEMUFile *f,
                                                     bool in_postcopy,
                                                     bool inactivate_disks)
@@ -2569,12 +2531,6 @@ static bool postcopy_pause_incoming(MigrationIncomingState *mis)
     /* Clear the triggered bit to allow one recovery */
     mis->postcopy_recover_triggered = false;
 
-    /*
-     * Unregister yank with either from/to src would work, since ioc behind it
-     * is the same
-     */
-    migration_ioc_unregister_yank_from_file(mis->from_src_file);
-
     assert(mis->from_src_file);
     qemu_file_shutdown(mis->from_src_file);
     qemu_fclose(mis->from_src_file);
@@ -2773,56 +2729,48 @@ int qemu_load_device_state(QEMUFile *f)
     return 0;
 }
 
-bool save_snapshot(const char *name, bool overwrite, const char *vmstate,
-                  bool has_devices, strList *devices, Error **errp)
+int save_snapshot(const char *name, Error **errp)
 {
-    BlockDriverState *bs;
+    BlockDriverState *bs, *bs1;
     QEMUSnapshotInfo sn1, *sn = &sn1;
     int ret = -1, ret2;
     QEMUFile *f;
     int saved_vm_running;
     uint64_t vm_state_size;
-    g_autoptr(GDateTime) now = g_date_time_new_now_local();
+    qemu_timeval tv;
+    struct tm tm;
     AioContext *aio_context;
 
     if (migration_is_blocked(errp)) {
-        return false;
+        return ret;
     }
 
     if (!replay_can_snapshot()) {
         error_setg(errp, "Record/replay does not allow making snapshot "
                    "right now. Try once more later.");
-        return false;
+        return ret;
     }
 
-    if (!bdrv_all_can_snapshot(has_devices, devices, errp)) {
-        return false;
+    if (!bdrv_all_can_snapshot(&bs)) {
+        error_setg(errp, "Device '%s' is writable but does not support "
+                   "snapshots", bdrv_get_device_or_node_name(bs));
+        return ret;
     }
 
     /* Delete old snapshots of the same name */
     if (name) {
-        if (overwrite) {
-            if (bdrv_all_delete_snapshot(name, has_devices,
-                                         devices, errp) < 0) {
-                return false;
-            }
-        } else {
-            ret2 = bdrv_all_has_snapshot(name, has_devices, devices, errp);
-            if (ret2 < 0) {
-                return false;
-            }
-            if (ret2 == 1) {
-                error_setg(errp,
-                           "Snapshot '%s' already exists in one or more devices",
-                           name);
-                return false;
-            }
+        ret = bdrv_all_delete_snapshot(name, &bs1, errp);
+        if (ret < 0) {
+            error_prepend(errp, "Error while deleting snapshot on device "
+                          "'%s': ", bdrv_get_device_or_node_name(bs1));
+            return ret;
         }
     }
 
-    bs = bdrv_all_find_vmstate_bs(vmstate, has_devices, devices, errp);
+    bs = bdrv_all_find_vmstate_bs();
     if (bs == NULL) {
-        return false;
+        error_setg(errp, "No block device can accept snapshots");
+        return ret;
     }
     aio_context = bdrv_get_aio_context(bs);
 
@@ -2831,7 +2779,7 @@ bool save_snapshot(const char *name, bool overwrite, const char *vmstate,
     ret = global_state_store();
     if (ret) {
         error_setg(errp, "Error saving global state");
-        return false;
+        return ret;
     }
     vm_stop(RUN_STATE_SAVE_VM);
 
@@ -2842,8 +2790,9 @@ bool save_snapshot(const char *name, bool overwrite, const char *vmstate,
     memset(sn, 0, sizeof(*sn));
 
     /* fill auxiliary fields */
-    sn->date_sec = g_date_time_to_unix(now);
-    sn->date_nsec = g_date_time_get_microsecond(now) * 1000;
+    qemu_gettimeofday(&tv);
+    sn->date_sec = tv.tv_sec;
+    sn->date_nsec = tv.tv_usec * 1000;
     sn->vm_clock_nsec = qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL);
     if (replay_mode != REPLAY_MODE_NONE) {
         sn->icount = replay_get_current_icount();
@@ -2854,8 +2803,9 @@ bool save_snapshot(const char *name, bool overwrite, const char *vmstate,
     if (name) {
         pstrcpy(sn->name, sizeof(sn->name), name);
     } else {
-        g_autofree char *autoname = g_date_time_format(now,  "vm-%Y%m%d%H%M%S");
-        pstrcpy(sn->name, sizeof(sn->name), autoname);
+        /* cast below needed for OpenBSD where tv_sec is still 'long' */
+        localtime_r((const time_t *)&tv.tv_sec, &tm);
+        strftime(sn->name, sizeof(sn->name), "vm-%Y%m%d%H%M%S", &tm);
     }
 
     /* save the VM state */
@@ -2883,10 +2833,11 @@ bool save_snapshot(const char *name, bool overwrite, const char *vmstate,
     aio_context_release(aio_context);
     aio_context = NULL;
 
-    ret = bdrv_all_create_snapshot(sn, bs, vm_state_size,
-                                   has_devices, devices, errp);
+    ret = bdrv_all_create_snapshot(sn, bs, vm_state_size, &bs);
     if (ret < 0) {
-        bdrv_all_delete_snapshot(sn->name, has_devices, devices, NULL);
+        error_setg(errp, "Error while creating snapshot on '%s'",
+                   bdrv_get_device_or_node_name(bs));
+        bdrv_all_delete_snapshot(sn->name, &bs, NULL);
         goto the_end;
     }
 
@@ -2902,7 +2853,7 @@ bool save_snapshot(const char *name, bool overwrite, const char *vmstate,
     if (saved_vm_running) {
         vm_start();
     }
-    return ret == 0;
+    return ret;
 }
 
 void qmp_xen_save_devices_state(const char *filename, bool has_live, bool live,
@@ -2987,32 +2938,33 @@ void qmp_xen_load_devices_state(const char *filename, Error **errp)
     migration_incoming_state_destroy();
 }
 
-bool load_snapshot(const char *name, const char *vmstate,
-                   bool has_devices, strList *devices, Error **errp)
+int load_snapshot(const char *name, Error **errp)
 {
-    BlockDriverState *bs_vm_state;
+    BlockDriverState *bs, *bs_vm_state;
     QEMUSnapshotInfo sn;
     QEMUFile *f;
     int ret;
     AioContext *aio_context;
     MigrationIncomingState *mis = migration_incoming_get_current();
 
-    if (!bdrv_all_can_snapshot(has_devices, devices, errp)) {
-        return false;
+    if (!bdrv_all_can_snapshot(&bs)) {
+        error_setg(errp,
+                   "Device '%s' is writable but does not support snapshots",
+                   bdrv_get_device_or_node_name(bs));
+        return -ENOTSUP;
     }
-    ret = bdrv_all_has_snapshot(name, has_devices, devices, errp);
+    ret = bdrv_all_find_snapshot(name, &bs);
     if (ret < 0) {
-        return false;
-    }
-    if (ret == 0) {
-        error_setg(errp, "Snapshot '%s' does not exist in one or more devices",
-                   name);
-        return false;
+        error_setg(errp,
+                   "Device '%s' does not have the requested snapshot '%s'",
+                   bdrv_get_device_or_node_name(bs), name);
+        return ret;
     }
 
-    bs_vm_state = bdrv_all_find_vmstate_bs(vmstate, has_devices, devices, errp);
+    bs_vm_state = bdrv_all_find_vmstate_bs();
     if (!bs_vm_state) {
-        return false;
+        error_setg(errp, "No block device supports snapshots");
+        return -ENOTSUP;
     }
     aio_context = bdrv_get_aio_context(bs_vm_state);
 
@@ -3021,11 +2973,11 @@ bool load_snapshot(const char *name, const char *vmstate,
     ret = bdrv_snapshot_find(bs_vm_state, &sn, name);
     aio_context_release(aio_context);
     if (ret < 0) {
-        return false;
+        return ret;
     } else if (sn.vm_state_size == 0) {
         error_setg(errp, "This is a disk-only snapshot. Revert to it "
                    " offline using qemu-img");
-        return false;
+        return -EINVAL;
     }
 
     /*
@@ -3037,8 +2989,10 @@ bool load_snapshot(const char *name, const char *vmstate,
     /* Flush all IO requests so they don't interfere with the new state.  */
     bdrv_drain_all_begin();
 
-    ret = bdrv_all_goto_snapshot(name, has_devices, devices, errp);
+    ret = bdrv_all_goto_snapshot(name, &bs, errp);
     if (ret < 0) {
+        error_prepend(errp, "Could not load snapshot '%s' on '%s': ",
+                      name, bdrv_get_device_or_node_name(bs));
         goto err_drain;
     }
 
@@ -3046,6 +3000,7 @@ bool load_snapshot(const char *name, const char *vmstate,
     f = qemu_fopen_bdrv(bs_vm_state, 0);
     if (!f) {
         error_setg(errp, "Could not open VM state file");
+        ret = -EINVAL;
         goto err_drain;
     }
 
@@ -3065,28 +3020,14 @@ bool load_snapshot(const char *name, const char *vmstate,
 
     if (ret < 0) {
         error_setg(errp, "Error %d while loading VM state", ret);
-        return false;
+        return ret;
     }
 
-    return true;
+    return 0;
 
 err_drain:
     bdrv_drain_all_end();
-    return false;
-}
-
-bool delete_snapshot(const char *name, bool has_devices,
-                     strList *devices, Error **errp)
-{
-    if (!bdrv_all_can_snapshot(has_devices, devices, errp)) {
-        return false;
-    }
-
-    if (bdrv_all_delete_snapshot(name, has_devices, devices, errp) < 0) {
-        return false;
-    }
-
-    return true;
+    return ret;
 }
 
 void vmstate_register_ram(MemoryRegion *mr, DeviceState *dev)
@@ -3115,188 +3056,4 @@ bool vmstate_check_only_migratable(const VMStateDescription *vmsd)
     }
 
     return !(vmsd && vmsd->unmigratable);
-}
-
-typedef struct SnapshotJob {
-    Job common;
-    char *tag;
-    char *vmstate;
-    strList *devices;
-    Coroutine *co;
-    Error **errp;
-    bool ret;
-} SnapshotJob;
-
-static void qmp_snapshot_job_free(SnapshotJob *s)
-{
-    g_free(s->tag);
-    g_free(s->vmstate);
-    qapi_free_strList(s->devices);
-}
-
-
-static void snapshot_load_job_bh(void *opaque)
-{
-    Job *job = opaque;
-    SnapshotJob *s = container_of(job, SnapshotJob, common);
-    int orig_vm_running;
-
-    job_progress_set_remaining(&s->common, 1);
-
-    orig_vm_running = runstate_is_running();
-    vm_stop(RUN_STATE_RESTORE_VM);
-
-    s->ret = load_snapshot(s->tag, s->vmstate, true, s->devices, s->errp);
-    if (s->ret && orig_vm_running) {
-        vm_start();
-    }
-
-    job_progress_update(&s->common, 1);
-
-    qmp_snapshot_job_free(s);
-    aio_co_wake(s->co);
-}
-
-static void snapshot_save_job_bh(void *opaque)
-{
-    Job *job = opaque;
-    SnapshotJob *s = container_of(job, SnapshotJob, common);
-
-    job_progress_set_remaining(&s->common, 1);
-    s->ret = save_snapshot(s->tag, false, s->vmstate,
-                           true, s->devices, s->errp);
-    job_progress_update(&s->common, 1);
-
-    qmp_snapshot_job_free(s);
-    aio_co_wake(s->co);
-}
-
-static void snapshot_delete_job_bh(void *opaque)
-{
-    Job *job = opaque;
-    SnapshotJob *s = container_of(job, SnapshotJob, common);
-
-    job_progress_set_remaining(&s->common, 1);
-    s->ret = delete_snapshot(s->tag, true, s->devices, s->errp);
-    job_progress_update(&s->common, 1);
-
-    qmp_snapshot_job_free(s);
-    aio_co_wake(s->co);
-}
-
-static int coroutine_fn snapshot_save_job_run(Job *job, Error **errp)
-{
-    SnapshotJob *s = container_of(job, SnapshotJob, common);
-    s->errp = errp;
-    s->co = qemu_coroutine_self();
-    aio_bh_schedule_oneshot(qemu_get_aio_context(),
-                            snapshot_save_job_bh, job);
-    qemu_coroutine_yield();
-    return s->ret ? 0 : -1;
-}
-
-static int coroutine_fn snapshot_load_job_run(Job *job, Error **errp)
-{
-    SnapshotJob *s = container_of(job, SnapshotJob, common);
-    s->errp = errp;
-    s->co = qemu_coroutine_self();
-    aio_bh_schedule_oneshot(qemu_get_aio_context(),
-                            snapshot_load_job_bh, job);
-    qemu_coroutine_yield();
-    return s->ret ? 0 : -1;
-}
-
-static int coroutine_fn snapshot_delete_job_run(Job *job, Error **errp)
-{
-    SnapshotJob *s = container_of(job, SnapshotJob, common);
-    s->errp = errp;
-    s->co = qemu_coroutine_self();
-    aio_bh_schedule_oneshot(qemu_get_aio_context(),
-                            snapshot_delete_job_bh, job);
-    qemu_coroutine_yield();
-    return s->ret ? 0 : -1;
-}
-
-
-static const JobDriver snapshot_load_job_driver = {
-    .instance_size = sizeof(SnapshotJob),
-    .job_type      = JOB_TYPE_SNAPSHOT_LOAD,
-    .run           = snapshot_load_job_run,
-};
-
-static const JobDriver snapshot_save_job_driver = {
-    .instance_size = sizeof(SnapshotJob),
-    .job_type      = JOB_TYPE_SNAPSHOT_SAVE,
-    .run           = snapshot_save_job_run,
-};
-
-static const JobDriver snapshot_delete_job_driver = {
-    .instance_size = sizeof(SnapshotJob),
-    .job_type      = JOB_TYPE_SNAPSHOT_DELETE,
-    .run           = snapshot_delete_job_run,
-};
-
-
-void qmp_snapshot_save(const char *job_id,
-                       const char *tag,
-                       const char *vmstate,
-                       strList *devices,
-                       Error **errp)
-{
-    SnapshotJob *s;
-
-    s = job_create(job_id, &snapshot_save_job_driver, NULL,
-                   qemu_get_aio_context(), JOB_MANUAL_DISMISS,
-                   NULL, NULL, errp);
-    if (!s) {
-        return;
-    }
-
-    s->tag = g_strdup(tag);
-    s->vmstate = g_strdup(vmstate);
-    s->devices = QAPI_CLONE(strList, devices);
-
-    job_start(&s->common);
-}
-
-void qmp_snapshot_load(const char *job_id,
-                       const char *tag,
-                       const char *vmstate,
-                       strList *devices,
-                       Error **errp)
-{
-    SnapshotJob *s;
-
-    s = job_create(job_id, &snapshot_load_job_driver, NULL,
-                   qemu_get_aio_context(), JOB_MANUAL_DISMISS,
-                   NULL, NULL, errp);
-    if (!s) {
-        return;
-    }
-
-    s->tag = g_strdup(tag);
-    s->vmstate = g_strdup(vmstate);
-    s->devices = QAPI_CLONE(strList, devices);
-
-    job_start(&s->common);
-}
-
-void qmp_snapshot_delete(const char *job_id,
-                         const char *tag,
-                         strList *devices,
-                         Error **errp)
-{
-    SnapshotJob *s;
-
-    s = job_create(job_id, &snapshot_delete_job_driver, NULL,
-                   qemu_get_aio_context(), JOB_MANUAL_DISMISS,
-                   NULL, NULL, errp);
-    if (!s) {
-        return;
-    }
-
-    s->tag = g_strdup(tag);
-    s->devices = QAPI_CLONE(strList, devices);
-
-    job_start(&s->common);
 }

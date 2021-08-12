@@ -929,6 +929,7 @@ static int quorum_open(BlockDriverState *bs, QDict *options, int flags,
                        Error **errp)
 {
     BDRVQuorumState *s = bs->opaque;
+    Error *local_err = NULL;
     QemuOpts *opts = NULL;
     const char *pattern_str;
     bool *opened;
@@ -1006,8 +1007,9 @@ static int quorum_open(BlockDriverState *bs, QDict *options, int flags,
 
         s->children[i] = bdrv_open_child(NULL, options, indexstr, bs,
                                          &child_of_bds, BDRV_CHILD_DATA, false,
-                                         errp);
-        if (!s->children[i]) {
+                                         &local_err);
+        if (local_err) {
+            error_propagate(errp, local_err);
             ret = -EINVAL;
             goto close_exit;
         }
@@ -1279,7 +1281,7 @@ static BlockDriver bdrv_quorum = {
     .bdrv_dirname                       = quorum_dirname,
     .bdrv_co_block_status               = quorum_co_block_status,
 
-    .bdrv_co_flush                      = quorum_co_flush,
+    .bdrv_co_flush_to_disk              = quorum_co_flush,
 
     .bdrv_getlength                     = quorum_getlength,
 

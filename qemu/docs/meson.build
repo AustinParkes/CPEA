@@ -27,9 +27,10 @@ if sphinx_build.found()
   build_docs = (sphinx_build_test_out.returncode() == 0)
 
   if not build_docs
-    warning('@0@: @1@'.format(sphinx_build.full_path(), sphinx_build_test_out.stderr()))
+    warning('@0@ is either too old or uses too old a Python version'
+            .format(sphinx_build.full_path()))
     if get_option('docs').enabled()
-      error('Install a Python 3 version of python-sphinx and the readthedoc theme')
+      error('Install a Python 3 version of python-sphinx')
     endif
   endif
 endif
@@ -44,13 +45,10 @@ if build_docs
                           meson.source_root() / 'docs/sphinx/qapidoc.py',
                           meson.source_root() / 'docs/sphinx/qmp_lexer.py',
                           qapi_gen_depends ]
-  sphinx_template_files = [ meson.source_root() / 'docs/_templates/footer.html' ]
-
-  have_ga = have_tools and config_host.has_key('CONFIG_GUEST_AGENT')
 
   man_pages = {
-        'qemu-ga.8': (have_ga ? 'man8' : ''),
-        'qemu-ga-ref.7': (have_ga ? 'man7' : ''),
+        'qemu-ga.8': (have_tools ? 'man8' : ''),
+        'qemu-ga-ref.7': 'man7',
         'qemu-qmp-ref.7': 'man7',
         'qemu-storage-daemon-qmp-ref.7': (have_tools ? 'man7' : ''),
         'qemu-img.1': (have_tools ? 'man1' : ''),
@@ -77,7 +75,7 @@ if build_docs
                 output: 'docs.stamp',
                 input: files('conf.py'),
                 depfile: 'docs.d',
-                depend_files: [ sphinx_extn_depends, sphinx_template_files ],
+                depend_files: sphinx_extn_depends,
                 command: [SPHINX_ARGS, '-Ddepfile=@DEPFILE@',
                           '-Ddepfile_stamp=@OUTPUT0@',
                           '-b', 'html', '-d', private_dir,

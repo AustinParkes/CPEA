@@ -24,6 +24,7 @@
 
 #include "hw/sysbus.h"
 #include "chardev/char-fe.h"
+#include "hw/hw.h"
 #include "qom/object.h"
 
 /* Offsets of registers. */

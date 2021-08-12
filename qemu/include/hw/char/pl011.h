@@ -50,7 +50,6 @@ struct PL011State {
     CharBackend chr;
     qemu_irq irq[6];
     Clock *clk;
-    bool migrate_clk;
     const unsigned char *id;
 };
 

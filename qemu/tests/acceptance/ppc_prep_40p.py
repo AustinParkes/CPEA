@@ -27,7 +27,6 @@ class IbmPrep40pMachine(Test):
         """
         :avocado: tags=arch:ppc
         :avocado: tags=machine:40p
-        :avocado: tags=os:netbsd
         :avocado: tags=slowness:high
         """
         bios_url = ('http://ftpmirror.your.org/pub/misc/'
@@ -65,7 +64,6 @@ class IbmPrep40pMachine(Test):
         """
         :avocado: tags=arch:ppc
         :avocado: tags=machine:40p
-        :avocado: tags=os:netbsd
         """
         drive_url = ('https://cdn.netbsd.org/pub/NetBSD/iso/7.1.2/'
                      'NetBSD-7.1.2-prep.iso')

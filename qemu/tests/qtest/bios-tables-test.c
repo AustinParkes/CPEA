@@ -64,16 +64,12 @@
 #include "boot-sector.h"
 #include "tpm-emu.h"
 #include "hw/acpi/tpm.h"
-#include "qemu/cutils.h"
+
 
 #define MACHINE_PC "pc"
 #define MACHINE_Q35 "q35"
 
 #define ACPI_REBUILD_EXPECTED_AML "TEST_ACPI_REBUILD_AML"
-
-#define OEM_ID             "TEST"
-#define OEM_TABLE_ID       "OEM"
-#define OEM_TEST_ARGS      "-machine x-oem-id="OEM_ID",x-oem-table-id="OEM_TABLE_ID
 
 typedef struct {
     bool tcg_only;
@@ -489,14 +485,10 @@ static void test_acpi_asl(test_data *data)
                                                  exp_sdt->asl_file, sdt->asl_file);
                     int out = dup(STDOUT_FILENO);
                     int ret G_GNUC_UNUSED;
-                    int dupret;
 
-                    g_assert(out >= 0);
-                    dupret = dup2(STDERR_FILENO, STDOUT_FILENO);
-                    g_assert(dupret >= 0);
+                    dup2(STDERR_FILENO, STDOUT_FILENO);
                     ret = system(diff) ;
-                    dupret = dup2(out, STDOUT_FILENO);
-                    g_assert(dupret >= 0);
+                    dup2(out, STDOUT_FILENO);
                     close(out);
                     g_free(diff);
                 }
@@ -662,28 +654,17 @@ static void test_smbios_structs(test_data *data)
     }
 }
 
-static void test_acpi_load_tables(test_data *data, bool use_uefi)
-{
-    if (use_uefi) {
-        g_assert(data->scan_len);
-        data->rsdp_addr = acpi_find_rsdp_address_uefi(data->qts,
-            data->ram_start, data->scan_len);
-    } else {
-        boot_sector_test(data->qts);
-        data->rsdp_addr = acpi_find_rsdp_address(data->qts);
-        g_assert_cmphex(data->rsdp_addr, <, 0x100000);
-    }
-
-    data->tables = g_array_new(false, true, sizeof(AcpiSdtTable));
-    test_acpi_rsdp_table(data);
-    test_acpi_rxsdt_table(data);
-    test_acpi_fadt_table(data);
-}
-
-static char *test_acpi_create_args(test_data *data, const char *params,
-                                   bool use_uefi)
+static void test_acpi_one(const char *params, test_data *data)
 {
     char *args;
+    bool use_uefi = data->uefi_fl1 && data->uefi_fl2;
+
+#ifndef CONFIG_TCG
+    if (data->tcg_only) {
+        g_test_skip("TCG disabled, skipping ACPI tcg_only test");
+        return;
+    }
+#endif /* CONFIG_TCG */
 
     if (use_uefi) {
         /*
@@ -714,24 +695,23 @@ static char *test_acpi_create_args(test_data *data, const char *params,
              params ? params : "", disk,
              data->blkdev ?: "ide-hd");
     }
-    return args;
-}
 
-static void test_acpi_one(const char *params, test_data *data)
-{
-    char *args;
-    bool use_uefi = data->uefi_fl1 && data->uefi_fl2;
-
-#ifndef CONFIG_TCG
-    if (data->tcg_only) {
-        g_test_skip("TCG disabled, skipping ACPI tcg_only test");
-        return;
-    }
-#endif /* CONFIG_TCG */
-
-    args = test_acpi_create_args(data, params, use_uefi);
     data->qts = qtest_init(args);
-    test_acpi_load_tables(data, use_uefi);
+
+    if (use_uefi) {
+        g_assert(data->scan_len);
+        data->rsdp_addr = acpi_find_rsdp_address_uefi(data->qts,
+            data->ram_start, data->scan_len);
+    } else {
+        boot_sector_test(data->qts);
+        data->rsdp_addr = acpi_find_rsdp_address(data->qts);
+        g_assert_cmphex(data->rsdp_addr, <, 0x100000);
+    }
+
+    data->tables = g_array_new(false, true, sizeof(AcpiSdtTable));
+    test_acpi_rsdp_table(data);
+    test_acpi_rxsdt_table(data);
+    test_acpi_fadt_table(data);
 
     if (getenv(ACPI_REBUILD_EXPECTED_AML)) {
         dump_aml_files(data, true);
@@ -977,50 +957,6 @@ static void test_acpi_piix4_tcg_memhp(void)
     free_test_data(&data);
 }
 
-static void test_acpi_piix4_tcg_nosmm(void)
-{
-    test_data data;
-
-    memset(&data, 0, sizeof(data));
-    data.machine = MACHINE_PC;
-    data.variant = ".nosmm";
-    test_acpi_one("-machine smm=off", &data);
-    free_test_data(&data);
-}
-
-static void test_acpi_piix4_tcg_smm_compat(void)
-{
-    test_data data;
-
-    memset(&data, 0, sizeof(data));
-    data.machine = MACHINE_PC;
-    data.variant = ".smm-compat";
-    test_acpi_one("-global PIIX4_PM.smm-compat=on", &data);
-    free_test_data(&data);
-}
-
-static void test_acpi_piix4_tcg_smm_compat_nosmm(void)
-{
-    test_data data;
-
-    memset(&data, 0, sizeof(data));
-    data.machine = MACHINE_PC;
-    data.variant = ".smm-compat-nosmm";
-    test_acpi_one("-global PIIX4_PM.smm-compat=on -machine smm=off", &data);
-    free_test_data(&data);
-}
-
-static void test_acpi_piix4_tcg_nohpet(void)
-{
-    test_data data;
-
-    memset(&data, 0, sizeof(data));
-    data.machine = MACHINE_PC;
-    data.variant = ".nohpet";
-    test_acpi_one("-no-hpet", &data);
-    free_test_data(&data);
-}
-
 static void test_acpi_q35_tcg_numamem(void)
 {
     test_data data;
@@ -1030,50 +966,6 @@ static void test_acpi_q35_tcg_numamem(void)
     data.variant = ".numamem";
     test_acpi_one(" -object memory-backend-ram,id=ram0,size=128M"
                   " -numa node -numa node,memdev=ram0", &data);
-    free_test_data(&data);
-}
-
-static void test_acpi_q35_tcg_nosmm(void)
-{
-    test_data data;
-
-    memset(&data, 0, sizeof(data));
-    data.machine = MACHINE_Q35;
-    data.variant = ".nosmm";
-    test_acpi_one("-machine smm=off", &data);
-    free_test_data(&data);
-}
-
-static void test_acpi_q35_tcg_smm_compat(void)
-{
-    test_data data;
-
-    memset(&data, 0, sizeof(data));
-    data.machine = MACHINE_Q35;
-    data.variant = ".smm-compat";
-    test_acpi_one("-global ICH9-LPC.smm-compat=on", &data);
-    free_test_data(&data);
-}
-
-static void test_acpi_q35_tcg_smm_compat_nosmm(void)
-{
-    test_data data;
-
-    memset(&data, 0, sizeof(data));
-    data.machine = MACHINE_Q35;
-    data.variant = ".smm-compat-nosmm";
-    test_acpi_one("-global ICH9-LPC.smm-compat=on -machine smm=off", &data);
-    free_test_data(&data);
-}
-
-static void test_acpi_q35_tcg_nohpet(void)
-{
-    test_data data;
-
-    memset(&data, 0, sizeof(data));
-    data.machine = MACHINE_Q35;
-    data.variant = ".nohpet";
-    test_acpi_one("-no-hpet", &data);
     free_test_data(&data);
 }
 
@@ -1400,109 +1292,6 @@ static void test_acpi_virt_tcg(void)
     free_test_data(&data);
 }
 
-static void test_oem_fields(test_data *data)
-{
-    int i;
-    char oem_id[6];
-    char oem_table_id[8];
-
-    strpadcpy(oem_id, sizeof oem_id, OEM_ID, ' ');
-    strpadcpy(oem_table_id, sizeof oem_table_id, OEM_TABLE_ID, ' ');
-    for (i = 0; i < data->tables->len; ++i) {
-        AcpiSdtTable *sdt;
-
-        sdt = &g_array_index(data->tables, AcpiSdtTable, i);
-        /* FACS doesn't have OEMID and OEMTABLEID fields */
-        if (compare_signature(sdt, "FACS")) {
-            continue;
-        }
-
-        g_assert(memcmp(sdt->aml + 10, oem_id, 6) == 0);
-        g_assert(memcmp(sdt->aml + 16, oem_table_id, 8) == 0);
-    }
-}
-
-static void test_acpi_oem_fields_pc(void)
-{
-    test_data data;
-    char *args;
-
-    memset(&data, 0, sizeof(data));
-    data.machine = MACHINE_PC;
-    data.required_struct_types = base_required_struct_types;
-    data.required_struct_types_len = ARRAY_SIZE(base_required_struct_types);
-
-    args = test_acpi_create_args(&data,
-                                 OEM_TEST_ARGS, false);
-    data.qts = qtest_init(args);
-    test_acpi_load_tables(&data, false);
-    test_oem_fields(&data);
-    qtest_quit(data.qts);
-    free_test_data(&data);
-    g_free(args);
-}
-
-static void test_acpi_oem_fields_q35(void)
-{
-    test_data data;
-    char *args;
-
-    memset(&data, 0, sizeof(data));
-    data.machine = MACHINE_Q35;
-    data.required_struct_types = base_required_struct_types;
-    data.required_struct_types_len = ARRAY_SIZE(base_required_struct_types);
-
-    args = test_acpi_create_args(&data,
-                                 OEM_TEST_ARGS, false);
-    data.qts = qtest_init(args);
-    test_acpi_load_tables(&data, false);
-    test_oem_fields(&data);
-    qtest_quit(data.qts);
-    free_test_data(&data);
-    g_free(args);
-}
-
-static void test_acpi_oem_fields_microvm(void)
-{
-    test_data data;
-    char *args;
-
-    test_acpi_microvm_prepare(&data);
-
-    args = test_acpi_create_args(&data,
-                                 OEM_TEST_ARGS",acpi=on", false);
-    data.qts = qtest_init(args);
-    test_acpi_load_tables(&data, false);
-    test_oem_fields(&data);
-    qtest_quit(data.qts);
-    free_test_data(&data);
-    g_free(args);
-}
-
-static void test_acpi_oem_fields_virt(void)
-{
-    test_data data = {
-        .machine = "virt",
-        .tcg_only = true,
-        .uefi_fl1 = "pc-bios/edk2-aarch64-code.fd",
-        .uefi_fl2 = "pc-bios/edk2-arm-vars.fd",
-        .cd = "tests/data/uefi-boot-images/bios-tables-test.aarch64.iso.qcow2",
-        .ram_start = 0x40000000ULL,
-        .scan_len = 128ULL * 1024 * 1024,
-    };
-    char *args;
-
-    args = test_acpi_create_args(&data,
-                                 "-cpu cortex-a57 "OEM_TEST_ARGS, true);
-    data.qts = qtest_init(args);
-    test_acpi_load_tables(&data, true);
-    test_oem_fields(&data);
-    qtest_quit(data.qts);
-    free_test_data(&data);
-    g_free(args);
-}
-
-
 int main(int argc, char *argv[])
 {
     const char *arch = qtest_get_arch();
@@ -1515,10 +1304,9 @@ int main(int argc, char *argv[])
         if (ret) {
             return ret;
         }
-        qtest_add_func("acpi/q35/oem-fields", test_acpi_oem_fields_q35);
+
         qtest_add_func("acpi/q35/tpm-tis", test_acpi_q35_tcg_tpm_tis);
         qtest_add_func("acpi/piix4", test_acpi_piix4_tcg);
-        qtest_add_func("acpi/oem-fields", test_acpi_oem_fields_pc);
         qtest_add_func("acpi/piix4/bridge", test_acpi_piix4_tcg_bridge);
         qtest_add_func("acpi/piix4/pci-hotplug/no_root_hotplug",
                        test_acpi_piix4_no_root_hotplug);
@@ -1537,18 +1325,6 @@ int main(int argc, char *argv[])
         qtest_add_func("acpi/q35/memhp", test_acpi_q35_tcg_memhp);
         qtest_add_func("acpi/piix4/numamem", test_acpi_piix4_tcg_numamem);
         qtest_add_func("acpi/q35/numamem", test_acpi_q35_tcg_numamem);
-        qtest_add_func("acpi/piix4/nosmm", test_acpi_piix4_tcg_nosmm);
-        qtest_add_func("acpi/piix4/smm-compat",
-                       test_acpi_piix4_tcg_smm_compat);
-        qtest_add_func("acpi/piix4/smm-compat-nosmm",
-                       test_acpi_piix4_tcg_smm_compat_nosmm);
-        qtest_add_func("acpi/piix4/nohpet", test_acpi_piix4_tcg_nohpet);
-        qtest_add_func("acpi/q35/nosmm", test_acpi_q35_tcg_nosmm);
-        qtest_add_func("acpi/q35/smm-compat",
-                       test_acpi_q35_tcg_smm_compat);
-        qtest_add_func("acpi/q35/smm-compat-nosmm",
-                       test_acpi_q35_tcg_smm_compat_nosmm);
-        qtest_add_func("acpi/q35/nohpet", test_acpi_q35_tcg_nohpet);
         qtest_add_func("acpi/piix4/dimmpxm", test_acpi_piix4_tcg_dimm_pxm);
         qtest_add_func("acpi/q35/dimmpxm", test_acpi_q35_tcg_dimm_pxm);
         qtest_add_func("acpi/piix4/acpihmat", test_acpi_piix4_tcg_acpi_hmat);
@@ -1557,7 +1333,6 @@ int main(int argc, char *argv[])
         qtest_add_func("acpi/microvm/usb", test_acpi_microvm_usb_tcg);
         qtest_add_func("acpi/microvm/rtc", test_acpi_microvm_rtc_tcg);
         qtest_add_func("acpi/microvm/ioapic2", test_acpi_microvm_ioapic2_tcg);
-        qtest_add_func("acpi/microvm/oem-fields", test_acpi_oem_fields_microvm);
         if (strcmp(arch, "x86_64") == 0) {
             qtest_add_func("acpi/microvm/pcie", test_acpi_microvm_pcie_tcg);
         }
@@ -1566,7 +1341,6 @@ int main(int argc, char *argv[])
         qtest_add_func("acpi/virt/numamem", test_acpi_virt_tcg_numamem);
         qtest_add_func("acpi/virt/memhp", test_acpi_virt_tcg_memhp);
         qtest_add_func("acpi/virt/pxb", test_acpi_virt_tcg_pxb);
-        qtest_add_func("acpi/virt/oem-fields", test_acpi_oem_fields_virt);
     }
     ret = g_test_run();
     boot_sector_cleanup(disk);

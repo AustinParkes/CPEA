@@ -278,6 +278,18 @@ static int free_bitmap_clusters(BlockDriverState *bs, Qcow2BitmapTable *tb)
     return 0;
 }
 
+/* Return the disk size covered by a single qcow2 cluster of bitmap data. */
+static uint64_t bytes_covered_by_bitmap_cluster(const BDRVQcow2State *s,
+                                                const BdrvDirtyBitmap *bitmap)
+{
+    uint64_t granularity = bdrv_dirty_bitmap_granularity(bitmap);
+    uint64_t limit = granularity * (s->cluster_size << 3);
+
+    assert(QEMU_IS_ALIGNED(limit,
+                           bdrv_dirty_bitmap_serialization_align(bitmap)));
+    return limit;
+}
+
 /* load_bitmap_data
  * @bitmap_table entries must satisfy specification constraints.
  * @bitmap must be cleared */
@@ -300,7 +312,7 @@ static int load_bitmap_data(BlockDriverState *bs,
     }
 
     buf = g_malloc(s->cluster_size);
-    limit = bdrv_dirty_bitmap_serialization_coverage(s->cluster_size, bitmap);
+    limit = bytes_covered_by_bitmap_cluster(s, bitmap);
     for (i = 0, offset = 0; i < tab_size; ++i, offset += limit) {
         uint64_t count = MIN(bm_size - offset, limit);
         uint64_t entry = bitmap_table[i];
@@ -950,27 +962,25 @@ static void set_readonly_helper(gpointer bitmap, gpointer value)
     bdrv_dirty_bitmap_set_readonly(bitmap, (bool)value);
 }
 
-/*
- * Return true on success, false on failure.
- * If header_updated is not NULL then it is set appropriately regardless of
- * the return value.
+/* qcow2_load_dirty_bitmaps()
+ * Return value is a hint for caller: true means that the Qcow2 header was
+ * updated. (false doesn't mean that the header should be updated by the
+ * caller, it just means that updating was not needed or the image cannot be
+ * written to).
+ * On failure the function returns false.
  */
-bool qcow2_load_dirty_bitmaps(BlockDriverState *bs, bool *header_updated,
-                              Error **errp)
+bool qcow2_load_dirty_bitmaps(BlockDriverState *bs, Error **errp)
 {
     BDRVQcow2State *s = bs->opaque;
     Qcow2BitmapList *bm_list;
     Qcow2Bitmap *bm;
     GSList *created_dirty_bitmaps = NULL;
+    bool header_updated = false;
     bool needs_update = false;
-
-    if (header_updated) {
-        *header_updated = false;
-    }
 
     if (s->nb_bitmaps == 0) {
         /* No bitmaps - nothing to do */
-        return true;
+        return false;
     }
 
     bm_list = bitmap_list_load(bs, s->bitmap_directory_offset,
@@ -1026,9 +1036,7 @@ bool qcow2_load_dirty_bitmaps(BlockDriverState *bs, bool *header_updated,
             error_setg_errno(errp, -ret, "Can't update bitmap directory");
             goto fail;
         }
-        if (header_updated) {
-            *header_updated = true;
-        }
+        header_updated = true;
     }
 
     if (!can_write(bs)) {
@@ -1039,7 +1047,7 @@ bool qcow2_load_dirty_bitmaps(BlockDriverState *bs, bool *header_updated,
     g_slist_free(created_dirty_bitmaps);
     bitmap_list_free(bm_list);
 
-    return true;
+    return header_updated;
 
 fail:
     g_slist_foreach(created_dirty_bitmaps, release_dirty_bitmap_helper, bs);
@@ -1053,7 +1061,7 @@ fail:
 static Qcow2BitmapInfoFlagsList *get_bitmap_info_flags(uint32_t flags)
 {
     Qcow2BitmapInfoFlagsList *list = NULL;
-    Qcow2BitmapInfoFlagsList **tail = &list;
+    Qcow2BitmapInfoFlagsList **plist = &list;
     int i;
 
     static const struct {
@@ -1068,7 +1076,11 @@ static Qcow2BitmapInfoFlagsList *get_bitmap_info_flags(uint32_t flags)
 
     for (i = 0; i < map_size; ++i) {
         if (flags & map[i].bme) {
-            QAPI_LIST_APPEND(tail, map[i].info);
+            Qcow2BitmapInfoFlagsList *entry =
+                g_new0(Qcow2BitmapInfoFlagsList, 1);
+            entry->value = map[i].info;
+            *plist = entry;
+            plist = &entry->next;
             flags &= ~map[i].bme;
         }
     }
@@ -1081,43 +1093,44 @@ static Qcow2BitmapInfoFlagsList *get_bitmap_info_flags(uint32_t flags)
 /*
  * qcow2_get_bitmap_info_list()
  * Returns a list of QCOW2 bitmap details.
- * On success return true with info_list set (note, that if there are no
- * bitmaps, info_list is set to NULL).
- * On failure return false with errp set.
+ * In case of no bitmaps, the function returns NULL and
+ * the @errp parameter is not set.
+ * When bitmap information can not be obtained, the function returns
+ * NULL and the @errp parameter is set.
  */
-bool qcow2_get_bitmap_info_list(BlockDriverState *bs,
-                                Qcow2BitmapInfoList **info_list, Error **errp)
+Qcow2BitmapInfoList *qcow2_get_bitmap_info_list(BlockDriverState *bs,
+                                                Error **errp)
 {
     BDRVQcow2State *s = bs->opaque;
     Qcow2BitmapList *bm_list;
     Qcow2Bitmap *bm;
-    Qcow2BitmapInfoList **tail;
+    Qcow2BitmapInfoList *list = NULL;
+    Qcow2BitmapInfoList **plist = &list;
 
     if (s->nb_bitmaps == 0) {
-        *info_list = NULL;
-        return true;
+        return NULL;
     }
 
     bm_list = bitmap_list_load(bs, s->bitmap_directory_offset,
                                s->bitmap_directory_size, errp);
-    if (!bm_list) {
-        return false;
+    if (bm_list == NULL) {
+        return NULL;
     }
-
-    *info_list = NULL;
-    tail = info_list;
 
     QSIMPLEQ_FOREACH(bm, bm_list, entry) {
         Qcow2BitmapInfo *info = g_new0(Qcow2BitmapInfo, 1);
+        Qcow2BitmapInfoList *obj = g_new0(Qcow2BitmapInfoList, 1);
         info->granularity = 1U << bm->granularity_bits;
         info->name = g_strdup(bm->name);
         info->flags = get_bitmap_info_flags(bm->flags & ~BME_RESERVED_FLAGS);
-        QAPI_LIST_APPEND(tail, info);
+        obj->value = info;
+        *plist = obj;
+        plist = &obj->next;
     }
 
     bitmap_list_free(bm_list);
 
-    return true;
+    return list;
 }
 
 int qcow2_reopen_bitmaps_rw(BlockDriverState *bs, Error **errp)
@@ -1297,7 +1310,7 @@ static uint64_t *store_bitmap_data(BlockDriverState *bs,
     }
 
     buf = g_malloc(s->cluster_size);
-    limit = bdrv_dirty_bitmap_serialization_coverage(s->cluster_size, bitmap);
+    limit = bytes_covered_by_bitmap_cluster(s, bitmap);
     assert(DIV_ROUND_UP(bm_size, limit) == tb_size);
 
     offset = 0;
@@ -1519,10 +1532,9 @@ out:
  * readonly to begin with, and whether we opened directly or reopened to that
  * state shouldn't matter for the state we get afterward.
  */
-bool qcow2_store_persistent_dirty_bitmaps(BlockDriverState *bs,
+void qcow2_store_persistent_dirty_bitmaps(BlockDriverState *bs,
                                           bool release_stored, Error **errp)
 {
-    ERRP_GUARD();
     BdrvDirtyBitmap *bitmap;
     BDRVQcow2State *s = bs->opaque;
     uint32_t new_nb_bitmaps = s->nb_bitmaps;
@@ -1542,7 +1554,7 @@ bool qcow2_store_persistent_dirty_bitmaps(BlockDriverState *bs,
         bm_list = bitmap_list_load(bs, s->bitmap_directory_offset,
                                    s->bitmap_directory_size, errp);
         if (bm_list == NULL) {
-            return false;
+            return;
         }
     }
 
@@ -1657,7 +1669,7 @@ success:
     }
 
     bitmap_list_free(bm_list);
-    return true;
+    return;
 
 fail:
     QSIMPLEQ_FOREACH(bm, bm_list, entry) {
@@ -1675,14 +1687,16 @@ fail:
     }
 
     bitmap_list_free(bm_list);
-    return false;
 }
 
 int qcow2_reopen_bitmaps_ro(BlockDriverState *bs, Error **errp)
 {
     BdrvDirtyBitmap *bitmap;
+    Error *local_err = NULL;
 
-    if (!qcow2_store_persistent_dirty_bitmaps(bs, false, errp)) {
+    qcow2_store_persistent_dirty_bitmaps(bs, false, &local_err);
+    if (local_err != NULL) {
+        error_propagate(errp, local_err);
         return -EINVAL;
     }
 

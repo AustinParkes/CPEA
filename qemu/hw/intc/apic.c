@@ -17,6 +17,7 @@
  * License along with this library; if not, see <http://www.gnu.org/licenses/>
  */
 #include "qemu/osdep.h"
+#include "cpu.h"
 #include "qemu/thread.h"
 #include "hw/i386/apic_internal.h"
 #include "hw/i386/apic.h"
@@ -24,7 +25,6 @@
 #include "hw/intc/i8259.h"
 #include "hw/pci/msi.h"
 #include "qemu/host-utils.h"
-#include "sysemu/kvm.h"
 #include "trace.h"
 #include "hw/i386/apic-msidef.h"
 #include "qapi/error.h"
@@ -873,11 +873,6 @@ static void apic_realize(DeviceState *dev, Error **errp)
         error_setg(errp, "%s initialization failed. APIC ID %d is invalid",
                    object_get_typename(OBJECT(dev)), s->id);
         return;
-    }
-
-    if (kvm_enabled()) {
-        warn_report("Userspace local APIC is deprecated for KVM.");
-        warn_report("Do not use kernel-irqchip except for the -M isapc machine type.");
     }
 
     memory_region_init_io(&s->io_memory, OBJECT(s), &apic_io_ops, s, "apic-msi",

@@ -58,7 +58,6 @@ struct PnvChip {
     MemoryRegion xscom;
     AddressSpace xscom_as;
 
-    MemoryRegion *fw_mr;
     gchar        *dt_isa_nodename;
 };
 

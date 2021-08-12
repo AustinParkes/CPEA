@@ -35,6 +35,7 @@ struct DriveInfo {
     bool is_default;            /* Added by default_drive() ?  */
     int media_cd;
     QemuOpts *opts;
+    bool claimed_by_board;
     QTAILQ_ENTRY(DriveInfo) next;
 };
 

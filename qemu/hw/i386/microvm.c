@@ -49,6 +49,7 @@
 #include "hw/pci-host/gpex.h"
 #include "hw/usb/xhci.h"
 
+#include "cpu.h"
 #include "elf.h"
 #include "kvm/kvm_i386.h"
 #include "hw/xen/start_info.h"

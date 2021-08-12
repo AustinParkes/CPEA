@@ -59,9 +59,10 @@ BlockDeviceInfo *bdrv_block_device_info(BlockBackend *blk,
 
     info = g_malloc0(sizeof(*info));
     info->file                   = g_strdup(bs->filename);
-    info->ro                     = bdrv_is_read_only(bs);
+    info->ro                     = bs->read_only;
     info->drv                    = g_strdup(bs->drv->format_name);
     info->encrypted              = bs->encrypted;
+    info->encryption_key_missing = false;
 
     info->cache = g_new(BlockdevCacheInfo, 1);
     *info->cache = (BlockdevCacheInfo) {
@@ -197,7 +198,7 @@ int bdrv_query_snapshot_info_list(BlockDriverState *bs,
 {
     int i, sn_count;
     QEMUSnapshotInfo *sn_tab = NULL;
-    SnapshotInfoList *head = NULL, **tail = &head;
+    SnapshotInfoList *info_list, *cur_item = NULL, *head = NULL;
     SnapshotInfo *info;
 
     sn_count = bdrv_snapshot_list(bs, &sn_tab);
@@ -232,7 +233,17 @@ int bdrv_query_snapshot_info_list(BlockDriverState *bs,
         info->icount        = sn_tab[i].icount;
         info->has_icount    = sn_tab[i].icount != -1ULL;
 
-        QAPI_LIST_APPEND(tail, info);
+        info_list = g_new0(SnapshotInfoList, 1);
+        info_list->value = info;
+
+        /* XXX: waiting for the qapi to support qemu-queue.h types */
+        if (!cur_item) {
+            head = cur_item = info_list;
+        } else {
+            cur_item->next = info_list;
+            cur_item = info_list;
+        }
+
     }
 
     g_free(sn_tab);
@@ -383,6 +394,11 @@ static void bdrv_query_info(BlockBackend *blk, BlockInfo **p_info,
         info->io_status = blk_iostatus(blk);
     }
 
+    if (bs && !QLIST_EMPTY(&bs->dirty_bitmaps)) {
+        info->has_dirty_bitmaps = true;
+        info->dirty_bitmaps = bdrv_query_dirty_bitmaps(bs);
+    }
+
     if (bs && bs->drv) {
         info->has_inserted = true;
         info->inserted = bdrv_block_device_info(blk, bs, false, errp);
@@ -402,11 +418,16 @@ static uint64List *uint64_list(uint64_t *list, int size)
 {
     int i;
     uint64List *out_list = NULL;
-    uint64List **tail = &out_list;
+    uint64List **pout_list = &out_list;
 
     for (i = 0; i < size; i++) {
-        QAPI_LIST_APPEND(tail, list[i]);
+        uint64List *entry = g_new(uint64List, 1);
+        entry->value = list[i];
+        *pout_list = entry;
+        pout_list = &entry->next;
     }
+
+    *pout_list = NULL;
 
     return out_list;
 }
@@ -615,21 +636,26 @@ BlockStatsList *qmp_query_blockstats(bool has_query_nodes,
                                      bool query_nodes,
                                      Error **errp)
 {
-    BlockStatsList *head = NULL, **tail = &head;
+    BlockStatsList *head = NULL, **p_next = &head;
     BlockBackend *blk;
     BlockDriverState *bs;
 
     /* Just to be safe if query_nodes is not always initialized */
     if (has_query_nodes && query_nodes) {
         for (bs = bdrv_next_node(NULL); bs; bs = bdrv_next_node(bs)) {
+            BlockStatsList *info = g_malloc0(sizeof(*info));
             AioContext *ctx = bdrv_get_aio_context(bs);
 
             aio_context_acquire(ctx);
-            QAPI_LIST_APPEND(tail, bdrv_query_bds_stats(bs, false));
+            info->value = bdrv_query_bds_stats(bs, false);
             aio_context_release(ctx);
+
+            *p_next = info;
+            p_next = &info->next;
         }
     } else {
         for (blk = blk_all_next(NULL); blk; blk = blk_all_next(blk)) {
+            BlockStatsList *info;
             AioContext *ctx = blk_get_aio_context(blk);
             BlockStats *s;
             char *qdev;
@@ -654,7 +680,10 @@ BlockStatsList *qmp_query_blockstats(bool has_query_nodes,
             bdrv_query_blk_stats(s->stats, blk);
             aio_context_release(ctx);
 
-            QAPI_LIST_APPEND(tail, s);
+            info = g_malloc0(sizeof(*info));
+            info->value = s;
+            *p_next = info;
+            p_next = &info->next;
         }
     }
 
@@ -663,18 +692,21 @@ BlockStatsList *qmp_query_blockstats(bool has_query_nodes,
 
 void bdrv_snapshot_dump(QEMUSnapshotInfo *sn)
 {
-    char clock_buf[128];
+    char date_buf[128], clock_buf[128];
     char icount_buf[128] = {0};
+    struct tm tm;
+    time_t ti;
     int64_t secs;
     char *sizing = NULL;
 
     if (!sn) {
-        qemu_printf("%-10s%-17s%8s%20s%13s%11s",
+        qemu_printf("%-10s%-18s%7s%20s%13s%11s",
                     "ID", "TAG", "VM SIZE", "DATE", "VM CLOCK", "ICOUNT");
     } else {
-        g_autoptr(GDateTime) date = g_date_time_new_from_unix_local(sn->date_sec);
-        g_autofree char *date_buf = g_date_time_format(date, "%Y-%m-%d %H:%M:%S");
-
+        ti = sn->date_sec;
+        localtime_r(&ti, &tm);
+        strftime(date_buf, sizeof(date_buf),
+                 "%Y-%m-%d %H:%M:%S", &tm);
         secs = sn->vm_clock_nsec / 1000000000;
         snprintf(clock_buf, sizeof(clock_buf),
                  "%02d:%02d:%02d.%03d",
@@ -687,7 +719,7 @@ void bdrv_snapshot_dump(QEMUSnapshotInfo *sn)
             snprintf(icount_buf, sizeof(icount_buf),
                 "%"PRId64, sn->icount);
         }
-        qemu_printf("%-9s %-16s %8s%20s%13s%11s",
+        qemu_printf("%-9s %-17s %7s%20s%13s%11s",
                     sn->id_str, sn->name,
                     sizing,
                     date_buf,

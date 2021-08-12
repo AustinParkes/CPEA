@@ -49,15 +49,13 @@ static void vhost_input_get_config(VirtIODevice *vdev, uint8_t *config_data)
 {
     VirtIOInput *vinput = VIRTIO_INPUT(vdev);
     VHostUserInput *vhi = VHOST_USER_INPUT(vdev);
-    Error *local_err = NULL;
     int ret;
 
     memset(config_data, 0, vinput->cfg_size);
 
-    ret = vhost_dev_get_config(&vhi->vhost->dev, config_data, vinput->cfg_size,
-                               &local_err);
+    ret = vhost_dev_get_config(&vhi->vhost->dev, config_data, vinput->cfg_size);
     if (ret) {
-        error_report_err(local_err);
+        error_report("vhost-user-input: get device config space failed");
         return;
     }
 }

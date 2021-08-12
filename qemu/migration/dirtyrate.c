@@ -20,9 +20,6 @@
 #include "ram.h"
 #include "trace.h"
 #include "dirtyrate.h"
-#include "monitor/hmp.h"
-#include "monitor/monitor.h"
-#include "qapi/qmp/qdict.h"
 
 static int CalculatingState = DIRTY_RATE_STATUS_UNSTARTED;
 static struct DirtyRateStat DirtyStat;
@@ -51,12 +48,6 @@ static bool is_sample_period_valid(int64_t sec)
     return true;
 }
 
-static bool is_sample_pages_valid(int64_t pages)
-{
-    return pages >= MIN_SAMPLE_PAGE_COUNT &&
-           pages <= MAX_SAMPLE_PAGE_COUNT;
-}
-
 static int dirtyrate_set_state(int *state, int old_state, int new_state)
 {
     assert(new_state < DIRTY_RATE_STATUS__MAX);
@@ -81,15 +72,13 @@ static struct DirtyRateInfo *query_dirty_rate_info(void)
     info->status = CalculatingState;
     info->start_time = DirtyStat.start_time;
     info->calc_time = DirtyStat.calc_time;
-    info->sample_pages = DirtyStat.sample_pages;
 
     trace_query_dirty_rate_info(DirtyRateStatus_str(CalculatingState));
 
     return info;
 }
 
-static void init_dirtyrate_stat(int64_t start_time, int64_t calc_time,
-                                uint64_t sample_pages)
+static void init_dirtyrate_stat(int64_t start_time, int64_t calc_time)
 {
     DirtyStat.total_dirty_samples = 0;
     DirtyStat.total_sample_count = 0;
@@ -97,7 +86,6 @@ static void init_dirtyrate_stat(int64_t start_time, int64_t calc_time,
     DirtyStat.dirty_rate = -1;
     DirtyStat.start_time = start_time;
     DirtyStat.calc_time = calc_time;
-    DirtyStat.sample_pages = sample_pages;
 }
 
 static void update_dirtyrate_stat(struct RamblockDirtyInfo *info)
@@ -373,7 +361,6 @@ void *get_dirtyrate_thread(void *arg)
     int ret;
     int64_t start_time;
     int64_t calc_time;
-    uint64_t sample_pages;
 
     ret = dirtyrate_set_state(&CalculatingState, DIRTY_RATE_STATUS_UNSTARTED,
                               DIRTY_RATE_STATUS_MEASURING);
@@ -384,8 +371,7 @@ void *get_dirtyrate_thread(void *arg)
 
     start_time = qemu_clock_get_ms(QEMU_CLOCK_REALTIME) / 1000;
     calc_time = config.sample_period_seconds;
-    sample_pages = config.sample_pages_per_gigabytes;
-    init_dirtyrate_stat(start_time, calc_time, sample_pages);
+    init_dirtyrate_stat(start_time, calc_time);
 
     calculate_dirtyrate(config);
 
@@ -397,8 +383,7 @@ void *get_dirtyrate_thread(void *arg)
     return NULL;
 }
 
-void qmp_calc_dirty_rate(int64_t calc_time, bool has_sample_pages,
-                         int64_t sample_pages, Error **errp)
+void qmp_calc_dirty_rate(int64_t calc_time, Error **errp)
 {
     static struct DirtyRateConfig config;
     QemuThread thread;
@@ -419,17 +404,6 @@ void qmp_calc_dirty_rate(int64_t calc_time, bool has_sample_pages,
         return;
     }
 
-    if (has_sample_pages) {
-        if (!is_sample_pages_valid(sample_pages)) {
-            error_setg(errp, "sample-pages is out of range[%d, %d].",
-                            MIN_SAMPLE_PAGE_COUNT,
-                            MAX_SAMPLE_PAGE_COUNT);
-            return;
-        }
-    } else {
-        sample_pages = DIRTYRATE_DEFAULT_SAMPLE_PAGES;
-    }
-
     /*
      * Init calculation state as unstarted.
      */
@@ -441,7 +415,7 @@ void qmp_calc_dirty_rate(int64_t calc_time, bool has_sample_pages,
     }
 
     config.sample_period_seconds = calc_time;
-    config.sample_pages_per_gigabytes = sample_pages;
+    config.sample_pages_per_gigabytes = DIRTYRATE_DEFAULT_SAMPLE_PAGES;
     qemu_thread_create(&thread, "get_dirtyrate", get_dirtyrate_thread,
                        (void *)&config, QEMU_THREAD_DETACHED);
 }
@@ -449,48 +423,4 @@ void qmp_calc_dirty_rate(int64_t calc_time, bool has_sample_pages,
 struct DirtyRateInfo *qmp_query_dirty_rate(Error **errp)
 {
     return query_dirty_rate_info();
-}
-
-void hmp_info_dirty_rate(Monitor *mon, const QDict *qdict)
-{
-    DirtyRateInfo *info = query_dirty_rate_info();
-
-    monitor_printf(mon, "Status: %s\n",
-                   DirtyRateStatus_str(info->status));
-    monitor_printf(mon, "Start Time: %"PRIi64" (ms)\n",
-                   info->start_time);
-    monitor_printf(mon, "Sample Pages: %"PRIu64" (per GB)\n",
-                   info->sample_pages);
-    monitor_printf(mon, "Period: %"PRIi64" (sec)\n",
-                   info->calc_time);
-    monitor_printf(mon, "Dirty rate: ");
-    if (info->has_dirty_rate) {
-        monitor_printf(mon, "%"PRIi64" (MB/s)\n", info->dirty_rate);
-    } else {
-        monitor_printf(mon, "(not ready)\n");
-    }
-    g_free(info);
-}
-
-void hmp_calc_dirty_rate(Monitor *mon, const QDict *qdict)
-{
-    int64_t sec = qdict_get_try_int(qdict, "second", 0);
-    int64_t sample_pages = qdict_get_try_int(qdict, "sample_pages_per_GB", -1);
-    bool has_sample_pages = (sample_pages != -1);
-    Error *err = NULL;
-
-    if (!sec) {
-        monitor_printf(mon, "Incorrect period length specified!\n");
-        return;
-    }
-
-    qmp_calc_dirty_rate(sec, has_sample_pages, sample_pages, &err);
-    if (err) {
-        hmp_handle_error(mon, err);
-        return;
-    }
-
-    monitor_printf(mon, "Starting dirty rate measurement with period %"PRIi64
-                   " seconds\n", sec);
-    monitor_printf(mon, "[Please use 'info dirty_rate' to check results]\n");
 }

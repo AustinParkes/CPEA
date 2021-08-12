@@ -13,7 +13,7 @@ This work is licensed under the terms of the GNU GPL, version 2.
 See the COPYING file in the top-level directory.
 """
 
-from typing import List, Optional, Sequence
+from typing import List, Optional
 
 from .common import (
     c_enum_const,
@@ -77,22 +77,12 @@ bool visit_type_%(c_name)s_members(Visitor *v, %(c_name)s *obj, Error **errp)
                      c_type=base.c_name())
 
     for memb in members:
-        deprecated = 'deprecated' in [f.name for f in memb.features]
         ret += gen_if(memb.ifcond)
         if memb.optional:
             ret += mcgen('''
     if (visit_optional(v, "%(name)s", &obj->has_%(c_name)s)) {
 ''',
                          name=memb.name, c_name=c_name(memb.name))
-            indent.increase()
-        if deprecated:
-            ret += mcgen('''
-    if (!visit_deprecated_accept(v, "%(name)s", errp)) {
-        return false;
-    }
-    if (visit_deprecated(v, "%(name)s")) {
-''',
-                         name=memb.name)
             indent.increase()
         ret += mcgen('''
     if (!visit_type_%(c_type)s(v, "%(name)s", &obj->%(c_name)s, errp)) {
@@ -101,11 +91,6 @@ bool visit_type_%(c_name)s_members(Visitor *v, %(c_name)s *obj, Error **errp)
 ''',
                      c_type=memb.type.c_name(), name=memb.name,
                      c_name=c_name(memb.name))
-        if deprecated:
-            indent.decrease()
-            ret += mcgen('''
-    }
-''')
         if memb.optional:
             indent.decrease()
             ret += mcgen('''
@@ -320,7 +305,7 @@ class QAPISchemaGenVisitVisitor(QAPISchemaModularCVisitor):
             prefix, 'qapi-visit', ' * Schema-defined QAPI visitors',
             ' * Built-in QAPI visitors', __doc__)
 
-    def _begin_builtin_module(self) -> None:
+    def _begin_system_module(self, name: None) -> None:
         self._genc.preamble_add(mcgen('''
 #include "qemu/osdep.h"
 #include "qapi/error.h"
@@ -351,8 +336,8 @@ class QAPISchemaGenVisitVisitor(QAPISchemaModularCVisitor):
 
     def visit_enum_type(self,
                         name: str,
-                        info: Optional[QAPISourceInfo],
-                        ifcond: Sequence[str],
+                        info: QAPISourceInfo,
+                        ifcond: List[str],
                         features: List[QAPISchemaFeature],
                         members: List[QAPISchemaEnumMember],
                         prefix: Optional[str]) -> None:
@@ -363,7 +348,7 @@ class QAPISchemaGenVisitVisitor(QAPISchemaModularCVisitor):
     def visit_array_type(self,
                          name: str,
                          info: Optional[QAPISourceInfo],
-                         ifcond: Sequence[str],
+                         ifcond: List[str],
                          element_type: QAPISchemaType) -> None:
         with ifcontext(ifcond, self._genh, self._genc):
             self._genh.add(gen_visit_decl(name))
@@ -372,7 +357,7 @@ class QAPISchemaGenVisitVisitor(QAPISchemaModularCVisitor):
     def visit_object_type(self,
                           name: str,
                           info: Optional[QAPISourceInfo],
-                          ifcond: Sequence[str],
+                          ifcond: List[str],
                           features: List[QAPISchemaFeature],
                           base: Optional[QAPISchemaObjectType],
                           members: List[QAPISchemaObjectTypeMember],
@@ -393,8 +378,8 @@ class QAPISchemaGenVisitVisitor(QAPISchemaModularCVisitor):
 
     def visit_alternate_type(self,
                              name: str,
-                             info: Optional[QAPISourceInfo],
-                             ifcond: Sequence[str],
+                             info: QAPISourceInfo,
+                             ifcond: List[str],
                              features: List[QAPISchemaFeature],
                              variants: QAPISchemaVariants) -> None:
         with ifcontext(ifcond, self._genh, self._genc):

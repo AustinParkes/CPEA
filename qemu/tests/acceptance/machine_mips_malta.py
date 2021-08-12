@@ -62,6 +62,7 @@ class MaltaMachineFramebuffer(Test):
         kernel_command_line = (self.KERNEL_COMMON_COMMAND_LINE +
                                'clocksource=GIC console=tty0 console=ttyS0')
         self.vm.add_args('-kernel', kernel_path,
+                         '-cpu', 'I6400',
                          '-smp', '%u' % cpu_cores_count,
                          '-vga', 'std',
                          '-append', kernel_command_line)
@@ -95,7 +96,7 @@ class MaltaMachineFramebuffer(Test):
         """
         :avocado: tags=arch:mips64el
         :avocado: tags=machine:malta
-        :avocado: tags=cpu:I6400
+        :avocado: tags=cpu:i6400
         """
         self.do_test_i6400_framebuffer_logo(1)
 
@@ -104,7 +105,7 @@ class MaltaMachineFramebuffer(Test):
         """
         :avocado: tags=arch:mips64el
         :avocado: tags=machine:malta
-        :avocado: tags=cpu:I6400
+        :avocado: tags=cpu:i6400
         :avocado: tags=mips:smp
         """
         self.do_test_i6400_framebuffer_logo(7)
@@ -114,7 +115,7 @@ class MaltaMachineFramebuffer(Test):
         """
         :avocado: tags=arch:mips64el
         :avocado: tags=machine:malta
-        :avocado: tags=cpu:I6400
+        :avocado: tags=cpu:i6400
         :avocado: tags=mips:smp
         """
         self.do_test_i6400_framebuffer_logo(8)

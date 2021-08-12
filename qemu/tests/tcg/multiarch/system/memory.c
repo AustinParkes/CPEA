@@ -326,7 +326,6 @@ static bool do_unsigned_test(init_ufn fn)
         fn(i);
         ok = do_unsigned_reads(i);
     }
-    return ok;
 #else
     fn(0);
     return do_unsigned_reads(0);

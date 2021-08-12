@@ -42,7 +42,3 @@ config ACPI_VMGENID
     depends on PC
 
 config ACPI_HW_REDUCED
-    bool
-    select ACPI
-    select ACPI_MEMORY_HOTPLUG
-    select ACPI_NVDIMM

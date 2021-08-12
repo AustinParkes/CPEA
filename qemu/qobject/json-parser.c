@@ -31,7 +31,8 @@ struct JSONToken {
     char str[];
 };
 
-typedef struct JSONParserContext {
+typedef struct JSONParserContext
+{
     Error *err;
     JSONToken *current;
     GQueue *buf;

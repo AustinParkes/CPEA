@@ -1,5 +1,5 @@
 if add_languages('cpp', required: false)
-  glib_dynamic = dependency('glib-2.0', static: false)
+  glib_static = dependency('glib-2.0', static: true)
   link_args = cc.get_supported_link_arguments(['-fstack-protector-all', '-fstack-protector-strong',
                                                '-Wl,--add-stdcall-alias', '-Wl,--enable-stdcall-fixup'])
 
@@ -8,7 +8,7 @@ if add_languages('cpp', required: false)
                 cpp_args: ['-Wno-unknown-pragmas', '-Wno-delete-non-virtual-dtor', '-Wno-non-virtual-dtor'],
                 link_args: link_args,
                 vs_module_defs: 'qga-vss.def',
-                dependencies: [glib_dynamic, socket,
+                dependencies: [glib_static, socket,
                                cc.find_library('ole32'),
                                cc.find_library('oleaut32'),
                                cc.find_library('shlwapi'),

@@ -15,6 +15,7 @@
 #include "qemu-common.h"
 #include "qemu/cutils.h"
 #include "elf.h"
+#include "cpu.h"
 #include "exec/hwaddr.h"
 #include "monitor/monitor.h"
 #include "sysemu/kvm.h"
@@ -2029,29 +2030,39 @@ void qmp_dump_guest_memory(bool paging, const char *file,
 
 DumpGuestMemoryCapability *qmp_query_dump_guest_memory_capability(Error **errp)
 {
+    DumpGuestMemoryFormatList *item;
     DumpGuestMemoryCapability *cap =
                                   g_malloc0(sizeof(DumpGuestMemoryCapability));
-    DumpGuestMemoryFormatList **tail = &cap->formats;
 
     /* elf is always available */
-    QAPI_LIST_APPEND(tail, DUMP_GUEST_MEMORY_FORMAT_ELF);
+    item = g_malloc0(sizeof(DumpGuestMemoryFormatList));
+    cap->formats = item;
+    item->value = DUMP_GUEST_MEMORY_FORMAT_ELF;
 
     /* kdump-zlib is always available */
-    QAPI_LIST_APPEND(tail, DUMP_GUEST_MEMORY_FORMAT_KDUMP_ZLIB);
+    item->next = g_malloc0(sizeof(DumpGuestMemoryFormatList));
+    item = item->next;
+    item->value = DUMP_GUEST_MEMORY_FORMAT_KDUMP_ZLIB;
 
     /* add new item if kdump-lzo is available */
 #ifdef CONFIG_LZO
-    QAPI_LIST_APPEND(tail, DUMP_GUEST_MEMORY_FORMAT_KDUMP_LZO);
+    item->next = g_malloc0(sizeof(DumpGuestMemoryFormatList));
+    item = item->next;
+    item->value = DUMP_GUEST_MEMORY_FORMAT_KDUMP_LZO;
 #endif
 
     /* add new item if kdump-snappy is available */
 #ifdef CONFIG_SNAPPY
-    QAPI_LIST_APPEND(tail, DUMP_GUEST_MEMORY_FORMAT_KDUMP_SNAPPY);
+    item->next = g_malloc0(sizeof(DumpGuestMemoryFormatList));
+    item = item->next;
+    item->value = DUMP_GUEST_MEMORY_FORMAT_KDUMP_SNAPPY;
 #endif
 
     /* Windows dump is available only if target is x86_64 */
 #ifdef TARGET_X86_64
-    QAPI_LIST_APPEND(tail, DUMP_GUEST_MEMORY_FORMAT_WIN_DMP);
+    item->next = g_malloc0(sizeof(DumpGuestMemoryFormatList));
+    item = item->next;
+    item->value = DUMP_GUEST_MEMORY_FORMAT_WIN_DMP;
 #endif
 
     return cap;

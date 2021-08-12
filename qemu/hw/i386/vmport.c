@@ -37,6 +37,7 @@
 #include "sysemu/hw_accel.h"
 #include "sysemu/qtest.h"
 #include "qemu/log.h"
+#include "cpu.h"
 #include "trace.h"
 #include "qom/object.h"
 

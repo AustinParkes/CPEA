@@ -31,6 +31,7 @@
 #include "hw/sysbus.h"
 #include "hw/register.h"
 #include "qemu/bitops.h"
+#include "qemu/log.h"
 #include "qom/object.h"
 #include "migration/vmstate.h"
 #include "hw/qdev-properties.h"

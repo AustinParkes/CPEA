@@ -34,12 +34,10 @@ static void vuv_get_config(VirtIODevice *vdev, uint8_t *config)
 static int vuv_handle_config_change(struct vhost_dev *dev)
 {
     VHostUserVSock *vsock = VHOST_USER_VSOCK(dev->vdev);
-    Error *local_err = NULL;
     int ret = vhost_dev_get_config(dev, (uint8_t *)&vsock->vsockcfg,
-                                   sizeof(struct virtio_vsock_config),
-                                   &local_err);
+                                   sizeof(struct virtio_vsock_config));
     if (ret < 0) {
-        error_report_err(local_err);
+        error_report("get config space failed");
         return -1;
     }
 
@@ -110,14 +108,16 @@ static void vuv_device_realize(DeviceState *dev, Error **errp)
     vhost_dev_set_config_notifier(&vvc->vhost_dev, &vsock_ops);
 
     ret = vhost_dev_init(&vvc->vhost_dev, &vsock->vhost_user,
-                         VHOST_BACKEND_TYPE_USER, 0, errp);
+                         VHOST_BACKEND_TYPE_USER, 0);
     if (ret < 0) {
+        error_setg_errno(errp, -ret, "vhost_dev_init failed");
         goto err_virtio;
     }
 
     ret = vhost_dev_get_config(&vvc->vhost_dev, (uint8_t *)&vsock->vsockcfg,
-                               sizeof(struct virtio_vsock_config), errp);
+                               sizeof(struct virtio_vsock_config));
     if (ret < 0) {
+        error_setg_errno(errp, -ret, "get config space failed");
         goto err_vhost_dev;
     }
 

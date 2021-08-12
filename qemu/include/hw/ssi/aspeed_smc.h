@@ -47,7 +47,7 @@ typedef struct AspeedSMCController {
     const AspeedSegments *segments;
     hwaddr flash_window_base;
     uint32_t flash_window_size;
-    uint32_t features;
+    bool has_dma;
     hwaddr dma_flash_mask;
     hwaddr dma_dram_mask;
     uint32_t nregs;
@@ -55,7 +55,6 @@ typedef struct AspeedSMCController {
                                const AspeedSegments *seg);
     void (*reg_to_segment)(const struct AspeedSMCState *s, uint32_t reg,
                            AspeedSegments *seg);
-    void (*dma_ctrl)(struct AspeedSMCState *s, uint32_t value);
 } AspeedSMCController;
 
 typedef struct AspeedSMCFlash {
@@ -85,7 +84,6 @@ struct AspeedSMCState {
 
     MemoryRegion mmio;
     MemoryRegion mmio_flash;
-    MemoryRegion mmio_flash_alias;
 
     qemu_irq irq;
     int irqline;
@@ -104,6 +102,9 @@ struct AspeedSMCState {
     uint8_t r_ctrl0;
     uint8_t r_timings;
     uint8_t conf_enable_w0;
+
+    /* for DMA support */
+    uint64_t sdram_base;
 
     AddressSpace flash_as;
     MemoryRegion *dram_mr;

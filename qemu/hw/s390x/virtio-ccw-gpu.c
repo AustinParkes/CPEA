@@ -59,15 +59,10 @@ static const TypeInfo virtio_ccw_gpu = {
     .instance_init = virtio_ccw_gpu_instance_init,
     .class_init    = virtio_ccw_gpu_class_init,
 };
-module_obj(TYPE_VIRTIO_GPU_CCW);
 
 static void virtio_ccw_gpu_register(void)
 {
-    if (have_virtio_ccw) {
-        type_register_static(&virtio_ccw_gpu);
-    }
+    type_register_static(&virtio_ccw_gpu);
 }
 
 type_init(virtio_ccw_gpu_register)
-
-module_arch("s390x");

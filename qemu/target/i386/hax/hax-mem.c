@@ -13,7 +13,7 @@
 #include "exec/address-spaces.h"
 #include "qemu/error-report.h"
 
-#include "hax-accel-ops.h"
+#include "hax-cpus.h"
 #include "qemu/queue.h"
 
 #define DEBUG_HAX_MEM 0
@@ -293,8 +293,7 @@ static MemoryListener hax_memory_listener = {
     .priority = 10,
 };
 
-static void hax_ram_block_added(RAMBlockNotifier *n, void *host, size_t size,
-                                size_t max_size)
+static void hax_ram_block_added(RAMBlockNotifier *n, void *host, size_t size)
 {
     /*
      * We must register each RAM block with the HAXM kernel module, or
@@ -305,7 +304,7 @@ static void hax_ram_block_added(RAMBlockNotifier *n, void *host, size_t size,
      * host physical pages for the RAM block as part of this registration
      * process, hence the name hax_populate_ram().
      */
-    if (hax_populate_ram((uint64_t)(uintptr_t)host, max_size) < 0) {
+    if (hax_populate_ram((uint64_t)(uintptr_t)host, size) < 0) {
         fprintf(stderr, "HAX failed to populate RAM\n");
         abort();
     }

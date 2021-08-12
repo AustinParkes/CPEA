@@ -237,7 +237,9 @@ static int parse_uri(const char *filename, QDict *options, Error **errp)
     return 0;
 
  err:
-    uri_free(uri);
+    if (uri) {
+      uri_free(uri);
+    }
     return -EINVAL;
 }
 
@@ -275,6 +277,7 @@ static void ssh_parse_filename(const char *filename, QDict *options,
 static int check_host_key_knownhosts(BDRVSSHState *s, Error **errp)
 {
     int ret;
+#ifdef HAVE_LIBSSH_0_8
     enum ssh_known_hosts_e state;
     int r;
     ssh_key pubkey;
@@ -340,6 +343,46 @@ static int check_host_key_knownhosts(BDRVSSHState *s, Error **errp)
         error_setg(errp, "error while checking for known server (%d)", state);
         goto out;
     }
+#else /* !HAVE_LIBSSH_0_8 */
+    int state;
+
+    state = ssh_is_server_known(s->session);
+    trace_ssh_server_status(state);
+
+    switch (state) {
+    case SSH_SERVER_KNOWN_OK:
+        /* OK */
+        trace_ssh_check_host_key_knownhosts();
+        break;
+    case SSH_SERVER_KNOWN_CHANGED:
+        ret = -EINVAL;
+        error_setg(errp,
+                   "host key does not match the one in known_hosts; this "
+                   "may be a possible attack");
+        goto out;
+    case SSH_SERVER_FOUND_OTHER:
+        ret = -EINVAL;
+        error_setg(errp,
+                   "host key for this server not found, another type exists");
+        goto out;
+    case SSH_SERVER_FILE_NOT_FOUND:
+        ret = -ENOENT;
+        error_setg(errp, "known_hosts file not found");
+        goto out;
+    case SSH_SERVER_NOT_KNOWN:
+        ret = -EINVAL;
+        error_setg(errp, "no host key was found in known_hosts");
+        goto out;
+    case SSH_SERVER_ERROR:
+        ret = -EINVAL;
+        error_setg(errp, "server error");
+        goto out;
+    default:
+        ret = -EINVAL;
+        error_setg(errp, "error while checking for known server (%d)", state);
+        goto out;
+    }
+#endif /* !HAVE_LIBSSH_0_8 */
 
     /* known_hosts checking successful. */
     ret = 0;
@@ -395,7 +438,11 @@ check_host_key_hash(BDRVSSHState *s, const char *hash,
     unsigned char *server_hash;
     size_t server_hash_len;
 
+#ifdef HAVE_LIBSSH_0_8
     r = ssh_get_server_publickey(s->session, &pubkey);
+#else
+    r = ssh_get_publickey(s->session, &pubkey);
+#endif
     if (r != SSH_OK) {
         session_error_setg(errp, s, "failed to read remote host key");
         return -EINVAL;
@@ -440,9 +487,6 @@ static int check_host_key(BDRVSSHState *s, SshHostKeyCheck *hkc, Error **errp)
         } else if (hkc->u.hash.type == SSH_HOST_KEY_CHECK_HASH_TYPE_SHA1) {
             return check_host_key_hash(s, hkc->u.hash.hash,
                                        SSH_PUBLICKEY_HASH_SHA1, errp);
-        } else if (hkc->u.hash.type == SSH_HOST_KEY_CHECK_HASH_TYPE_SHA256) {
-            return check_host_key_hash(s, hkc->u.hash.hash,
-                                       SSH_PUBLICKEY_HASH_SHA256, errp);
         }
         g_assert_not_reached();
         break;
@@ -1189,6 +1233,8 @@ static void unsafe_flush_warning(BDRVSSHState *s, const char *what)
     }
 }
 
+#ifdef HAVE_LIBSSH_0_8
+
 static coroutine_fn int ssh_flush(BDRVSSHState *s, BlockDriverState *bs)
 {
     int r;
@@ -1224,6 +1270,18 @@ static coroutine_fn int ssh_co_flush(BlockDriverState *bs)
 
     return ret;
 }
+
+#else /* !HAVE_LIBSSH_0_8 */
+
+static coroutine_fn int ssh_co_flush(BlockDriverState *bs)
+{
+    BDRVSSHState *s = bs->opaque;
+
+    unsafe_flush_warning(s, "libssh >= 0.8.0");
+    return 0;
+}
+
+#endif /* !HAVE_LIBSSH_0_8 */
 
 static int64_t ssh_getlength(BlockDriverState *bs)
 {

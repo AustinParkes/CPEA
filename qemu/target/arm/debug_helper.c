@@ -216,9 +216,8 @@ static bool check_watchpoints(ARMCPU *cpu)
     return false;
 }
 
-bool arm_debug_check_breakpoint(CPUState *cs)
+static bool check_breakpoints(ARMCPU *cpu)
 {
-    ARMCPU *cpu = ARM_CPU(cs);
     CPUARMState *env = &cpu->env;
     int n;
 
@@ -237,6 +236,15 @@ bool arm_debug_check_breakpoint(CPUState *cs)
         }
     }
     return false;
+}
+
+void HELPER(check_breakpoints)(CPUARMState *env)
+{
+    ARMCPU *cpu = env_archcpu(env);
+
+    if (check_breakpoints(cpu)) {
+        HELPER(exception_internal(env, EXCP_DEBUG));
+    }
 }
 
 bool arm_debug_check_watchpoint(CPUState *cs, CPUWatchpoint *wp)

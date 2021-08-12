@@ -212,12 +212,8 @@ void ps2_raise_irq(PS2State *s)
 
 void ps2_queue(PS2State *s, int b)
 {
-    if (PS2_QUEUE_SIZE - s->queue.count < 1) {
-        return;
-    }
-
     ps2_queue_noirq(s, b);
-    ps2_raise_irq(s);
+    s->update_irq(s->update_arg, 1);
 }
 
 void ps2_queue_2(PS2State *s, int b1, int b2)
@@ -228,7 +224,7 @@ void ps2_queue_2(PS2State *s, int b1, int b2)
 
     ps2_queue_noirq(s, b1);
     ps2_queue_noirq(s, b2);
-    ps2_raise_irq(s);
+    s->update_irq(s->update_arg, 1);
 }
 
 void ps2_queue_3(PS2State *s, int b1, int b2, int b3)
@@ -240,7 +236,7 @@ void ps2_queue_3(PS2State *s, int b1, int b2, int b3)
     ps2_queue_noirq(s, b1);
     ps2_queue_noirq(s, b2);
     ps2_queue_noirq(s, b3);
-    ps2_raise_irq(s);
+    s->update_irq(s->update_arg, 1);
 }
 
 void ps2_queue_4(PS2State *s, int b1, int b2, int b3, int b4)
@@ -253,7 +249,7 @@ void ps2_queue_4(PS2State *s, int b1, int b2, int b3, int b4)
     ps2_queue_noirq(s, b2);
     ps2_queue_noirq(s, b3);
     ps2_queue_noirq(s, b4);
-    ps2_raise_irq(s);
+    s->update_irq(s->update_arg, 1);
 }
 
 /* keycode is the untranslated scancode in the current scancode set. */
@@ -297,8 +293,7 @@ static void ps2_keyboard_event(DeviceState *dev, QemuConsole *src,
     qcode = qemu_input_key_value_to_qcode(key->key);
 
     mod = ps2_modifier_bit(qcode);
-    trace_ps2_keyboard_event(s, qcode, key->down, mod,
-                             s->modifiers, s->scancode_set, s->translate);
+    trace_ps2_keyboard_event(s, qcode, key->down, mod, s->modifiers);
     if (key->down) {
         s->modifiers |= mod;
     } else {
@@ -520,9 +515,7 @@ uint32_t ps2_read_data(PS2State *s)
         /* reading deasserts IRQ */
         s->update_irq(s->update_arg, 0);
         /* reassert IRQs if data left */
-        if (q->count) {
-            s->update_irq(s->update_arg, 1);
-        }
+        s->update_irq(s->update_arg, q->count != 0);
     }
     return val;
 }
@@ -652,8 +645,7 @@ void ps2_keyboard_set_translation(void *opaque, int mode)
 
 static int ps2_mouse_send_packet(PS2MouseState *s)
 {
-    /* IMPS/2 and IMEX send 4 bytes, PS2 sends 3 bytes */
-    const int needed = s->mouse_type ? 4 : 3;
+    const int needed = 3 + (s->mouse_type - 2);
     unsigned int b;
     int dx1, dy1, dz1;
 

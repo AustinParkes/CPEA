@@ -6,13 +6,12 @@
 
 #include "qemu/osdep.h"
 
-#include <sys/ioctl.h>
+#include <linux/input.h>
 
 #include "qemu/iov.h"
 #include "qemu/bswap.h"
 #include "qemu/sockets.h"
 #include "libvhost-user-glib.h"
-#include "standard-headers/linux/input.h"
 #include "standard-headers/linux/virtio_input.h"
 #include "qapi/error.h"
 
@@ -114,16 +113,13 @@ vi_evdev_watch(VuDev *dev, int condition, void *data)
 static void vi_handle_status(VuInput *vi, virtio_input_event *event)
 {
     struct input_event evdev;
-    struct timeval tval;
     int rc;
 
-    if (gettimeofday(&tval, NULL)) {
+    if (gettimeofday(&evdev.time, NULL)) {
         perror("vi_handle_status: gettimeofday");
         return;
     }
 
-    evdev.input_event_sec = tval.tv_sec;
-    evdev.input_event_usec = tval.tv_usec;
     evdev.type = le16toh(event->type);
     evdev.code = le16toh(event->code);
     evdev.value = le32toh(event->value);

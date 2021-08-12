@@ -336,7 +336,7 @@ static void passthru_apdu_from_guest(
     PassthruState *card = PASSTHRU_CCID_CARD(base);
 
     if (!qemu_chr_fe_backend_connected(&card->cs)) {
-        printf("ccid-passthru: no chardev, discarding apdu length %u\n", len);
+        printf("ccid-passthru: no chardev, discarding apdu length %d\n", len);
         return;
     }
     ccid_card_vscard_send_apdu(card, apdu, len);
@@ -374,7 +374,7 @@ static void passthru_realize(CCIDCardState *base, Error **errp)
     card->atr_length = sizeof(DEFAULT_ATR);
 }
 
-static const VMStateDescription passthru_vmstate = {
+static VMStateDescription passthru_vmstate = {
     .name = "ccid-card-passthru",
     .version_id = 1,
     .minimum_version_id = 1,
@@ -414,7 +414,6 @@ static const TypeInfo passthru_card_info = {
     .instance_size = sizeof(PassthruState),
     .class_init    = passthru_class_initfn,
 };
-module_obj(TYPE_CCID_PASSTHRU);
 
 static void ccid_card_passthru_register_types(void)
 {

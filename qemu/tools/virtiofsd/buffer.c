@@ -37,7 +37,7 @@ static ssize_t fuse_buf_writev(struct fuse_buf *out_buf,
     struct iovec *iov;
     int fd = out_buf->fd;
 
-    iov = g_try_new0(struct iovec, iovcnt);
+    iov = calloc(iovcnt, sizeof(struct iovec));
     if (!iov) {
         return -ENOMEM;
     }
@@ -61,7 +61,7 @@ static ssize_t fuse_buf_writev(struct fuse_buf *out_buf,
         res = -errno;
     }
 
-    g_free(iov);
+    free(iov);
     return res;
 }
 

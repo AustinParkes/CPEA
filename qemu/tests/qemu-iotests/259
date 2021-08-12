@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# group: rw quick
+# group: rw auto quick
 #
 # Test generic image creation fallback (by using NBD)
 #

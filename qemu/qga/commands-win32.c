@@ -110,15 +110,15 @@ static OpenFlags guest_file_open_modes[] = {
     {"w",   GENERIC_WRITE,                    CREATE_ALWAYS},
     {"wb",  GENERIC_WRITE,                    CREATE_ALWAYS},
     {"a",   FILE_GENERIC_APPEND,              OPEN_ALWAYS  },
-    {"r+",  GENERIC_WRITE | GENERIC_READ,       OPEN_EXISTING},
-    {"rb+", GENERIC_WRITE | GENERIC_READ,       OPEN_EXISTING},
-    {"r+b", GENERIC_WRITE | GENERIC_READ,       OPEN_EXISTING},
-    {"w+",  GENERIC_WRITE | GENERIC_READ,       CREATE_ALWAYS},
-    {"wb+", GENERIC_WRITE | GENERIC_READ,       CREATE_ALWAYS},
-    {"w+b", GENERIC_WRITE | GENERIC_READ,       CREATE_ALWAYS},
-    {"a+",  FILE_GENERIC_APPEND | GENERIC_READ, OPEN_ALWAYS  },
-    {"ab+", FILE_GENERIC_APPEND | GENERIC_READ, OPEN_ALWAYS  },
-    {"a+b", FILE_GENERIC_APPEND | GENERIC_READ, OPEN_ALWAYS  }
+    {"r+",  GENERIC_WRITE|GENERIC_READ,       OPEN_EXISTING},
+    {"rb+", GENERIC_WRITE|GENERIC_READ,       OPEN_EXISTING},
+    {"r+b", GENERIC_WRITE|GENERIC_READ,       OPEN_EXISTING},
+    {"w+",  GENERIC_WRITE|GENERIC_READ,       CREATE_ALWAYS},
+    {"wb+", GENERIC_WRITE|GENERIC_READ,       CREATE_ALWAYS},
+    {"w+b", GENERIC_WRITE|GENERIC_READ,       CREATE_ALWAYS},
+    {"a+",  FILE_GENERIC_APPEND|GENERIC_READ, OPEN_ALWAYS  },
+    {"ab+", FILE_GENERIC_APPEND|GENERIC_READ, OPEN_ALWAYS  },
+    {"a+b", FILE_GENERIC_APPEND|GENERIC_READ, OPEN_ALWAYS  }
 };
 
 #define debug_error(msg) do { \
@@ -280,7 +280,7 @@ static void acquire_privilege(const char *name, Error **errp)
     Error *local_err = NULL;
 
     if (OpenProcessToken(GetCurrentProcess(),
-        TOKEN_ADJUST_PRIVILEGES | TOKEN_QUERY, &token))
+        TOKEN_ADJUST_PRIVILEGES|TOKEN_QUERY, &token))
     {
         if (!LookupPrivilegeValue(NULL, name, &priv.Privileges[0].Luid)) {
             error_setg(&local_err, QERR_QGA_COMMAND_FAILED,
@@ -1091,7 +1091,7 @@ static GuestFilesystemInfo *build_guest_fsinfo(char *guid, Error **errp)
     size_t len;
     uint64_t i64FreeBytesToCaller, i64TotalBytes, i64FreeBytes;
     GuestFilesystemInfo *fs = NULL;
-    HANDLE hLocalDiskHandle = INVALID_HANDLE_VALUE;
+    HANDLE hLocalDiskHandle = NULL;
 
     GetVolumePathNamesForVolumeName(guid, (LPCH)&mnt, 0, &info_size);
     if (GetLastError() != ERROR_MORE_DATA) {
@@ -1116,7 +1116,7 @@ static GuestFilesystemInfo *build_guest_fsinfo(char *guid, Error **errp)
 
     len = strlen(mnt_point);
     mnt_point[len] = '\\';
-    mnt_point[len + 1] = 0;
+    mnt_point[len+1] = 0;
 
     if (!GetVolumeInformationByHandleW(hLocalDiskHandle, vol_info,
                                        sizeof(vol_info), NULL, NULL, NULL,
@@ -1149,9 +1149,7 @@ static GuestFilesystemInfo *build_guest_fsinfo(char *guid, Error **errp)
     fs->type = g_strdup(fs_name);
     fs->disk = build_guest_disk_info(guid, errp);
 free:
-    if (hLocalDiskHandle != INVALID_HANDLE_VALUE) {
-        CloseHandle(hLocalDiskHandle);
-    }
+    CloseHandle(hLocalDiskHandle);
     g_free(mnt_point);
     return fs;
 }
@@ -1325,7 +1323,7 @@ qmp_guest_fstrim(bool has_minimum, int64_t minimum, Error **errp)
         DWORD char_count = 0;
         char *path, *out;
         GError *gerr = NULL;
-        gchar *argv[4];
+        gchar * argv[4];
 
         GetVolumePathNamesForVolumeNameW(guid, NULL, 0, &char_count);
 
@@ -1626,11 +1624,11 @@ GuestNetworkInterfaceList *qmp_guest_network_get_interfaces(Error **errp)
 {
     IP_ADAPTER_ADDRESSES *adptr_addrs, *addr;
     IP_ADAPTER_UNICAST_ADDRESS *ip_addr = NULL;
-    GuestNetworkInterfaceList *head = NULL, **tail = &head;
-    GuestIpAddressList *head_addr, **tail_addr;
-    GuestNetworkInterface *info;
+    GuestNetworkInterfaceList *head = NULL, *cur_item = NULL;
+    GuestIpAddressList *head_addr, *cur_addr;
+    GuestNetworkInterfaceList *info;
     GuestNetworkInterfaceStat *interface_stat = NULL;
-    GuestIpAddress *address_item = NULL;
+    GuestIpAddressList *address_item = NULL;
     unsigned char *mac_addr;
     char *addr_str;
     WORD wsa_version;
@@ -1653,24 +1651,30 @@ GuestNetworkInterfaceList *qmp_guest_network_get_interfaces(Error **errp)
     for (addr = adptr_addrs; addr; addr = addr->Next) {
         info = g_malloc0(sizeof(*info));
 
-        QAPI_LIST_APPEND(tail, info);
+        if (cur_item == NULL) {
+            head = cur_item = info;
+        } else {
+            cur_item->next = info;
+            cur_item = info;
+        }
 
-        info->name = guest_wctomb_dup(addr->FriendlyName);
+        info->value = g_malloc0(sizeof(*info->value));
+        info->value->name = guest_wctomb_dup(addr->FriendlyName);
 
         if (addr->PhysicalAddressLength != 0) {
             mac_addr = addr->PhysicalAddress;
 
-            info->hardware_address =
+            info->value->hardware_address =
                 g_strdup_printf("%02x:%02x:%02x:%02x:%02x:%02x",
                                 (int) mac_addr[0], (int) mac_addr[1],
                                 (int) mac_addr[2], (int) mac_addr[3],
                                 (int) mac_addr[4], (int) mac_addr[5]);
 
-            info->has_hardware_address = true;
+            info->value->has_hardware_address = true;
         }
 
         head_addr = NULL;
-        tail_addr = &head_addr;
+        cur_addr = NULL;
         for (ip_addr = addr->FirstUnicastAddress;
                 ip_addr;
                 ip_addr = ip_addr->Next) {
@@ -1681,29 +1685,37 @@ GuestNetworkInterfaceList *qmp_guest_network_get_interfaces(Error **errp)
 
             address_item = g_malloc0(sizeof(*address_item));
 
-            QAPI_LIST_APPEND(tail_addr, address_item);
+            if (!cur_addr) {
+                head_addr = cur_addr = address_item;
+            } else {
+                cur_addr->next = address_item;
+                cur_addr = address_item;
+            }
 
-            address_item->ip_address = addr_str;
-            address_item->prefix = guest_ip_prefix(ip_addr);
+            address_item->value = g_malloc0(sizeof(*address_item->value));
+            address_item->value->ip_address = addr_str;
+            address_item->value->prefix = guest_ip_prefix(ip_addr);
             if (ip_addr->Address.lpSockaddr->sa_family == AF_INET) {
-                address_item->ip_address_type = GUEST_IP_ADDRESS_TYPE_IPV4;
+                address_item->value->ip_address_type =
+                    GUEST_IP_ADDRESS_TYPE_IPV4;
             } else if (ip_addr->Address.lpSockaddr->sa_family == AF_INET6) {
-                address_item->ip_address_type = GUEST_IP_ADDRESS_TYPE_IPV6;
+                address_item->value->ip_address_type =
+                    GUEST_IP_ADDRESS_TYPE_IPV6;
             }
         }
         if (head_addr) {
-            info->has_ip_addresses = true;
-            info->ip_addresses = head_addr;
+            info->value->has_ip_addresses = true;
+            info->value->ip_addresses = head_addr;
         }
-        if (!info->has_statistics) {
+        if (!info->value->has_statistics) {
             interface_stat = g_malloc0(sizeof(*interface_stat));
             if (guest_get_network_stats(addr->AdapterName,
                 interface_stat) == -1) {
-                info->has_statistics = false;
+                info->value->has_statistics = false;
                 g_free(interface_stat);
             } else {
-                info->statistics = interface_stat;
-                info->has_statistics = true;
+                info->value->statistics = interface_stat;
+                info->value->has_statistics = true;
             }
         }
     }
@@ -1821,7 +1833,7 @@ GuestLogicalProcessorList *qmp_guest_get_vcpus(Error **errp)
 {
     PSYSTEM_LOGICAL_PROCESSOR_INFORMATION pslpi, ptr;
     DWORD length;
-    GuestLogicalProcessorList *head, **tail;
+    GuestLogicalProcessorList *head, **link;
     Error *local_err = NULL;
     int64_t current;
 
@@ -1829,7 +1841,7 @@ GuestLogicalProcessorList *qmp_guest_get_vcpus(Error **errp)
     length = 0;
     current = 0;
     head = NULL;
-    tail = &head;
+    link = &head;
 
     if ((GetLogicalProcessorInformation(pslpi, &length) == FALSE) &&
         (GetLastError() == ERROR_INSUFFICIENT_BUFFER) &&
@@ -1852,13 +1864,18 @@ GuestLogicalProcessorList *qmp_guest_get_vcpus(Error **errp)
             while (cpu_bits > 0) {
                 if (!!(cpu_bits & 1)) {
                     GuestLogicalProcessor *vcpu;
+                    GuestLogicalProcessorList *entry;
 
                     vcpu = g_malloc0(sizeof *vcpu);
                     vcpu->logical_id = current++;
                     vcpu->online = true;
                     vcpu->has_can_offline = true;
 
-                    QAPI_LIST_APPEND(tail, vcpu);
+                    entry = g_malloc0(sizeof *entry);
+                    entry->value = vcpu;
+
+                    *link = entry;
+                    link = &entry->next;
                 }
                 cpu_bits >>= 1;
             }
@@ -2070,11 +2087,12 @@ GuestUserList *qmp_guest_get_users(Error **errp)
 #define QGA_NANOSECONDS 10000000
 
     GHashTable *cache = NULL;
-    GuestUserList *head = NULL, **tail = &head;
+    GuestUserList *head = NULL, *cur_item = NULL;
 
     DWORD buffer_size = 0, count = 0, i = 0;
     GA_WTSINFOA *info = NULL;
     WTS_SESSION_INFOA *entries = NULL;
+    GuestUserList *item = NULL;
     GuestUser *user = NULL;
     gpointer value = NULL;
     INT64 login = 0;
@@ -2110,17 +2128,23 @@ GuestUserList *qmp_guest_get_users(Error **errp)
                         user->login_time = login_time;
                     }
                 } else {
-                    user = g_new0(GuestUser, 1);
+                    item = g_new0(GuestUserList, 1);
+                    item->value = g_new0(GuestUser, 1);
 
-                    user->user = g_strdup(info->UserName);
-                    user->domain = g_strdup(info->Domain);
-                    user->has_domain = true;
+                    item->value->user = g_strdup(info->UserName);
+                    item->value->domain = g_strdup(info->Domain);
+                    item->value->has_domain = true;
 
-                    user->login_time = login_time;
+                    item->value->login_time = login_time;
 
-                    g_hash_table_add(cache, user->user);
+                    g_hash_table_add(cache, item->value->user);
 
-                    QAPI_LIST_APPEND(tail, user);
+                    if (!cur_item) {
+                        head = cur_item = item;
+                    } else {
+                        cur_item->next = item;
+                        cur_item = item;
+                    }
                 }
             }
             WTSFreeMemory(info);
@@ -2168,16 +2192,15 @@ typedef struct _ga_win_10_0_server_t {
     char const *version_id;
 } ga_win_10_0_server_t;
 
-static ga_win_10_0_server_t const WIN_10_0_SERVER_VERSION_MATRIX[4] = {
+static ga_win_10_0_server_t const WIN_10_0_SERVER_VERSION_MATRIX[3] = {
     {14393, "Microsoft Windows Server 2016",    "2016"},
     {17763, "Microsoft Windows Server 2019",    "2019"},
-    {20344, "Microsoft Windows Server 2022",    "2022"},
     {0, 0}
 };
 
 static void ga_get_win_version(RTL_OSVERSIONINFOEXW *info, Error **errp)
 {
-    typedef NTSTATUS(WINAPI *rtl_get_version_t)(
+    typedef NTSTATUS(WINAPI * rtl_get_version_t)(
         RTL_OSVERSIONINFOEXW *os_version_info_ex);
 
     info->dwOSVersionInfoSize = sizeof(RTL_OSVERSIONINFOEXW);
@@ -2231,7 +2254,7 @@ static char *ga_get_win_name(OSVERSIONINFOEXW const *os_version, bool id)
 
 static char *ga_get_win_product_name(Error **errp)
 {
-    HKEY key = INVALID_HANDLE_VALUE;
+    HKEY key = NULL;
     DWORD size = 128;
     char *result = g_malloc0(size);
     LONG err = ERROR_SUCCESS;
@@ -2241,8 +2264,7 @@ static char *ga_get_win_product_name(Error **errp)
                       &key);
     if (err != ERROR_SUCCESS) {
         error_setg_win32(errp, err, "failed to open registry key");
-        g_free(result);
-        return NULL;
+        goto fail;
     }
 
     err = RegQueryValueExA(key, "ProductName", NULL, NULL,
@@ -2263,13 +2285,9 @@ static char *ga_get_win_product_name(Error **errp)
         goto fail;
     }
 
-    RegCloseKey(key);
     return result;
 
 fail:
-    if (key != INVALID_HANDLE_VALUE) {
-        RegCloseKey(key);
-    }
     g_free(result);
     return NULL;
 }
@@ -2411,7 +2429,7 @@ static GStrv ga_get_hardware_ids(DEVINST devInstance)
 
 GuestDeviceInfoList *qmp_guest_get_devices(Error **errp)
 {
-    GuestDeviceInfoList *head = NULL, **tail = &head;
+    GuestDeviceInfoList *head = NULL, *cur_item = NULL, *item = NULL;
     HDEVINFO dev_info = INVALID_HANDLE_VALUE;
     SP_DEVINFO_DATA dev_info_data;
     int i, j;
@@ -2459,7 +2477,7 @@ GuestDeviceInfoList *qmp_guest_get_devices(Error **errp)
             continue;
         }
         for (j = 0; hw_ids[j] != NULL; j++) {
-            g_autoptr(GMatchInfo) match_info;
+            GMatchInfo *match_info;
             GuestDeviceIdPCI *id;
             if (!g_regex_match(device_pci_re, hw_ids[j], 0, &match_info)) {
                 continue;
@@ -2476,6 +2494,7 @@ GuestDeviceInfoList *qmp_guest_get_devices(Error **errp)
             id->vendor_id = g_ascii_strtoull(vendor_id, NULL, 16);
             id->device_id = g_ascii_strtoull(device_id, NULL, 16);
 
+            g_match_info_free(match_info);
             break;
         }
         if (skip) {
@@ -2508,7 +2527,14 @@ GuestDeviceInfoList *qmp_guest_get_devices(Error **errp)
         slog("driver: %s\ndriver version: %" PRId64 ",%s\n",
              device->driver_name, device->driver_date,
              device->driver_version);
-        QAPI_LIST_APPEND(tail, g_steal_pointer(&device));
+        item = g_new0(GuestDeviceInfoList, 1);
+        item->value = g_steal_pointer(&device);
+        if (!cur_item) {
+            head = cur_item = item;
+        } else {
+            cur_item->next = item;
+            cur_item = item;
+        }
     }
 
     if (dev_info != INVALID_HANDLE_VALUE) {

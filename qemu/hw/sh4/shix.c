@@ -31,9 +31,11 @@
 #include "qapi/error.h"
 #include "cpu.h"
 #include "hw/sh4/sh.h"
+#include "sysemu/sysemu.h"
 #include "sysemu/qtest.h"
 #include "hw/boards.h"
 #include "hw/loader.h"
+#include "exec/address-spaces.h"
 #include "qemu/error-report.h"
 
 #define BIOS_FILENAME "shix_bios.bin"

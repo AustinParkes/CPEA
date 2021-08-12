@@ -12,12 +12,13 @@
 # See the COPYING file in the top-level directory.
 
 import re
-from typing import Match, Optional, Sequence
+from typing import Optional, Sequence
 
 
 #: Magic string that gets removed along with all space to its right.
 EATSPACE = '\033EATSPACE.'
 POINTER_SUFFIX = ' *' + EATSPACE
+_C_NAME_TRANS = str.maketrans('.-', '__')
 
 
 def camel_to_upper(value: str) -> str:
@@ -108,10 +109,9 @@ def c_name(name: str, protect: bool = True) -> str:
                      'not_eq', 'or', 'or_eq', 'xor', 'xor_eq'])
     # namespace pollution:
     polluted_words = set(['unix', 'errno', 'mips', 'sparc', 'i386'])
-    name = re.sub(r'[^A-Za-z0-9_]', '_', name)
-    if protect and (name in (c89_words | c99_words | c11_words | gcc_words
-                             | cpp_words | polluted_words)
-                    or name[0].isdigit()):
+    name = name.translate(_C_NAME_TRANS)
+    if protect and (name in c89_words | c99_words | c11_words | gcc_words
+                    | cpp_words | polluted_words):
         return 'q_' + name
     return name
 
@@ -210,9 +210,3 @@ def gen_endif(ifcond: Sequence[str]) -> str:
 #endif /* %(cond)s */
 ''', cond=ifc)
     return ret
-
-
-def must_match(pattern: str, string: str) -> Match[str]:
-    match = re.match(pattern, string)
-    assert match is not None
-    return match

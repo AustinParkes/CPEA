@@ -25,7 +25,6 @@
 #include "qemu/osdep.h"
 #include "audio/audio.h"
 #include "block/block.h"
-#include "block/export.h"
 #include "chardev/char.h"
 #include "crypto/cipher.h"
 #include "crypto/init.h"
@@ -126,7 +125,6 @@ static const RunStateTransition runstate_transitions_def[] = {
     { RUN_STATE_RESTORE_VM, RUN_STATE_PRELAUNCH },
 
     { RUN_STATE_COLO, RUN_STATE_RUNNING },
-    { RUN_STATE_COLO, RUN_STATE_SHUTDOWN},
 
     { RUN_STATE_RUNNING, RUN_STATE_DEBUG },
     { RUN_STATE_RUNNING, RUN_STATE_INTERNAL_ERROR },
@@ -219,7 +217,7 @@ void runstate_set(RunState new_state)
     current_run_state = new_state;
 }
 
-bool runstate_is_running(void)
+int runstate_is_running(void)
 {
     return runstate_check(RUN_STATE_RUNNING);
 }
@@ -318,7 +316,7 @@ void qemu_del_vm_change_state_handler(VMChangeStateEntry *e)
     g_free(e);
 }
 
-void vm_state_notify(bool running, RunState state)
+void vm_state_notify(int running, RunState state)
 {
     VMChangeStateEntry *e, *next;
 
@@ -473,15 +471,14 @@ void qemu_system_guest_panicked(GuestPanicInformation *info)
     }
     /*
      * TODO:  Currently the available panic actions are: none, pause, and
-     * shutdown, but in principle debug and reset could be supported as well.
+     * poweroff, but in principle debug and reset could be supported as well.
      * Investigate any potential use cases for the unimplemented actions.
      */
-    if (panic_action == PANIC_ACTION_PAUSE
-        || (panic_action == PANIC_ACTION_SHUTDOWN && shutdown_action == SHUTDOWN_ACTION_PAUSE)) {
+    if (panic_action == PANIC_ACTION_PAUSE) {
         qapi_event_send_guest_panicked(GUEST_PANIC_ACTION_PAUSE,
                                         !!info, info);
         vm_stop(RUN_STATE_GUEST_PANICKED);
-    } else if (panic_action == PANIC_ACTION_SHUTDOWN) {
+    } else if (panic_action == PANIC_ACTION_POWEROFF) {
         qapi_event_send_guest_panicked(GUEST_PANIC_ACTION_POWEROFF,
                                        !!info, info);
         vm_stop(RUN_STATE_GUEST_PANICKED);
@@ -528,9 +525,6 @@ void qemu_system_reset_request(ShutdownCause reason)
 {
     if (reboot_action == REBOOT_ACTION_SHUTDOWN &&
         reason != SHUTDOWN_CAUSE_SUBSYSTEM_RESET) {
-        shutdown_requested = reason;
-    } else if (!cpus_are_resettable()) {
-        error_report("cpus are not resettable, terminating");
         shutdown_requested = reason;
     } else {
         reset_requested = reason;
@@ -747,7 +741,7 @@ static void qemu_run_exit_notifiers(void)
 
 void qemu_init_subsystems(void)
 {
-    Error *err = NULL;
+    Error *err;
 
     os_set_line_buffering();
 
@@ -788,14 +782,6 @@ void qemu_cleanup(void)
      * try to do this early so that it also stops using devices.
      */
     migration_shutdown();
-
-    /*
-     * Close the exports before draining the block layer. The export
-     * drivers may have coroutines yielding on it, so we need to clean
-     * them up before the drain, as otherwise they may be get stuck in
-     * blk_wait_while_drained().
-     */
-    blk_exp_close_all();
 
     /*
      * We must cancel all block jobs while the block layer is drained,

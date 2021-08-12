@@ -11,7 +11,8 @@
 #include "qemu/osdep.h"
 #include "qemu/option.h"
 #include "qemu/error-report.h"
-#include "semihosting/semihost.h"
+#include "hw/semihosting/semihost.h"
+#include "sysemu/sysemu.h"
 
 /* Empty config */
 QemuOptsList qemu_semihosting_config_opts = {

@@ -26,6 +26,7 @@
  */
 
 #include "qemu/osdep.h"
+#include "cpu.h"
 #include "qemu/log.h"
 #include "qemu/module.h"
 #include "net/net.h"

@@ -26,6 +26,7 @@
 #include "hw/loader.h"
 #include "hw/sysbus.h"
 #include "elf.h"
+#include "exec/address-spaces.h"
 
 #define SYS_FREQ 166666666
 

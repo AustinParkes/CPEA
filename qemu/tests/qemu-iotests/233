@@ -84,7 +84,7 @@ echo
 echo "== check plain client to TLS server fails =="
 
 nbd_server_start_tcp_socket \
-    --object tls-creds-x509,dir=${tls_dir}/server1,endpoint=server,id=tls0,verify-peer=on \
+    --object tls-creds-x509,dir=${tls_dir}/server1,endpoint=server,id=tls0,verify-peer=yes \
     --tls-creds tls0 \
     -f $IMGFMT "$TEST_IMG" 2>> "$TEST_DIR/server.log"
 
@@ -129,7 +129,7 @@ echo "== check TLS with authorization =="
 nbd_server_stop
 
 nbd_server_start_tcp_socket \
-    --object tls-creds-x509,dir=${tls_dir}/server1,endpoint=server,id=tls0,verify-peer=on \
+    --object tls-creds-x509,dir=${tls_dir}/server1,endpoint=server,id=tls0,verify-peer=yes \
     --object "authz-simple,id=authz0,identity=CN=localhost,, \
       O=Cthulu Dark Lord Enterprises client1,,L=R'lyeh,,C=South Pacific" \
     --tls-authz authz0 \
@@ -148,7 +148,7 @@ $QEMU_IMG info --image-opts \
 
 echo
 echo "== final server log =="
-cat "$TEST_DIR/server.log" | _filter_authz_check_tls
+cat "$TEST_DIR/server.log"
 rm -f "$TEST_DIR/server.log"
 
 # success, all done

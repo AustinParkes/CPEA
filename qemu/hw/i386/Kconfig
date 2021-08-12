@@ -1,9 +1,5 @@
-config X86_FW_OVMF
-    bool
-
 config SEV
     bool
-    select X86_FW_OVMF
     depends on KVM
 
 config PC
@@ -18,7 +14,7 @@ config PC
     imply ISA_DEBUG
     imply PARALLEL
     imply PCI_DEVICES
-    imply PVPANIC_ISA
+    imply PVPANIC
     imply QXL
     imply SEV
     imply SGA
@@ -27,8 +23,7 @@ config PC
     imply TPM_TIS_ISA
     imply VGA_PCI
     imply VIRTIO_VGA
-    imply NVDIMM
-    select FDC_ISA
+    select FDC
     select I8259
     select I8254
     select PCKBD
@@ -111,7 +106,6 @@ config MICROVM
     select ACPI_HW_REDUCED
     select PCI_EXPRESS_GENERIC_BRIDGE
     select USB_XHCI_SYSBUS
-    select I8254
 
 config X86_IOMMU
     bool

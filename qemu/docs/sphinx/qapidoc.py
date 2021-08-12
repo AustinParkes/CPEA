@@ -34,8 +34,7 @@ from sphinx.errors import ExtensionError
 from sphinx.util.nodes import nested_parse_with_titles
 import sphinx
 from qapi.gen import QAPISchemaVisitor
-from qapi.error import QAPIError, QAPISemError
-from qapi.schema import QAPISchema
+from qapi.schema import QAPIError, QAPISemError, QAPISchema
 
 
 # Sphinx up to 1.6 uses AutodocReporter; 1.7 and later
@@ -279,9 +278,7 @@ class QAPISchemaGenRSTVisitor(QAPISchemaVisitor):
         nodelist = []
         if ifcond:
             snode = self._make_section('If')
-            snode += nodes.paragraph(
-                '', '', *self._nodes_for_ifcond(ifcond, with_if=False)
-            )
+            snode += self._nodes_for_ifcond(ifcond, with_if=False)
             nodelist.append(snode)
         return nodelist
 
@@ -467,7 +464,7 @@ class QAPISchemaGenDepVisitor(QAPISchemaVisitor):
         self._qapidir = qapidir
 
     def visit_module(self, name):
-        if name != "./builtin":
+        if name is not None:
             qapifile = self._qapidir + '/' + name
             self._env.note_dependency(os.path.abspath(qapifile))
         super().visit_module(name)

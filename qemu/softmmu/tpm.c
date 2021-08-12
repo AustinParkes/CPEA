@@ -196,14 +196,22 @@ int tpm_config_parse(QemuOptsList *opts_list, const char *optarg)
 TPMInfoList *qmp_query_tpm(Error **errp)
 {
     TPMBackend *drv;
-    TPMInfoList *head = NULL, **tail = &head;
+    TPMInfoList *info, *head = NULL, *cur_item = NULL;
 
     QLIST_FOREACH(drv, &tpm_backends, list) {
         if (!drv->tpmif) {
             continue;
         }
 
-        QAPI_LIST_APPEND(tail, tpm_backend_query_tpm(drv));
+        info = g_new0(TPMInfoList, 1);
+        info->value = tpm_backend_query_tpm(drv);
+
+        if (!cur_item) {
+            head = cur_item = info;
+        } else {
+            cur_item->next = info;
+            cur_item = info;
+        }
     }
 
     return head;
@@ -212,26 +220,44 @@ TPMInfoList *qmp_query_tpm(Error **errp)
 TpmTypeList *qmp_query_tpm_types(Error **errp)
 {
     unsigned int i = 0;
-    TpmTypeList *head = NULL, **tail = &head;
+    TpmTypeList *head = NULL, *prev = NULL, *cur_item;
 
     for (i = 0; i < TPM_TYPE__MAX; i++) {
         if (!tpm_be_find_by_type(i)) {
             continue;
         }
-        QAPI_LIST_APPEND(tail, i);
+        cur_item = g_new0(TpmTypeList, 1);
+        cur_item->value = i;
+
+        if (prev) {
+            prev->next = cur_item;
+        }
+        if (!head) {
+            head = cur_item;
+        }
+        prev = cur_item;
     }
 
     return head;
 }
 TpmModelList *qmp_query_tpm_models(Error **errp)
 {
-    TpmModelList *head = NULL, **tail = &head;
+    TpmModelList *head = NULL, *prev = NULL, *cur_item;
     GSList *e, *l = object_class_get_list(TYPE_TPM_IF, false);
 
     for (e = l; e; e = e->next) {
         TPMIfClass *c = TPM_IF_CLASS(e->data);
 
-        QAPI_LIST_APPEND(tail, c->model);
+        cur_item = g_new0(TpmModelList, 1);
+        cur_item->value = c->model;
+
+        if (prev) {
+            prev->next = cur_item;
+        }
+        if (!head) {
+            head = cur_item;
+        }
+        prev = cur_item;
     }
     g_slist_free(l);
 

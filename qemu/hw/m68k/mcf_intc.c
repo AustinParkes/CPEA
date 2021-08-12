@@ -11,6 +11,7 @@
 #include "qemu/module.h"
 #include "qemu/log.h"
 #include "cpu.h"
+#include "hw/hw.h"
 #include "hw/irq.h"
 #include "hw/sysbus.h"
 #include "hw/m68k/mcf.h"

@@ -67,37 +67,17 @@ static const char * const tcg_target_reg_names[TCG_TARGET_NB_REGS] = {
 # define SPARC64 0
 #endif
 
-#define TCG_CT_CONST_S11  0x100
-#define TCG_CT_CONST_S13  0x200
-#define TCG_CT_CONST_ZERO 0x400
-
-/*
- * For softmmu, we need to avoid conflicts with the first 3
- * argument registers to perform the tlb lookup, and to call
- * the helper function.
- */
-#ifdef CONFIG_SOFTMMU
-#define SOFTMMU_RESERVE_REGS MAKE_64BIT_MASK(TCG_REG_O0, 3)
-#else
-#define SOFTMMU_RESERVE_REGS 0
-#endif
-
-/*
- * Note that sparcv8plus can only hold 64 bit quantities in %g and %o
- * registers.  These are saved manually by the kernel in full 64-bit
- * slots.  The %i and %l registers are saved by the register window
- * mechanism, which only allocates space for 32 bits.  Given that this
- * window spill/fill can happen on any signal, we must consider the
- * high bits of the %i and %l registers garbage at all times.
- */
-#define ALL_GENERAL_REGS     MAKE_64BIT_MASK(0, 32)
+/* Note that sparcv8plus can only hold 64 bit quantities in %g and %o
+   registers.  These are saved manually by the kernel in full 64-bit
+   slots.  The %i and %l registers are saved by the register window
+   mechanism, which only allocates space for 32 bits.  Given that this
+   window spill/fill can happen on any signal, we must consider the
+   high bits of the %i and %l registers garbage at all times.  */
 #if SPARC64
-# define ALL_GENERAL_REGS64  ALL_GENERAL_REGS
+# define ALL_64  0xffffffffu
 #else
-# define ALL_GENERAL_REGS64  MAKE_64BIT_MASK(0, 16)
+# define ALL_64  0xffffu
 #endif
-#define ALL_QLDST_REGS       (ALL_GENERAL_REGS & ~SOFTMMU_RESERVE_REGS)
-#define ALL_QLDST_REGS64     (ALL_GENERAL_REGS64 & ~SOFTMMU_RESERVE_REGS)
 
 /* Define some temporary registers.  T2 is used for constant generation.  */
 #define TCG_REG_T1  TCG_REG_G1
@@ -340,9 +320,51 @@ static bool patch_reloc(tcg_insn_unit *src_rw, int type,
     return true;
 }
 
-/* test if a constant matches the constraint */
-static bool tcg_target_const_match(int64_t val, TCGType type, int ct)
+/* parse target specific constraints */
+static const char *target_parse_constraint(TCGArgConstraint *ct,
+                                           const char *ct_str, TCGType type)
 {
+    switch (*ct_str++) {
+    case 'r':
+        ct->regs = 0xffffffff;
+        break;
+    case 'R':
+        ct->regs = ALL_64;
+        break;
+    case 'A': /* qemu_ld/st address constraint */
+        ct->regs = TARGET_LONG_BITS == 64 ? ALL_64 : 0xffffffff;
+    reserve_helpers:
+        tcg_regset_reset_reg(ct->regs, TCG_REG_O0);
+        tcg_regset_reset_reg(ct->regs, TCG_REG_O1);
+        tcg_regset_reset_reg(ct->regs, TCG_REG_O2);
+        break;
+    case 's': /* qemu_st data 32-bit constraint */
+        ct->regs = 0xffffffff;
+        goto reserve_helpers;
+    case 'S': /* qemu_st data 64-bit constraint */
+        ct->regs = ALL_64;
+        goto reserve_helpers;
+    case 'I':
+        ct->ct |= TCG_CT_CONST_S11;
+        break;
+    case 'J':
+        ct->ct |= TCG_CT_CONST_S13;
+        break;
+    case 'Z':
+        ct->ct |= TCG_CT_CONST_ZERO;
+        break;
+    default:
+        return NULL;
+    }
+    return ct_str;
+}
+
+/* test if a constant matches the constraint */
+static inline int tcg_target_const_match(tcg_target_long val, TCGType type,
+                                         const TCGArgConstraint *arg_ct)
+{
+    int ct = arg_ct->ct;
+
     if (ct & TCG_CT_CONST) {
         return 1;
     }
@@ -984,18 +1006,14 @@ static void tcg_target_qemu_prologue(TCGContext *s)
 {
     int tmp_buf_size, frame_size;
 
-    /*
-     * The TCG temp buffer is at the top of the frame, immediately
-     * below the frame pointer.  Use the logical (aligned) offset here;
-     * the stack bias is applied in temp_allocate_frame().
-     */
+    /* The TCG temp buffer is at the top of the frame, immediately
+       below the frame pointer.  */
     tmp_buf_size = CPU_TEMP_BUF_NLONGS * (int)sizeof(long);
-    tcg_set_frame(s, TCG_REG_I6, -tmp_buf_size, tmp_buf_size);
+    tcg_set_frame(s, TCG_REG_I6, TCG_TARGET_STACK_BIAS - tmp_buf_size,
+                  tmp_buf_size);
 
-    /*
-     * TCG_TARGET_CALL_STACK_OFFSET includes the stack bias, but is
-     * otherwise the minimal frame usable by callees.
-     */
+    /* TCG_TARGET_CALL_STACK_OFFSET includes the stack bias, but is
+       otherwise the minimal frame usable by callees.  */
     frame_size = TCG_TARGET_CALL_STACK_OFFSET - TCG_TARGET_STACK_BIAS;
     frame_size += TCG_STATIC_CALL_ARGS_SIZE + tmp_buf_size;
     frame_size += TCG_TARGET_STACK_ALIGN - 1;
@@ -1574,11 +1592,40 @@ static void tcg_out_op(TCGContext *s, TCGOpcode opc,
     }
 }
 
-static TCGConstraintSetIndex tcg_target_op_def(TCGOpcode op)
+static const TCGTargetOpDef *tcg_target_op_def(TCGOpcode op)
 {
+    static const TCGTargetOpDef r = { .args_ct_str = { "r" } };
+    static const TCGTargetOpDef r_r = { .args_ct_str = { "r", "r" } };
+    static const TCGTargetOpDef R_r = { .args_ct_str = { "R", "r" } };
+    static const TCGTargetOpDef r_R = { .args_ct_str = { "r", "R" } };
+    static const TCGTargetOpDef R_R = { .args_ct_str = { "R", "R" } };
+    static const TCGTargetOpDef r_A = { .args_ct_str = { "r", "A" } };
+    static const TCGTargetOpDef R_A = { .args_ct_str = { "R", "A" } };
+    static const TCGTargetOpDef rZ_r = { .args_ct_str = { "rZ", "r" } };
+    static const TCGTargetOpDef RZ_r = { .args_ct_str = { "RZ", "r" } };
+    static const TCGTargetOpDef sZ_A = { .args_ct_str = { "sZ", "A" } };
+    static const TCGTargetOpDef SZ_A = { .args_ct_str = { "SZ", "A" } };
+    static const TCGTargetOpDef rZ_rJ = { .args_ct_str = { "rZ", "rJ" } };
+    static const TCGTargetOpDef RZ_RJ = { .args_ct_str = { "RZ", "RJ" } };
+    static const TCGTargetOpDef R_R_R = { .args_ct_str = { "R", "R", "R" } };
+    static const TCGTargetOpDef r_rZ_rJ
+        = { .args_ct_str = { "r", "rZ", "rJ" } };
+    static const TCGTargetOpDef R_RZ_RJ
+        = { .args_ct_str = { "R", "RZ", "RJ" } };
+    static const TCGTargetOpDef r_r_rZ_rJ
+        = { .args_ct_str = { "r", "r", "rZ", "rJ" } };
+    static const TCGTargetOpDef movc_32
+        = { .args_ct_str = { "r", "rZ", "rJ", "rI", "0" } };
+    static const TCGTargetOpDef movc_64
+        = { .args_ct_str = { "R", "RZ", "RJ", "RI", "0" } };
+    static const TCGTargetOpDef add2_32
+        = { .args_ct_str = { "r", "r", "rZ", "rZ", "rJ", "rJ" } };
+    static const TCGTargetOpDef add2_64
+        = { .args_ct_str = { "R", "R", "RZ", "RZ", "RJ", "RI" } };
+
     switch (op) {
     case INDEX_op_goto_ptr:
-        return C_O0_I1(r);
+        return &r;
 
     case INDEX_op_ld8u_i32:
     case INDEX_op_ld8s_i32:
@@ -1587,12 +1634,12 @@ static TCGConstraintSetIndex tcg_target_op_def(TCGOpcode op)
     case INDEX_op_ld_i32:
     case INDEX_op_neg_i32:
     case INDEX_op_not_i32:
-        return C_O1_I1(r, r);
+        return &r_r;
 
     case INDEX_op_st8_i32:
     case INDEX_op_st16_i32:
     case INDEX_op_st_i32:
-        return C_O0_I2(rZ, r);
+        return &rZ_r;
 
     case INDEX_op_add_i32:
     case INDEX_op_mul_i32:
@@ -1608,18 +1655,18 @@ static TCGConstraintSetIndex tcg_target_op_def(TCGOpcode op)
     case INDEX_op_shr_i32:
     case INDEX_op_sar_i32:
     case INDEX_op_setcond_i32:
-        return C_O1_I2(r, rZ, rJ);
+        return &r_rZ_rJ;
 
     case INDEX_op_brcond_i32:
-        return C_O0_I2(rZ, rJ);
+        return &rZ_rJ;
     case INDEX_op_movcond_i32:
-        return C_O1_I4(r, rZ, rJ, rI, 0);
+        return &movc_32;
     case INDEX_op_add2_i32:
     case INDEX_op_sub2_i32:
-        return C_O2_I4(r, r, rZ, rZ, rJ, rJ);
+        return &add2_32;
     case INDEX_op_mulu2_i32:
     case INDEX_op_muls2_i32:
-        return C_O2_I2(r, r, rZ, rJ);
+        return &r_r_rZ_rJ;
 
     case INDEX_op_ld8u_i64:
     case INDEX_op_ld8s_i64:
@@ -1630,13 +1677,13 @@ static TCGConstraintSetIndex tcg_target_op_def(TCGOpcode op)
     case INDEX_op_ld_i64:
     case INDEX_op_ext_i32_i64:
     case INDEX_op_extu_i32_i64:
-        return C_O1_I1(R, r);
+        return &R_r;
 
     case INDEX_op_st8_i64:
     case INDEX_op_st16_i64:
     case INDEX_op_st32_i64:
     case INDEX_op_st_i64:
-        return C_O0_I2(RZ, r);
+        return &RZ_r;
 
     case INDEX_op_add_i64:
     case INDEX_op_mul_i64:
@@ -1652,48 +1699,46 @@ static TCGConstraintSetIndex tcg_target_op_def(TCGOpcode op)
     case INDEX_op_shr_i64:
     case INDEX_op_sar_i64:
     case INDEX_op_setcond_i64:
-        return C_O1_I2(R, RZ, RJ);
+        return &R_RZ_RJ;
 
     case INDEX_op_neg_i64:
     case INDEX_op_not_i64:
     case INDEX_op_ext32s_i64:
     case INDEX_op_ext32u_i64:
-        return C_O1_I1(R, R);
+        return &R_R;
 
     case INDEX_op_extrl_i64_i32:
     case INDEX_op_extrh_i64_i32:
-        return C_O1_I1(r, R);
+        return &r_R;
 
     case INDEX_op_brcond_i64:
-        return C_O0_I2(RZ, RJ);
+        return &RZ_RJ;
     case INDEX_op_movcond_i64:
-        return C_O1_I4(R, RZ, RJ, RI, 0);
+        return &movc_64;
     case INDEX_op_add2_i64:
     case INDEX_op_sub2_i64:
-        return C_O2_I4(R, R, RZ, RZ, RJ, RI);
+        return &add2_64;
     case INDEX_op_muluh_i64:
-        return C_O1_I2(R, R, R);
+        return &R_R_R;
 
     case INDEX_op_qemu_ld_i32:
-        return C_O1_I1(r, A);
+        return &r_A;
     case INDEX_op_qemu_ld_i64:
-        return C_O1_I1(R, A);
+        return &R_A;
     case INDEX_op_qemu_st_i32:
-        return C_O0_I2(sZ, A);
+        return &sZ_A;
     case INDEX_op_qemu_st_i64:
-        return C_O0_I2(SZ, A);
+        return &SZ_A;
 
     default:
-        g_assert_not_reached();
+        return NULL;
     }
 }
 
 static void tcg_target_init(TCGContext *s)
 {
-    /*
-     * Only probe for the platform and capabilities if we haven't already
-     * determined maximum values at compile time.
-     */
+    /* Only probe for the platform and capabilities if we havn't already
+       determined maximum values at compile time.  */
 #ifndef use_vis3_instructions
     {
         unsigned long hwcap = qemu_getauxval(AT_HWCAP);
@@ -1701,8 +1746,8 @@ static void tcg_target_init(TCGContext *s)
     }
 #endif
 
-    tcg_target_available_regs[TCG_TYPE_I32] = ALL_GENERAL_REGS;
-    tcg_target_available_regs[TCG_TYPE_I64] = ALL_GENERAL_REGS64;
+    tcg_target_available_regs[TCG_TYPE_I32] = 0xffffffff;
+    tcg_target_available_regs[TCG_TYPE_I64] = ALL_64;
 
     tcg_target_call_clobber_regs = 0;
     tcg_regset_set_reg(tcg_target_call_clobber_regs, TCG_REG_G1);

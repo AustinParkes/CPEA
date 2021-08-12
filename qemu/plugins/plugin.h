@@ -9,11 +9,10 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-#ifndef PLUGIN_INTERNAL_H
-#define PLUGIN_INTERNAL_H
+#ifndef _PLUGIN_INTERNAL_H_
+#define _PLUGIN_INTERNAL_H_
 
 #include <gmodule.h>
-#include "qemu/qht.h"
 
 #define QEMU_PLUGIN_MIN_VERSION 0
 

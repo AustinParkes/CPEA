@@ -24,8 +24,10 @@ class Vnc(Test):
         self.vm.add_args('-nodefaults', '-S')
         self.vm.launch()
         self.assertFalse(self.vm.qmp('query-vnc')['return']['enabled'])
-        set_password_response = self.vm.qmp('change-vnc-password',
-                                            password='new_password')
+        set_password_response = self.vm.qmp('change',
+                                            device='vnc',
+                                            target='password',
+                                            arg='new_password')
         self.assertIn('error', set_password_response)
         self.assertEqual(set_password_response['error']['class'],
                          'GenericError')
@@ -36,8 +38,10 @@ class Vnc(Test):
         self.vm.add_args('-nodefaults', '-S', '-vnc', ':0')
         self.vm.launch()
         self.assertTrue(self.vm.qmp('query-vnc')['return']['enabled'])
-        set_password_response = self.vm.qmp('change-vnc-password',
-                                            password='new_password')
+        set_password_response = self.vm.qmp('change',
+                                            device='vnc',
+                                            target='password',
+                                            arg='new_password')
         self.assertIn('error', set_password_response)
         self.assertEqual(set_password_response['error']['class'],
                          'GenericError')
@@ -48,6 +52,8 @@ class Vnc(Test):
         self.vm.add_args('-nodefaults', '-S', '-vnc', ':0,password')
         self.vm.launch()
         self.assertTrue(self.vm.qmp('query-vnc')['return']['enabled'])
-        set_password_response = self.vm.qmp('change-vnc-password',
-                                            password='new_password')
+        set_password_response = self.vm.qmp('change',
+                                            device='vnc',
+                                            target='password',
+                                            arg='new_password')
         self.assertEqual(set_password_response['return'], {})

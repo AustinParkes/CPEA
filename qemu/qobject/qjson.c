@@ -22,7 +22,8 @@
 #include "qapi/qmp/qnum.h"
 #include "qapi/qmp/qstring.h"
 
-typedef struct JSONParsingState {
+typedef struct JSONParsingState
+{
     JSONMessageParser parser;
     QObject *result;
     Error *err;

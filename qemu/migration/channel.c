@@ -20,7 +20,6 @@
 #include "io/channel-tls.h"
 #include "io/channel-socket.h"
 #include "qemu/yank.h"
-#include "yank_functions.h"
 
 /**
  * @migration_channel_process_incoming - Create new incoming migration channel
@@ -38,13 +37,17 @@ void migration_channel_process_incoming(QIOChannel *ioc)
     trace_migration_set_incoming_channel(
         ioc, object_get_typename(OBJECT(ioc)));
 
+    if (object_dynamic_cast(OBJECT(ioc), TYPE_QIO_CHANNEL_SOCKET)) {
+        yank_register_function(MIGRATION_YANK_INSTANCE, yank_generic_iochannel,
+                               QIO_CHANNEL(ioc));
+    }
+
     if (s->parameters.tls_creds &&
         *s->parameters.tls_creds &&
         !object_dynamic_cast(OBJECT(ioc),
                              TYPE_QIO_CHANNEL_TLS)) {
         migration_tls_channel_process_incoming(s, ioc, &local_err);
     } else {
-        migration_ioc_register_yank(ioc);
         migration_ioc_process_incoming(ioc, &local_err);
     }
 
@@ -71,6 +74,12 @@ void migration_channel_connect(MigrationState *s,
         ioc, object_get_typename(OBJECT(ioc)), hostname, error);
 
     if (!error) {
+        if (object_dynamic_cast(OBJECT(ioc), TYPE_QIO_CHANNEL_SOCKET)) {
+            yank_register_function(MIGRATION_YANK_INSTANCE,
+                                   yank_generic_iochannel,
+                                   QIO_CHANNEL(ioc));
+        }
+
         if (s->parameters.tls_creds &&
             *s->parameters.tls_creds &&
             !object_dynamic_cast(OBJECT(ioc),
@@ -87,8 +96,6 @@ void migration_channel_connect(MigrationState *s,
             }
         } else {
             QEMUFile *f = qemu_fopen_channel_output(ioc);
-
-            migration_ioc_register_yank(ioc);
 
             qemu_mutex_lock(&s->qemu_file_lock);
             s->to_dst_file = f;

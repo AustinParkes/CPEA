@@ -39,6 +39,7 @@
 #include "qemu/option.h"
 #include "qemu/uri.h"
 #include "qemu/cutils.h"
+#include "sysemu/sysemu.h"
 #include "sysemu/replay.h"
 #include "qapi/qapi-visit-block-core.h"
 #include "qapi/qmp/qdict.h"
@@ -147,7 +148,9 @@ out:
     if (qp) {
         query_params_free(qp);
     }
-    uri_free(uri);
+    if (uri) {
+        uri_free(uri);
+    }
     return ret;
 }
 

@@ -14,6 +14,7 @@
  */
 
 #include "qemu/osdep.h"
+#include "cpu.h"
 #include "qemu/host-utils.h"
 #include "qemu/module.h"
 #include "sysemu/kvm.h"
@@ -105,7 +106,7 @@ static void kvm_update_clock(KVMClockState *s)
 
     ret = kvm_vm_ioctl(kvm_state, KVM_GET_CLOCK, &data);
     if (ret < 0) {
-        fprintf(stderr, "KVM_GET_CLOCK failed: %s\n", strerror(-ret));
+        fprintf(stderr, "KVM_GET_CLOCK failed: %s\n", strerror(ret));
                 abort();
     }
     s->clock = data.clock;
@@ -161,7 +162,7 @@ static void do_kvmclock_ctrl(CPUState *cpu, run_on_cpu_data data)
     }
 }
 
-static void kvmclock_vm_state_change(void *opaque, bool running,
+static void kvmclock_vm_state_change(void *opaque, int running,
                                      RunState state)
 {
     KVMClockState *s = opaque;
@@ -189,7 +190,7 @@ static void kvmclock_vm_state_change(void *opaque, bool running,
         data.clock = s->clock;
         ret = kvm_vm_ioctl(kvm_state, KVM_SET_CLOCK, &data);
         if (ret < 0) {
-            fprintf(stderr, "KVM_SET_CLOCK failed: %s\n", strerror(-ret));
+            fprintf(stderr, "KVM_SET_CLOCK failed: %s\n", strerror(ret));
             abort();
         }
 

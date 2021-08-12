@@ -575,11 +575,6 @@ static const char *const raw_strong_runtime_opts[] = {
     NULL
 };
 
-static void raw_cancel_in_flight(BlockDriverState *bs)
-{
-    bdrv_cancel_in_flight(bs->file->bs);
-}
-
 BlockDriver bdrv_raw = {
     .format_name          = "raw",
     .instance_size        = sizeof(BDRVRawState),
@@ -613,7 +608,6 @@ BlockDriver bdrv_raw = {
     .bdrv_has_zero_init   = &raw_has_zero_init,
     .strong_runtime_opts  = raw_strong_runtime_opts,
     .mutable_opts         = mutable_opts,
-    .bdrv_cancel_in_flight = raw_cancel_in_flight,
 };
 
 static void bdrv_raw_init(void)

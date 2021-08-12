@@ -246,19 +246,16 @@ class CascadelakeArchCapabilities(avocado_qemu.Test):
     :avocado: tags=arch:x86_64
     """
     def get_cpu_prop(self, prop):
-        cpu_path = self.vm.command('query-cpus-fast')[0].get('qom-path')
+        cpu_path = self.vm.command('query-cpus')[0].get('qom_path')
         return self.vm.command('qom-get', path=cpu_path, property=prop)
 
     def test_4_1(self):
         """
         :avocado: tags=machine:pc-i440fx-4.1
-        :avocado: tags=cpu:Cascadelake-Server
         """
         # machine-type only:
         self.vm.add_args('-S')
-        self.set_vm_arg('-cpu',
-                        'Cascadelake-Server,x-force-features=on,check=off,'
-                        'enforce=off')
+        self.vm.add_args('-cpu', 'Cascadelake-Server,x-force-features=on,check=off,enforce=off')
         self.vm.launch()
         self.assertFalse(self.get_cpu_prop('arch-capabilities'),
                          'pc-i440fx-4.1 + Cascadelake-Server should not have arch-capabilities')
@@ -266,12 +263,9 @@ class CascadelakeArchCapabilities(avocado_qemu.Test):
     def test_4_0(self):
         """
         :avocado: tags=machine:pc-i440fx-4.0
-        :avocado: tags=cpu:Cascadelake-Server
         """
         self.vm.add_args('-S')
-        self.set_vm_arg('-cpu',
-                        'Cascadelake-Server,x-force-features=on,check=off,'
-                        'enforce=off')
+        self.vm.add_args('-cpu', 'Cascadelake-Server,x-force-features=on,check=off,enforce=off')
         self.vm.launch()
         self.assertFalse(self.get_cpu_prop('arch-capabilities'),
                          'pc-i440fx-4.0 + Cascadelake-Server should not have arch-capabilities')
@@ -279,13 +273,10 @@ class CascadelakeArchCapabilities(avocado_qemu.Test):
     def test_set_4_0(self):
         """
         :avocado: tags=machine:pc-i440fx-4.0
-        :avocado: tags=cpu:Cascadelake-Server
         """
         # command line must override machine-type if CPU model is not versioned:
         self.vm.add_args('-S')
-        self.set_vm_arg('-cpu',
-                        'Cascadelake-Server,x-force-features=on,check=off,'
-                        'enforce=off,+arch-capabilities')
+        self.vm.add_args('-cpu', 'Cascadelake-Server,x-force-features=on,check=off,enforce=off,+arch-capabilities')
         self.vm.launch()
         self.assertTrue(self.get_cpu_prop('arch-capabilities'),
                         'pc-i440fx-4.0 + Cascadelake-Server,+arch-capabilities should have arch-capabilities')
@@ -293,12 +284,9 @@ class CascadelakeArchCapabilities(avocado_qemu.Test):
     def test_unset_4_1(self):
         """
         :avocado: tags=machine:pc-i440fx-4.1
-        :avocado: tags=cpu:Cascadelake-Server
         """
         self.vm.add_args('-S')
-        self.set_vm_arg('-cpu',
-                        'Cascadelake-Server,x-force-features=on,check=off,'
-                        'enforce=off,-arch-capabilities')
+        self.vm.add_args('-cpu', 'Cascadelake-Server,x-force-features=on,check=off,enforce=off,-arch-capabilities')
         self.vm.launch()
         self.assertFalse(self.get_cpu_prop('arch-capabilities'),
                          'pc-i440fx-4.1 + Cascadelake-Server,-arch-capabilities should not have arch-capabilities')
@@ -306,13 +294,10 @@ class CascadelakeArchCapabilities(avocado_qemu.Test):
     def test_v1_4_0(self):
         """
         :avocado: tags=machine:pc-i440fx-4.0
-        :avocado: tags=cpu:Cascadelake-Server
         """
         # versioned CPU model overrides machine-type:
         self.vm.add_args('-S')
-        self.set_vm_arg('-cpu',
-                        'Cascadelake-Server-v1,x-force-features=on,check=off,'
-                        'enforce=off')
+        self.vm.add_args('-cpu', 'Cascadelake-Server-v1,x-force-features=on,check=off,enforce=off')
         self.vm.launch()
         self.assertFalse(self.get_cpu_prop('arch-capabilities'),
                          'pc-i440fx-4.0 + Cascadelake-Server-v1 should not have arch-capabilities')
@@ -320,12 +305,9 @@ class CascadelakeArchCapabilities(avocado_qemu.Test):
     def test_v2_4_0(self):
         """
         :avocado: tags=machine:pc-i440fx-4.0
-        :avocado: tags=cpu:Cascadelake-Server
         """
         self.vm.add_args('-S')
-        self.set_vm_arg('-cpu',
-                        'Cascadelake-Server-v2,x-force-features=on,check=off,'
-                        'enforce=off')
+        self.vm.add_args('-cpu', 'Cascadelake-Server-v2,x-force-features=on,check=off,enforce=off')
         self.vm.launch()
         self.assertTrue(self.get_cpu_prop('arch-capabilities'),
                         'pc-i440fx-4.0 + Cascadelake-Server-v2 should have arch-capabilities')
@@ -333,13 +315,10 @@ class CascadelakeArchCapabilities(avocado_qemu.Test):
     def test_v1_set_4_0(self):
         """
         :avocado: tags=machine:pc-i440fx-4.0
-        :avocado: tags=cpu:Cascadelake-Server
         """
         # command line must override machine-type and versioned CPU model:
         self.vm.add_args('-S')
-        self.set_vm_arg('-cpu',
-                        'Cascadelake-Server-v1,x-force-features=on,check=off,'
-                        'enforce=off,+arch-capabilities')
+        self.vm.add_args('-cpu', 'Cascadelake-Server-v1,x-force-features=on,check=off,enforce=off,+arch-capabilities')
         self.vm.launch()
         self.assertTrue(self.get_cpu_prop('arch-capabilities'),
                         'pc-i440fx-4.0 + Cascadelake-Server-v1,+arch-capabilities should have arch-capabilities')
@@ -347,12 +326,9 @@ class CascadelakeArchCapabilities(avocado_qemu.Test):
     def test_v2_unset_4_1(self):
         """
         :avocado: tags=machine:pc-i440fx-4.1
-        :avocado: tags=cpu:Cascadelake-Server
         """
         self.vm.add_args('-S')
-        self.set_vm_arg('-cpu',
-                        'Cascadelake-Server-v2,x-force-features=on,check=off,'
-                        'enforce=off,-arch-capabilities')
+        self.vm.add_args('-cpu', 'Cascadelake-Server-v2,x-force-features=on,check=off,enforce=off,-arch-capabilities')
         self.vm.launch()
         self.assertFalse(self.get_cpu_prop('arch-capabilities'),
                          'pc-i440fx-4.1 + Cascadelake-Server-v2,-arch-capabilities should not have arch-capabilities')

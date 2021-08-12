@@ -187,8 +187,7 @@ EOF
 }
 
 overlay_io | $QEMU_IO blkdebug::"$TEST_IMG" | _filter_qemu_io |\
-    sed -e 's/[0-9]*\/[0-9]* bytes at offset [0-9]*/XXX\/XXX bytes at offset XXX/g' \
-        -e 's/^[0-9]* KiB/XXX KiB/g'
+	sed -e 's/bytes at offset [0-9]*/bytes at offset XXX/g'
 
 echo
 echo "== Verify image content =="

@@ -39,8 +39,3 @@ bool kvm_hv_vpindex_settable(void)
 {
     return false;
 }
-
-bool kvm_hyperv_expand_features(X86CPU *cpu, Error **errp)
-{
-    abort();
-}

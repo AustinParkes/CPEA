@@ -358,15 +358,12 @@ static void schedule_next_request(ThrottleGroupMember *tgm, bool is_write)
  * @is_write:  the type of operation (read/write)
  */
 void coroutine_fn throttle_group_co_io_limits_intercept(ThrottleGroupMember *tgm,
-                                                        int64_t bytes,
+                                                        unsigned int bytes,
                                                         bool is_write)
 {
     bool must_wait;
     ThrottleGroupMember *token;
     ThrottleGroup *tg = container_of(tgm->throttle_state, ThrottleGroup, ts);
-
-    assert(bytes >= 0);
-
     qemu_mutex_lock(&tg->lock);
 
     /* First we check if this I/O has to be throttled. */

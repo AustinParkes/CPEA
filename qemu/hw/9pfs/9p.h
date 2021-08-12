@@ -279,9 +279,9 @@ struct V9fsFidState {
     int open_flags;
     uid_t uid;
     int ref;
-    bool clunked;
-    QSIMPLEQ_ENTRY(V9fsFidState) next;
-    QSLIST_ENTRY(V9fsFidState) reclaim_next;
+    int clunked;
+    V9fsFidState *next;
+    V9fsFidState *rclm_lst;
 };
 
 typedef enum AffixType_t {
@@ -339,7 +339,7 @@ typedef struct {
 struct V9fsState {
     QLIST_HEAD(, V9fsPDU) free_list;
     QLIST_HEAD(, V9fsPDU) active_list;
-    QSIMPLEQ_HEAD(, V9fsFidState) fid_list;
+    V9fsFidState *fid_list;
     FileOperations *ops;
     FsContext ctx;
     char *tag;
@@ -355,7 +355,7 @@ struct V9fsState {
     int32_t root_fid;
     Error *migration_blocker;
     V9fsConf fsconf;
-    struct stat root_st;
+    V9fsQID root_qid;
     dev_t dev_id;
     struct qht qpd_table;
     struct qht qpp_table;

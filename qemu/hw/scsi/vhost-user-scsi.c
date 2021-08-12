@@ -122,8 +122,10 @@ static void vhost_user_scsi_realize(DeviceState *dev, Error **errp)
     vqs = vsc->dev.vqs;
 
     ret = vhost_dev_init(&vsc->dev, &s->vhost_user,
-                         VHOST_BACKEND_TYPE_USER, 0, errp);
+                         VHOST_BACKEND_TYPE_USER, 0);
     if (ret < 0) {
+        error_setg(errp, "vhost-user-scsi: vhost initialization failed: %s",
+                   strerror(-ret));
         goto free_vhost;
     }
 

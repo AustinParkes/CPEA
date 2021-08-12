@@ -656,7 +656,7 @@ static void usb_hid_handle_data(USBDevice *dev, USBPacket *p)
 {
     USBHIDState *us = USB_HID(dev);
     HIDState *hs = &us->hid;
-    g_autofree uint8_t *buf = g_malloc(p->iov.size);
+    uint8_t buf[p->iov.size];
     int len = 0;
 
     switch (p->pid) {

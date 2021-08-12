@@ -15,7 +15,7 @@
 #include "target/arm/idau.h"
 #include "qom/object.h"
 
-#define TYPE_BITBAND "ARM-bitband-memory"
+#define TYPE_BITBAND "ARM,bitband-memory"
 OBJECT_DECLARE_SIMPLE_TYPE(BitBandState, BITBAND)
 
 struct BitBandState {
@@ -46,7 +46,6 @@ OBJECT_DECLARE_SIMPLE_TYPE(ARMv7MState, ARMV7M)
  *   devices will be automatically layered on top of this view.)
  * + Property "idau": IDAU interface (forwarded to CPU object)
  * + Property "init-svtor": secure VTOR reset value (forwarded to CPU object)
- * + Property "init-nsvtor": non-secure VTOR reset value (forwarded to CPU object)
  * + Property "vfp": enable VFP (forwarded to CPU object)
  * + Property "dsp": enable DSP (forwarded to CPU object)
  * + Property "enable-bitband": expose bitbanded IO
@@ -70,7 +69,6 @@ struct ARMv7MState {
     MemoryRegion *board_memory;
     Object *idau;
     uint32_t init_svtor;
-    uint32_t init_nsvtor;
     bool enable_bitband;
     bool start_powered_off;
     bool vfp;

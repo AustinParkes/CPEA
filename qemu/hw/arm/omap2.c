@@ -27,6 +27,7 @@
 #include "sysemu/qtest.h"
 #include "sysemu/reset.h"
 #include "sysemu/runstate.h"
+#include "hw/boards.h"
 #include "hw/irq.h"
 #include "hw/qdev-properties.h"
 #include "hw/arm/boot.h"

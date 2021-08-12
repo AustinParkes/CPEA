@@ -1,23 +1,44 @@
 # Functional test that boots a VM and run OCR on the framebuffer
 #
-# Copyright (c) 2019 Philippe Mathieu-Daudé <f4bug@amsat.org>
+# Copyright (c) Philippe Mathieu-Daudé <f4bug@amsat.org>
 #
 # This work is licensed under the terms of the GNU GPL, version 2 or
 # later.  See the COPYING file in the top-level directory.
 
 import os
+import re
 import time
+import logging
 
 from avocado_qemu import Test
 from avocado import skipUnless
-
-from tesseract_utils import tesseract_available, tesseract_ocr
+from avocado.utils import process
+from avocado.utils.path import find_command, CmdNotFoundError
 
 PIL_AVAILABLE = True
 try:
     from PIL import Image
 except ImportError:
     PIL_AVAILABLE = False
+
+
+def tesseract_available(expected_version):
+    try:
+        find_command('tesseract')
+    except CmdNotFoundError:
+        return False
+    res = process.run('tesseract --version')
+    try:
+        version = res.stdout_text.split()[1]
+    except IndexError:
+        version = res.stderr_text.split()[1]
+    return int(version.split('.')[0]) == expected_version
+
+    match = re.match(r'tesseract\s(\d)', res)
+    if match is None:
+        return False
+    # now this is guaranteed to be a digit
+    return int(match.groups()[0]) == expected_version
 
 
 class NextCubeMachine(Test):
@@ -59,8 +80,12 @@ class NextCubeMachine(Test):
     def test_bootrom_framebuffer_ocr_with_tesseract_v3(self):
         screenshot_path = os.path.join(self.workdir, "dump.ppm")
         self.check_bootrom_framebuffer(screenshot_path)
-        lines = tesseract_ocr(screenshot_path, tesseract_version=3)
-        text = '\n'.join(lines)
+
+        console_logger = logging.getLogger('console')
+        text = process.run("tesseract %s stdout" % screenshot_path).stdout_text
+        for line in text.split('\n'):
+            if len(line):
+                console_logger.debug(line)
         self.assertIn('Backplane', text)
         self.assertIn('Ethernet address', text)
 
@@ -71,8 +96,13 @@ class NextCubeMachine(Test):
     def test_bootrom_framebuffer_ocr_with_tesseract_v4(self):
         screenshot_path = os.path.join(self.workdir, "dump.ppm")
         self.check_bootrom_framebuffer(screenshot_path)
-        lines = tesseract_ocr(screenshot_path, tesseract_version=4)
-        text = '\n'.join(lines)
+
+        console_logger = logging.getLogger('console')
+        proc = process.run("tesseract --oem 1 %s stdout" % screenshot_path)
+        text = proc.stdout_text
+        for line in text.split('\n'):
+            if len(line):
+                console_logger.debug(line)
         self.assertIn('Testing the FPU, SCC', text)
         self.assertIn('System test failed. Error code', text)
         self.assertIn('Boot command', text)

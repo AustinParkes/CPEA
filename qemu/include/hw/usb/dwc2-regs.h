@@ -39,8 +39,8 @@
  * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef DWC2_HW_H
-#define DWC2_HW_H
+#ifndef __DWC2_HW_H__
+#define __DWC2_HW_H__
 
 #define HSOTG_REG(x)	(x)
 

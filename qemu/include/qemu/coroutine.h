@@ -210,15 +210,13 @@ void coroutine_fn qemu_co_queue_wait_impl(CoQueue *queue, QemuLockable *lock);
 /**
  * Removes the next coroutine from the CoQueue, and wake it up.
  * Returns true if a coroutine was removed, false if the queue is empty.
- * OK to run from coroutine and non-coroutine context.
  */
-bool qemu_co_queue_next(CoQueue *queue);
+bool coroutine_fn qemu_co_queue_next(CoQueue *queue);
 
 /**
  * Empties the CoQueue; all coroutines are woken up.
- * OK to run from coroutine and non-coroutine context.
  */
-void qemu_co_queue_restart_all(CoQueue *queue);
+void coroutine_fn qemu_co_queue_restart_all(CoQueue *queue);
 
 /**
  * Removes the next coroutine from the CoQueue, and wake it up.  Unlike
@@ -239,15 +237,11 @@ bool qemu_co_enter_next_impl(CoQueue *queue, QemuLockable *lock);
 bool qemu_co_queue_empty(CoQueue *queue);
 
 
-typedef struct CoRwTicket CoRwTicket;
 typedef struct CoRwlock {
+    int pending_writer;
+    int reader;
     CoMutex mutex;
-
-    /* Number of readers, or -1 if owned for writing.  */
-    int owners;
-
-    /* Waiting coroutines.  */
-    QSIMPLEQ_HEAD(, CoRwTicket) tickets;
+    CoQueue queue;
 } CoRwlock;
 
 /**
@@ -266,9 +260,10 @@ void qemu_co_rwlock_rdlock(CoRwlock *lock);
 /**
  * Write Locks the CoRwlock from a reader.  This is a bit more efficient than
  * @qemu_co_rwlock_unlock followed by a separate @qemu_co_rwlock_wrlock.
- * Note that if the lock cannot be upgraded immediately, control is transferred
- * to the caller of the current coroutine; another writer might run while
- * @qemu_co_rwlock_upgrade blocks.
+ * However, if the lock cannot be upgraded immediately, control is transferred
+ * to the caller of the current coroutine.  Also, @qemu_co_rwlock_upgrade
+ * only overrides CoRwlock fairness if there are no concurrent readers, so
+ * another writer might run while @qemu_co_rwlock_upgrade blocks.
  */
 void qemu_co_rwlock_upgrade(CoRwlock *lock);
 
@@ -293,27 +288,20 @@ void qemu_co_rwlock_wrlock(CoRwlock *lock);
  */
 void qemu_co_rwlock_unlock(CoRwlock *lock);
 
-typedef struct QemuCoSleep {
-    Coroutine *to_wake;
-} QemuCoSleep;
+typedef struct QemuCoSleepState QemuCoSleepState;
 
 /**
- * Yield the coroutine for a given duration. Initializes @w so that,
- * during this yield, it can be passed to qemu_co_sleep_wake() to
- * terminate the sleep.
+ * Yield the coroutine for a given duration. During this yield, @sleep_state
+ * (if not NULL) is set to an opaque pointer, which may be used for
+ * qemu_co_sleep_wake(). Be careful, the pointer is set back to zero when the
+ * timer fires. Don't save the obtained value to other variables and don't call
+ * qemu_co_sleep_wake from another aio context.
  */
-void coroutine_fn qemu_co_sleep_ns_wakeable(QemuCoSleep *w,
-                                            QEMUClockType type, int64_t ns);
-
-/**
- * Yield the coroutine until the next call to qemu_co_sleep_wake.
- */
-void coroutine_fn qemu_co_sleep(QemuCoSleep *w);
-
+void coroutine_fn qemu_co_sleep_ns_wakeable(QEMUClockType type, int64_t ns,
+                                            QemuCoSleepState **sleep_state);
 static inline void coroutine_fn qemu_co_sleep_ns(QEMUClockType type, int64_t ns)
 {
-    QemuCoSleep w = { 0 };
-    qemu_co_sleep_ns_wakeable(&w, type, ns);
+    qemu_co_sleep_ns_wakeable(type, ns, NULL);
 }
 
 /**
@@ -322,7 +310,7 @@ static inline void coroutine_fn qemu_co_sleep_ns(QEMUClockType type, int64_t ns)
  * qemu_co_sleep_ns() and should be checked to be non-NULL before calling
  * qemu_co_sleep_wake().
  */
-void qemu_co_sleep_wake(QemuCoSleep *w);
+void qemu_co_sleep_wake(QemuCoSleepState *sleep_state);
 
 /**
  * Yield until a file descriptor becomes readable

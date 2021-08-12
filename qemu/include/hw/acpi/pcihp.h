@@ -46,7 +46,6 @@ typedef struct AcpiPciHpPciStatus {
 typedef struct AcpiPciHpState {
     AcpiPciHpPciStatus acpi_pcihp_pci_status[ACPI_PCIHP_MAX_HOTPLUG_BUS];
     uint32_t hotplug_select;
-    uint32_t acpi_index;
     PCIBus *root;
     MemoryRegion io;
     bool legacy_piix;
@@ -55,8 +54,7 @@ typedef struct AcpiPciHpState {
 } AcpiPciHpState;
 
 void acpi_pcihp_init(Object *owner, AcpiPciHpState *, PCIBus *root,
-                     MemoryRegion *address_space_io, bool bridges_enabled,
-                     uint16_t io_base);
+                     MemoryRegion *address_space_io, bool bridges_enabled);
 
 void acpi_pcihp_device_pre_plug_cb(HotplugHandler *hotplug_dev,
                                    DeviceState *dev, Error **errp);
@@ -73,17 +71,13 @@ void acpi_pcihp_reset(AcpiPciHpState *s, bool acpihp_root_off);
 
 extern const VMStateDescription vmstate_acpi_pcihp_pci_status;
 
-bool vmstate_acpi_pcihp_use_acpi_index(void *opaque, int version_id);
-
-#define VMSTATE_PCI_HOTPLUG(pcihp, state, test_pcihp, test_acpi_index) \
+#define VMSTATE_PCI_HOTPLUG(pcihp, state, test_pcihp) \
         VMSTATE_UINT32_TEST(pcihp.hotplug_select, state, \
                             test_pcihp), \
         VMSTATE_STRUCT_ARRAY_TEST(pcihp.acpi_pcihp_pci_status, state, \
                                   ACPI_PCIHP_MAX_HOTPLUG_BUS, \
                                   test_pcihp, 1, \
                                   vmstate_acpi_pcihp_pci_status, \
-                                  AcpiPciHpPciStatus), \
-        VMSTATE_UINT32_TEST(pcihp.acpi_index, state, \
-                            test_acpi_index)
+                                  AcpiPciHpPciStatus)
 
 #endif

@@ -23,6 +23,7 @@
  */
 
 #include "qemu/osdep.h"
+#include "cpu.h"
 #include "hw/irq.h"
 #include "hw/ppc/ppc.h"
 #include "hw/ppc/ppc_e500.h"
@@ -1058,7 +1059,7 @@ static void timebase_load(PPCTimebase *tb)
     }
 }
 
-void cpu_ppc_clock_vm_state_change(void *opaque, bool running,
+void cpu_ppc_clock_vm_state_change(void *opaque, int running,
                                    RunState state)
 {
     PPCTimebase *tb = opaque;

@@ -28,6 +28,7 @@
 #include "hw/ppc/ppc4xx.h"
 #include "hw/pci/pci.h"
 #include "hw/pci/pci_host.h"
+#include "exec/address-spaces.h"
 #include "trace.h"
 #include "qom/object.h"
 

@@ -10,6 +10,7 @@
 
 #include "qemu/osdep.h"
 #include "hw/nubus/nubus.h"
+#include "hw/sysbus.h"
 #include "qapi/error.h"
 
 

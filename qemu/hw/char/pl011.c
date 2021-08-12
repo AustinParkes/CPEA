@@ -309,7 +309,7 @@ static void pl011_event(void *opaque, QEMUChrEvent event)
         pl011_put_fifo(opaque, 0x400);
 }
 
-static void pl011_clock_update(void *opaque, ClockEvent event)
+static void pl011_clock_update(void *opaque)
 {
     PL011State *s = PL011(opaque);
 
@@ -322,18 +322,10 @@ static const MemoryRegionOps pl011_ops = {
     .endianness = DEVICE_NATIVE_ENDIAN,
 };
 
-static bool pl011_clock_needed(void *opaque)
-{
-    PL011State *s = PL011(opaque);
-
-    return s->migrate_clk;
-}
-
 static const VMStateDescription vmstate_pl011_clock = {
     .name = "pl011/clock",
     .version_id = 1,
     .minimum_version_id = 1,
-    .needed = pl011_clock_needed,
     .fields = (VMStateField[]) {
         VMSTATE_CLOCK(clk, PL011State),
         VMSTATE_END_OF_LIST()
@@ -371,7 +363,6 @@ static const VMStateDescription vmstate_pl011 = {
 
 static Property pl011_properties[] = {
     DEFINE_PROP_CHR("chardev", PL011State, chr),
-    DEFINE_PROP_BOOL("migrate-clk", PL011State, migrate_clk, true),
     DEFINE_PROP_END_OF_LIST(),
 };
 
@@ -387,8 +378,7 @@ static void pl011_init(Object *obj)
         sysbus_init_irq(sbd, &s->irq[i]);
     }
 
-    s->clk = qdev_init_clock_in(DEVICE(obj), "clk", pl011_clock_update, s,
-                                ClockUpdate);
+    s->clk = qdev_init_clock_in(DEVICE(obj), "clk", pl011_clock_update, s);
 
     s->read_trigger = 1;
     s->ifl = 0x12;

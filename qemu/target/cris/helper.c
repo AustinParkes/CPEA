@@ -20,7 +20,6 @@
 
 #include "qemu/osdep.h"
 #include "cpu.h"
-#include "hw/core/tcg-cpu-ops.h"
 #include "mmu.h"
 #include "qemu/host-utils.h"
 #include "exec/exec-all.h"
@@ -275,10 +274,10 @@ hwaddr cris_cpu_get_phys_page_debug(CPUState *cs, vaddr addr)
     struct cris_mmu_result res;
     int miss;
 
-    miss = cris_mmu_translate(&res, &cpu->env, addr, MMU_DATA_LOAD, 0, 1);
+    miss = cris_mmu_translate(&res, &cpu->env, addr, 0, 0, 1);
     /* If D TLB misses, try I TLB.  */
     if (miss) {
-        miss = cris_mmu_translate(&res, &cpu->env, addr, MMU_INST_FETCH, 0, 1);
+        miss = cris_mmu_translate(&res, &cpu->env, addr, 2, 0, 1);
     }
 
     if (!miss) {
@@ -300,7 +299,7 @@ bool cris_cpu_exec_interrupt(CPUState *cs, int interrupt_request)
         && (env->pregs[PR_CCS] & I_FLAG)
         && !env->locked_irq) {
         cs->exception_index = EXCP_IRQ;
-        cc->tcg_ops->do_interrupt(cs);
+        cc->do_interrupt(cs);
         ret = true;
     }
     if (interrupt_request & CPU_INTERRUPT_NMI) {
@@ -312,7 +311,7 @@ bool cris_cpu_exec_interrupt(CPUState *cs, int interrupt_request)
         }
         if ((env->pregs[PR_CCS] & m_flag_archval)) {
             cs->exception_index = EXCP_NMI;
-            cc->tcg_ops->do_interrupt(cs);
+            cc->do_interrupt(cs);
             ret = true;
         }
     }

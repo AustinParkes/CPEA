@@ -1,3 +1,11 @@
+/* Running qemu full system emulation */
+./qemu-system-arm -display none
+gdb --args ./qemu-system-arm --display none
+
+/* Other Project Names */
+CPEFF - Configurable Peripheral Emulator and Fuzzing Framework
+CPEF - Configurable Peripheral Emulator and Fuzzer
+
 /* Emulating Firmware */
 Write a Unicorn program that executes a firmware
    Memory Mapping
@@ -69,7 +77,9 @@ Testing Emulator with Real Firmware
 /* Todo list */
 [x] - Complete
 [p] - In Progress
+[s] - Skipping
 [ ] - Not Started
+
    TODO     
       Integrating into QEMU
       1) [x] Save backup of our current code and document what it does and doesn't do.
@@ -77,7 +87,8 @@ Testing Emulator with Real Firmware
                 - No submodule, pulling. Instead, downloaded and copied it into repo.
       3) [x] Move files into repo that won't be compiled with qemu source
                 - Python scripts, firmware, etc.            
-      4) [ ] Figure out how to build QEMU.
+      4) [x] Figure out how to build QEMU.
+      SEE "Building QEMU on Ubuntu 20.04" BELOW FOR MORE.
       
       General Category
       1) [p] Init SP/FP given ELF file (ARM ELF for Linux and barebones MCU) and Raw Binary
@@ -144,31 +155,125 @@ Testing Emulator with Real Firmware
       2) [HANDLED] How will we handle Raw binaries and stripped ELF files? 
          Stripped ELF files should still have LOAD program headers, so they'd be the same as 
          non-stripped ELFs. Raw binaries might be the same as the output we get from extracting
-         LOAD sections from the ELF... so might be finished on that front. Just need to double check. 
-      3) [IMPORTANT] Investigate. Does the Console FW read/write registers like CONTROL, NVIC regs, etc. (Does it fail upon access?)  
-                     Good to know, because if unicorn doesn't fail to execute them, then we likely have access to them in some way.  
-                     MRS/MSR instructions will likely be used for CONTROL reg but not NVIC. 
-                     NVIC is located within the System Control Space (SCS).                    
-      4) [IMPORTANT] Consider scenario where vector table is offset. Will we need the VTOR to locate it and 
-                     corresponding interrupt handlers. (User would configure VTOR if this happens)   
-                     May use VTOR anyway to help match interrupt numbers to the handler addresses.                                                 
-      5) [CURIOUS] Look for Software Triggered Interrupt Register (STIR) in FW testing to see if we need to emulate it.
-                   May just fire off enabled interrupts in round-robin fashion. 
-      6) [IMPORTANT] Do I need to switch between MSP and PSP? Still don't know how they work with the SP.
-                     (Probably need to switch between the two as well.) 
-                     When are they init? What does it look like when either is used? 
-      7) [CURIOUS] In what context are dynamically linked ELFs used? Currently, we only create binary from statically linked.
-                   Would we need to create binary from dynamically linked?                             
-          
+         LOAD sections from the ELF... so might be finished on that front. Just need to double check.                    
+      3) [CURIOUS] In what context are dynamically linked ELFs used? Currently, we only create binary from statically linked.
+                   Would we need to create binary from dynamically linked?
 
 /* Building QEMU on Ubuntu 20.04 */
-1) [ ] Installed sudo apt-get install libnfs-dev libiscsi-dev from QEMU's build page
-2) [ ] Clone QEMU. Get Submodule Code. Remove repositories for QEMU and submodules, but keep their relevant code.
-       1) [ ] Remove qemu/ as repo. (rm -r .git)
-       2) [ ] Remove submodules from qemu/ (rm .gitmodules AND rm .git for each submodule)
+1) [ ] Installations to build 
+            sudo apt-get install libnfs-dev libiscsi-dev from QEMU's build page
+            sudo apt-get install libglib2.0-dev
+            sudo apt-get install libpixman-1-dev
+
+2) [x] Clone QEMU. Get Submodule Code. Remove repositories for QEMU and submodules, but keep their relevant code.
+       1) [x] Remove qemu/ as repo. (rm -r .git)
+       2) [x] Remove submodules from qemu/ (rm .gitmodules AND rm .git for each submodule)
                  meson/, capstone/, dtc/, slirp/, roms/., tests/fp/. 
                  
+3) [p] Building
+       1) [x] Make 'build/' directory and enter it.  
+       2) [x] Run './configure --enable-debug --target-list=arm-softmmu' to only build files for ARM.
+       3) [p] Run 'make.' (Very Lengthy Process to build the binaries. Would like to lessen the time by building only what we need.)
+              // TODO: Can (probably) delete files we don't need care to compile.
+       4) [x] Need to figure out how to include my own files into the build.
+       5) SEE 4.2) for adding own files. 
 
+4) [ ] Executing 'qemu-arm-softmmu'                        
+       1) [p] Need to understand QEMU codebase to know where to make modifications.
+              1) main.c: main() is located here.
+                    - Calls 'qemu_init', 'qemu_main_loop', and 'qemu_cleanup'
+                    
+              2) vl.c: Parses CL arguments and sets up VM based on params like size of ram, hard disk, etc 
+                    - 'qemu_init' here parses command line options
+                 
+              3) All virtual hardware emulated is in hw/ (Can probably leave this alone)
+              
+       2) [p] Add a machine. See 3.2) above.                   
+              1) A new machine source file should go into "hw/arm/" (to fit QEMUs directory structure)
+                   -> Defined "CPEA_GENERIC" variable in "hw/arm/Kconfig" by adding a config section for it.
+                   -> Added variable "CONFIG_CPEA_GENERIC=y" to 'default-configs/devices/arm-softmmu.mak' 
+                   -> Added "arm_ss.add(when: 'CONFIG_CPEA_GENERIC', if_true: files('cpea.c'))" to 'hw/arm/meson.build' so our Machine file is built.
+                   -> init machine in 'hw/arm/cpea.c' using machine API from 'include/hw/boards.h'
+                     
+              2) Machine Initializations
+                   1) Default Machine. (Don't need to specify a machine option (-M) )
+                   2) ARM Cortex-M4.   (Don't need to specify a CPU option (-cpu) )
+                   3) RAM to .5GiB.    (Don't need to specify a memory option (-m) )  
+                     
+                        
+              3) Need to write specifications for this machine in "cpea_init()"
+                   -> Need memory map for flash, mmio, etc.
+                   -> Need to add a CPU with "cpu_create" // TODO: DONT DO THIS.
+                   -> Need to set up NVIC to accompany CPU creation.
+              
+              
+       3) [p] Execute a FW meant for Cortex-m4
+              0) Running commands (for ref)
+                 ./qemu-system-arm -display none -s -S -kernel firmware/test.bin
+                 gdb --args ./qemu-system-arm --display none -s -kernel firmware/test.bin
+        
+              1) "-display none" for no display
+              2) "-kernel" is used to load raw binary image
+              3) "-s" == "-gdb tcp::1234" for launching a gdb server.
+                 Connect with 
+                 1) gdb-multiarch
+                 2) target remote localhost:1234
+              4) "-S" to freeze CPU at startup.
+              5) "-d" to enable logging of certain items. '-d help' for list of log items.
+              
+       4) [p] Understanding QOM, Qdev, and SysBus to make our hardware
+              0) Where to find ARM class definitions
+                 ARMCPUClass: Class struct. This file declares ARMCPU as instance struct, ARMCPUClass as class struct, and ARM_CPU as object name.
+                              In short, ARM_CPU is declared as object via OBJECT_DECLARE_TYPE.
+                              Provides the 3 standard typedef macros for the object.                                                         
+                         @ "target/arm/cpu-qom.h"
+                 
+                 ARMCPU: Primary ARM struct to access ARM CPU. Contains CPUARMState via "env" variable. 
+                         @ "target/arm/cpu.h": 765
+                         
+                 CPUARMState: Contained in ARMCPU. Holds ARM state such as registers, nvic, etc. 
+                         @ "target/arm/cpu.h": 229
+                 
+                 TypeInfo/type_init: Let's QEMU know about the ARM_CPU type to initialize it. Contains init functions:                
+                                       - arm_cpu_initfn, arm_cpu_finalizefn, arm_cpu_class_init
+                                     which belong to the same file.                                    
+                                     Also, arm_cpu_realizefn is set as realize function in arm_cpu_class_init. (Where our CPU check fails for Cortex-m4)                                      
+                         @ "target/arm/cpu.c": 2343                
+                                                        
+              1) Code fails somewhere in cpu_create()
+                 [x] How does cpu_create() make cpu?
+                      - Creates a new CPU object generically.
+                      - Doesn't provide nvic based on the cpu-type we pass.
+                 [] Find where it fails
+                    [x] Re-verify it fails in function. Does not make it past cpu_create()
+                    [x] Find the function is fails in within cpu_create
+                         - qdev_realize -> many object.c functions -> arm_cpu_realizefn @ "target/arm/cpu.c": 1337 due to lack of NVIC.                          
+                    [x] Compare to other peoples' "cortex-m4" creation to see how they avoided this failure  
+                         - DONT: They don't use cpu_create because it skips anything with nvic
+                         - DO:   I noticed qdev_new() used to encapsulate an entire device e.g. ARMv7m, STM32 SOC, more??
+                                 I'm guessing this is where NVIC can be encapsulated. 
+                                                
+                                                                   
+4) Following GDB
+    cpu_create -> object_new("cortex-m4") -> object_new_with_type -> object_initialize_with_type ->
+       break qom/object.c:510 <- Need this to continue past memset
+    -> many many many functions -> device_initfn -> object_init_with_type -> 
+       break cpu_common_initfn <- to skip to this function
+    cpu_common_initfn -> arm_cpu_initfn -> arm_cpu_instance_init -> (few more init funcs)
+       
+    General Breakdown of execution
+    qemu_init -> qemu_init_subsystems -> module_call_init(MODULE_INIT_QOM) -> QTAILQ_FOREACH (loop that cycles "register_types" functions) -> cpea_machine_init_register_types -> 
+    select_machine -> arm_cpu_class_init (knows I'm using arm binary I guess?) -> cpea_machine_init_class_init -> cpea_machine_init -> qemu_create_machine -> cpea_init -> 
+    // this part could change, so placing it down here away from the stuff that won't change
+    cpu_create -> object_new -> many functions (setting up object system I'm guessing) -> device_initfc -> object_init_with_type -> cpu_common_initfn -> arm_cpu_initfn ->
+    arm_cpu_instance_init -> (few more init funcs) -> DEVICE (qdev_realize arg) -> qdev_realize -> object_property_set_bool (ret by qdev_Realize) -> object_property_set_qobject ->
+    many object.c functions (guessing it's trying to determine child objects) -> device_set_realized -> arm_cpu_realizefn -> 
+       RETURNS false and causes exit. Ultimately, the error occurs in arm_cpu_realizefn @ "target/arm/cpu.c": 1337 due to lack of NVIC.
+
+/* Getting executable binary from a proper ELF */  
+arm-none-eabi-objcopy -O binary <elf> <bin>
+
+                                                       
 /* Compiling the Emulators */
 // TODO: Eventually want to make my added files apart of the unicorn library
 gcc EmulateUart.c emulatorConfig.c toml.c tester.c -lunicorn -lpthread

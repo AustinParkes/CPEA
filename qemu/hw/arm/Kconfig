@@ -519,3 +519,6 @@ config ARMSSE_CPUID
 
 config ARMSSE_MHU
     bool
+    
+config CPEA_GENERIC
+    bool 

@@ -1618,7 +1618,7 @@ static MachineClass *select_machine(void)
     if (optarg) {
         machine_class = machine_parse(optarg, machines);
     }
-
+    
     if (!machine_class) {
         error_report("No machine specified, and there is no default");
         error_printf("Use -machine help to list supported machines\n");
@@ -2553,6 +2553,7 @@ void qmp_x_exit_preconfig(Error **errp)
     }
 }
 
+// 1st function called from main.c: main()
 void qemu_init(int argc, char **argv, char **envp)
 {
     QemuOpts *opts;
@@ -3128,7 +3129,7 @@ void qemu_init(int argc, char **argv, char **envp)
             case QEMU_OPTION_enable_kvm:
                 olist = qemu_find_opts("machine");
                 qemu_opts_parse_noisily(olist, "accel=kvm", false);
-                break;
+                break;                
             case QEMU_OPTION_M:
             case QEMU_OPTION_machine:
                 olist = qemu_find_opts("machine");

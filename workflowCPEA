@@ -160,7 +160,7 @@ Testing Emulator with Real Firmware
                    Would we need to create binary from dynamically linked?
 
 /* Building QEMU on Ubuntu 20.04 */
-1) [ ] Installations to build 
+1) [x] Installations to build 
             sudo apt-get install libnfs-dev libiscsi-dev from QEMU's build page
             sudo apt-get install libglib2.0-dev
             sudo apt-get install libpixman-1-dev
@@ -178,7 +178,7 @@ Testing Emulator with Real Firmware
        4) [x] Need to figure out how to include my own files into the build.
        5) SEE 4.2) for adding own files. 
 
-4) [ ] Executing 'qemu-arm-softmmu'                        
+4) [p] Executing 'qemu-arm-softmmu'                        
        1) [p] Need to understand QEMU codebase to know where to make modifications.
               1) main.c: main() is located here.
                     - Calls 'qemu_init', 'qemu_main_loop', and 'qemu_cleanup'
@@ -203,7 +203,6 @@ Testing Emulator with Real Firmware
                         
               3) Need to write specifications for this machine in "cpea_init()"
                    -> Need memory map for flash, mmio, etc.
-                   -> Need to add a CPU with "cpu_create" // TODO: DONT DO THIS.
                    -> Need to set up NVIC to accompany CPU creation.
               
               
@@ -269,6 +268,26 @@ Testing Emulator with Real Firmware
     arm_cpu_instance_init -> (few more init funcs) -> DEVICE (qdev_realize arg) -> qdev_realize -> object_property_set_bool (ret by qdev_Realize) -> object_property_set_qobject ->
     many object.c functions (guessing it's trying to determine child objects) -> device_set_realized -> arm_cpu_realizefn -> 
        RETURNS false and causes exit. Ultimately, the error occurs in arm_cpu_realizefn @ "target/arm/cpu.c": 1337 due to lack of NVIC.
+
+
+5) [ ] Integrating CPEA into QEMU
+       [p] 1) Get all the source/headers files that need to be compiled alongside QEMU. Place them in "CPEA/qemu/cpea."
+              Header files can go into "qemu/include/cpea"             
+              [x] - emulatorConfig.c
+              [x] - emulatorConfig.h
+              [ ] - toml.c
+              [ ] - toml.h
+              [p] - Emulate.c (This code may be split across "CPEA/qemu/hw/arm/cpea.c" and "CPEA/qemu/cpea/<filename>")
+                              (Added to "CPEA/qemu/cpea") in meantime
+                                
+       [x] 2) Gather all config/setup files and place in root directory ("../CPEA/")
+                - emulatorConfig.toml
+                - emulatorSetup.py
+                
+       [ ] 3) Provide modifications to QEMU and CPEA source/header files to integrate CPEA into QEMU.           
+              (Going in execution order of our Unicorn version)
+              [ ] TOML parsing          
+                
 
 /* Getting executable binary from a proper ELF */  
 arm-none-eabi-objcopy -O binary <elf> <bin>

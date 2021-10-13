@@ -13,7 +13,6 @@ gcc -g Emulate.c emulatorConfig.c toml.c tester.c -lunicorn -lpthread
 static MMIO_handle* findMod();  // Find peripheral module accessed in callback. 
 static void read_mem();			// Callback gdeclaration.
 static void readBinFile();		// Read data from binary file
-
 int main(int argc, char **argv, char **envp)
 {
 	/* Unicorn Initialization */
@@ -298,7 +297,53 @@ void write_MMIO(uc_engine *uc, uc_mem_type type,
 
 }
 
+// Read binary data from a file for fsize bytes
+static void readBinFile(FILE *f, char **fdata, int *fsize){
 
+	char *data;								// File Data
+	int size;								// Size of file.
+	
+	// Get size of file and data buffer	
+	fseek(f, 0L, SEEK_END);  				// Seek to end of file
+	size = ftell(f);    	    			// Get size (in bytes) of code from file
+	fseek(f, 0L, SEEK_SET); 				// Reset to start of file
+	// Freed in flash_init()
+	data = (char *)malloc(1*size);			// Data to be stored. Freed after committing to emulator memory.
+	
+	// Save size and data buffer outside of function 
+	*fsize = size;
+	*fdata = data;
+	
+	// Read byte at a time from binary file
+    while (fread(data, 1, size, f) == 1);
+
+	fclose(f);		
+
+}
+
+static MMIO_handle* findMod(uint64_t address, MMIO_handle** periph){
+
+	int mod_i;		// Index for peripheral module
+	MMIO_handle *periphx = *periph;
+	
+    // Determine which MMIO module the accessed address belongs to.     
+    for (mod_i=0; mod_i < mod_count; mod_i++){
+    
+    	if (!MMIO[mod_i]){
+    		printf("Error accessing MMIO%d in pre_read_MMIO callback", mod_i);	
+    		exit(1);
+    	} 
+    	 	
+    	// Get the correct peripheral module. (Does accessed addr match this module?)	 		
+		if (address >= MMIO[mod_i]->minAddr && address <= MMIO[mod_i]->maxAddr){
+			periphx = MMIO[mod_i];
+    		break;
+    	}    		
+    }
+
+	return periphx;
+
+}
 
 // Callback for entering Exception Handlers
 void enter_intr(uc_engine *uc, uint32_t intno, void *user_data){
@@ -678,53 +723,7 @@ void write_SCS(uc_engine *uc, uc_mem_type type,
 } 
 
 
-// Read binary data from a file for fsize bytes
-static void readBinFile(FILE *f, char **fdata, int *fsize){
 
-	char *data;								// File Data
-	int size;								// Size of file.
-	
-	// Get size of file and data buffer	
-	fseek(f, 0L, SEEK_END);  				// Seek to end of file
-	size = ftell(f);    	    			// Get size (in bytes) of code from file
-	fseek(f, 0L, SEEK_SET); 				// Reset to start of file
-	// Freed in flash_init()
-	data = (char *)malloc(1*size);			// Data to be stored. Freed after committing to emulator memory.
-	
-	// Save size and data buffer outside of function 
-	*fsize = size;
-	*fdata = data;
-	
-	// Read byte at a time from binary file
-    while (fread(data, 1, size, f) == 1);
-
-	fclose(f);		
-
-}
-
-static MMIO_handle* findMod(uint64_t address, MMIO_handle** periph){
-
-	int mod_i;		// Index for peripheral module
-	MMIO_handle *periphx = *periph;
-	
-    // Determine which MMIO module the accessed address belongs to.     
-    for (mod_i=0; mod_i < mod_count; mod_i++){
-    
-    	if (!MMIO[mod_i]){
-    		printf("Error accessing MMIO%d in pre_read_MMIO callback", mod_i);	
-    		exit(1);
-    	} 
-    	 	
-    	// Get the correct peripheral module. (Does accessed addr match this module?)	 		
-		if (address >= MMIO[mod_i]->minAddr && address <= MMIO[mod_i]->maxAddr){
-			periphx = MMIO[mod_i];
-    		break;
-    	}    		
-    }
-
-	return periphx;
-
-}
 
 // Test code at particular execution addresses to read memory and debug
 static void read_mem(uc_engine *uc, uint64_t address, uint32_t size, void *user_data)

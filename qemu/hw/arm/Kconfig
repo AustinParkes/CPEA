@@ -520,5 +520,5 @@ config ARMSSE_CPUID
 config ARMSSE_MHU
     bool
     
-config CPEA_GENERIC
+config CPEA_ARM_GENERIC
     bool 

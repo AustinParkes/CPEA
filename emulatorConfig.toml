@@ -52,11 +52,11 @@ generic_count = 1
     [mmio.generic.0.flags]
     Generic_Flag1 = {reg = "SR1", bit = 4, val = 1, addr = "optional"}
     Generic_Flag2 = {reg = "SR1", bit = 3, val = 1, addr = 0x19f2}
-    Generic_Flag3 = {reg = "SR1", bit = 5, val = 1, addr = "optional"}
+    Generic_Flag3 = {reg = "SR1", bit = 5, val = 0, addr = "optional"}
     Generic_Flag4 = {reg = "SR1", bit = 6, val = 1, addr = "optional"}
-    Generic_Flag5 = {reg = "SR1", bit = 2, val = 1, addr = 0x1aec}
-    Generic_Flag6 = {reg = "reg", bit = 3, val = 0, addr = 0x1c5c}
-
+    Generic_Flag5 = {reg = "SR1", bit = 3, val = 1, addr = 0x1aec}
+    Generic_Flag6 = {reg = "SR1", bit = 3, val = 1, addr = 0x1a86}
+    Generic_Flag7 = {reg = "SR1", bit = 5, val = 1, addr = 0x1a9c}
 
 
 

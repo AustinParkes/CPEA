@@ -33,7 +33,7 @@
 #include <ctype.h>
 #include <string.h>
 #include <stdbool.h>
-#include "toml.h"
+#include "cpea/toml.h"
 
 
 static void* (*ppmalloc)(size_t) = malloc;

@@ -74,7 +74,7 @@ Testing Emulator with Real Firmware
               memory map, etc. 
 
 
-/* Todo list */
+/* Todo List NEEDS REVISED */
 [x] - Complete
 [p] - In Progress
 [s] - Skipping
@@ -90,7 +90,7 @@ Testing Emulator with Real Firmware
       4) [x] Figure out how to build QEMU.
       SEE "Building QEMU on Ubuntu 20.04" BELOW FOR MORE.
       
-      General Category (MUCH OF THIS IS DEPRECATED. It was once a checklist for Unicorn Implementation.)
+      General Category /* Old Unicorn Implementation: DEPRECATED */
       1) [p] Init SP/FP given ELF file (ARM ELF for Linux and barebones MCU) and Raw Binary
                 - Need to test with an actual extracted Raw Binary.
       2) [x] Map in entire memory region for Cortex-M devices (so it doesn't need to be automated from ELF. Reduces complexity)
@@ -159,7 +159,11 @@ Testing Emulator with Real Firmware
       3) [CURIOUS] In what context are dynamically linked ELFs used? Currently, we only create binary from statically linked.
                    Would we need to create binary from dynamically linked?
 
-/* Building QEMU on Ubuntu 20.04 and Integrating CPEA into QEMU */
+/*****************
+    QEMU World
+******************/
+
+/* Building QEMU on Ubuntu 20.04 */
 1) [x] Installations to build 
             sudo apt-get install libnfs-dev libiscsi-dev from QEMU's build page
             sudo apt-get install libglib2.0-dev
@@ -178,6 +182,7 @@ Testing Emulator with Real Firmware
        4) [x] Need to figure out how to include my own files into the build.
        5) SEE 4.2) for adding own files. 
 
+/* Getting qemu to execute code */
 4) [p] Executing 'qemu-arm-softmmu'  
        NOTE: Would repeat 4.2 to create machine for other architectures.                              
        1) [p] Need to understand QEMU codebase to know where to make modifications.
@@ -197,14 +202,15 @@ Testing Emulator with Real Firmware
                    -> Added "arm_ss.add(when: 'CONFIG_CPEA_ARM_GENERIC', if_true: files('cpea.c'))" to 'hw/arm/meson.build' so our Machine file is built.
                    -> init machine in 'hw/arm/cpea.c' using machine API from 'include/hw/boards.h'
                      
-              [p] 2) Machine Initializations (Might actually be done with this)
-                   1) Default Machine. (Don't need to specify a machine option (-M) )
-                   2) ARM Cortex-M4.   (Don't need to specify a CPU option (-cpu) )
-                   3) RAM to .5GiB.    (Don't need to specify a memory option (-m) )  
+              [x] 2) Machine Initializations (Might actually be done with this)
+                     SEE 6) for this.
+                     1) Default Machine. (Don't need to specify a machine option (-M) )
+                     2) ARM Cortex-M4.   (Don't need to specify a CPU option (-cpu) )
+                     3) RAM to .5GiB.    (Don't need to specify a memory option (-m) )  
                                             
               [p] 3) Need to write specifications for this machine in "cpea_init()"
-                   -> Need memory map for flash, mmio, etc.
-                   -> Need to set up NVIC to accompany CPU creation.
+                     -> Need memory map for flash, mmio, etc.
+                     -> Need to set up NVIC to accompany CPU creation.
        
        3) [p] Execute a FW meant for Cortex-m4
               0) Running commands (for ref)
@@ -225,8 +231,7 @@ Testing Emulator with Real Firmware
                                   "info qtree" more detailed qom tree
               
        4) [p] Understanding QOM, Qdev, SysBus, ARMV7M, ARMCPU, MemoryRegionOps APIs for making our machine.
-              0.1) Where to find ARM class definitions
-              
+              0.1) Where to find ARM class definitions             
                  ARMv7MState: struct that contains ARMCPU and other info for Cortex-M CPUs (Since ARMv7M is for cortex-m)
                          @ "include/hw/arm/armv7m.h": 53
                          
@@ -258,6 +263,12 @@ Testing Emulator with Real Firmware
                  MemoryRegionOps: Allows modification of callback parameters so callbacks are issued in ways you'd want them. 
                          @ "include/exec/memory.h": 167
                    
+              0.4) Where to find Machine API
+                 MachineClass:
+                         @ "include/hw/boards.h": 158
+                         
+                 MachineState:
+                         @ "include/hw/boards.h": 254          
                                                         
               1) Code fails somewhere in cpu_create()
                  [x] How does cpu_create() make cpu?
@@ -289,7 +300,7 @@ Following GDB
     many object.c functions (guessing it's trying to determine child objects) -> device_set_realized -> arm_cpu_realizefn -> 
        RETURNS false and causes exit. Ultimately, the error occurs in arm_cpu_realizefn @ "target/arm/cpu.c": 1337 due to lack of NVIC.
 
-
+/* Integrating CPEA code into QEMU */
 5) [p] Integrating CPEA into QEMU
        [p] 1) Get all the source/headers files that need to be compiled alongside QEMU. Place them in "CPEA/qemu/cpea."
               Header files can go into "qemu/include/cpea"             
@@ -306,14 +317,29 @@ Following GDB
                    
        3) [p] Provide modifications to QEMU and CPEA source/header files to integrate CPEA into QEMU.           
               (Going in execution order of our Unicorn version)
-
+      
               1) [x] TOML parsing in emulatorConfig.c: "emuConfig()" 
                      -> Placed 'emuConfig()' after cpea.c: "armv7m_load_kernel()"
                      
-              2) [p] mmioConfigurations in emulatorConfig.c: "mmioConfig()"       
-                     -> Need to change uc_mem_write to qemu equivalent: cpu_physical_mem_write() 
-                        (DOESN'T INCLUDE WRAPPER CODE AROUND THE FUNCTION TO CHECK FOR ERRORS) 
-                     1) [p] Find replacement for uc_mem_write()
+              2) [x] Ensure added files from 5.1) are built alongside QEMU. 
+                     See "4.2.1)" to see how to add files to a machine. 
+                     -> Added "subdir('cpea')" at "qemu/meson.build": 1870 to include "qemu/cpea" directory
+                     -> Added Kconfig in "qemu/cpea" to build cpea files
+                     -> Added "meson.build" file to "qemu/cpea" which adds cpea source files to "softmmu_ss"
+                        Currently using "softmmu_ss" because qemu already defines instructions for how to compile code in 
+                        the sourceset. (in "qemu/meson.build") Could make our own sourceset, but would have to define instructions for compiling.
+                 
+                        1) [p] Would like to add a variable for CPEA to set Y/N that decides if cpea directory is built or not 
+                               Made it default to 'Y' in "qemu/cpea" Kconfig file 
+                     
+                     
+                            
+              3) [x] MMIO Configurations in emulatorConfig.c: "mmioConfig()"       
+                     -> Need to provide replacement for uc_mem_write(): See SOLUTION
+                        SOLUTION: We are storing SR values into variables instead of storing to memory. 
+                                  This way, we save host memory and can also issue callbacks. See just above.
+                                  
+                     1) [x] Find replacement for uc_mem_write()
                             - Can use "cpu_physical_memory_rw()":                            
                               "cpu_physical_memory_rw() -> address_space_rw() -> address_space_write() -> flatview_write() \
                                -> flatview_write_continue() -> memory_region_dispatch_write() -> access_with_adjusted_size() \
@@ -325,7 +351,7 @@ Following GDB
                             - The function "cpu_physical_memory_rw()" provokes the mmio callback functions, but fails to read back anything via
                               gdb or "cpu_physical_memory_rw(read)." Tried reading from mmio and from flash: Keeps reading back 0x0. 
                               
-                            [p] Find why "cpu_physical_memory_rw()" isn't writing/reading emulator memory.
+                            [x] Find why "cpu_physical_memory_rw()" isn't writing/reading emulator memory.
                                 To best knowledge, it will only store writes to a region IF that region is backed by host memory.
                                 MMIO is not backed by host memory. It only issues callbacks when r/w occur in it's guest memory range.
                                 Therefore, MMIO memory region's can't store data for us, we have to store it manually through variables. 
@@ -335,30 +361,102 @@ Following GDB
                                 2) [x] - Could use MMIO if we stored everything via variables. 
                                          (Lots of work to access correct variable in callbacks. However, not too difficult)
                                          Problem: No post_read for MMIO, only pre_read. (Does this matter?)
-                                   
-                                Question: Which option above is better? Is .5GB a problem?   
-                                                                  
-              3) [p] Place relevant Emulate.c code in cpea.c
-                     1) [p] Callbacks: Working on the read callback.
-                            Problems:
-                            1)
-                            2)
-                     
-                     
-                                 
+                                    
 
-       4) [x] Ensure added files from 5.1) are built alongside QEMU. 
-              See "4.2.1)" to see how to add files to a machine. 
-              -> Added "subdir('cpea')" at "qemu/meson.build": 1870 to include "qemu/cpea" directory
-              -> Added Kconfig in "qemu/cpea" to build cpea files
-              -> Added "meson.build" file to "qemu/cpea" which adds cpea source files to "softmmu_ss"
-                 Currently using "softmmu_ss" because qemu already defines instructions for how to compile code in 
-                 the sourceset. (in "qemu/meson.build") Could make our own sourceset, but would have to define instructions for compiling.
-                 
-              1) [p] Would like to add a variable for CPEA to set Y/N that decides if cpea directory is built or not 
-                     Made it default to 'Y' in "qemu/cpea" Kconfig file 
-                                           
-       5) [ ]             
+                                                                
+              4) [x] Get MMIO callbacks working.
+                 [p] Add on to callbacks.
+                     1) mmioRead(): 
+                        - Created armv7m object to read ARM core (R0-R15) at runtime. 
+                        - Modified SR Instances to work correctly. 
+                        - Other code integrated to support these.
+                        1) [] Fuzzing DRs
+                        
+                     2) mmioWrite():
+                        - Nothing really done yet. 
+                        1) [] Recording ascii writes in a log for their respective mmio address AND program address.   
+              
+              5) [] Get Interrupt Firing working
+                    1) Need to read NVIC to maintain list of enabled/disabled interrupts.
+                     
+
+/* Making ARM Machine more generic/configurable for any firmware */      
+6) [] Make ARM Cortex-M machine more generic. Probably should read up on Cortex-m features to be comprehensive.
+      Ref:
+      Our struct in 0.0)
+      See ~/school/thesis/p2im-master/qemu/src/qemu.git/hw/arm/stm32-mcus.c for how they configure machine.
+      
+      Ideas on setting up machine:
+      ~/school/thesis/p2im-master/qemu/src/qemu.git/hw/arm/cortexm-mcu.c
+      
+      
+      0.0) [p] Make struct in "include/hw/arm/cpea.h" to help contain all generic configs. 
+               -> Made high level struct "CP_config" encompassing Core and Memory.
+               
+      0.1) [] Extend these configs to TOML
+           
+      1) [] Make memory generic
+            - P2IM uses vmstate_register_ram_global() in addition to their mem init.
+            - P2IM inits bitband differently w/ cortexm_bitband_init(). Not sure if our "enable bitband" property works in place of this. 
+            - P2IM uses read-only RAM as its flash region
+                       
+            [p] Flash: Have only provided defaults. Need to make configurable in TOML.
+                [p] Base: Set to 0x0. Many other examples set to other addresses.
+                          Need to look into alias regions to see exactly how they work.
+                                                  
+                [p] Size: Chose a relatively large size. Can probably make this excessively large. 
+               
+            [p] SRAM: Have only provided defaults: Need to make configurable in TOML.
+                [p] Base: Set to 0x20000000 (Start of SRAM in cortex-m)
+                         HOWEVER, sram can start in flash region. Might want to reconsider a lower address.
+                        
+                [p] Size: Chose a relatively large size. Can probably make this excessively large as well.
+                          Note: Don't think this can exceed 32Mb, otherwise might overlap with bitbanding area.
+                           
+                [p] SRAM count: Option for multiple SRAMs. Default is 1 SRAM.
+                                By default, can we make 1 large SRAM region that engulfs any other regions that could exist?
+                                Or, do we need the option for multiple regions?
+                              
+             
+      2) [] Make Cortex-M CPU more configurable
+            Initialized default values for these. Have not implemented all.
+                                            
+            [p] CPU Model (e.g. cortex-m4)
+                Need to implement.
+                
+            [p] MPU (e.g. y/n)
+                Find where to implement this in QEMU machine creation.
+                
+            [p] ITM (e.g. y/n): What is this?
+                Find where to implement this in QEMU machine creation.
+                
+            [p] ETM (e.g. y/n): What is this?
+                Find where to implement this in QEMU machine creation.                 
+                For MPU, ITM, ETM: May be implemented already when defining our CPU type. Need to figure that out.
+                
+            [p] # IRQ: Must be a multiple of 32. (e.g. num_irq = (num_irq + 31) & (~31) ) <- gives next highest multiple of 32.
+                       What's the limit? Can we just max this out with no issues?
+                      
+            [p] NVIC bits: What's this?
+                Find where to implement.
+            
+      3) [] Other Board configs to make generic
+            Need to see more examples of additional configs
+            [] hsi freq
+            [] lsi freq      
+            [] bitband
+            [] fpu
+            
+      3) [x] Make MMIO configurable 
+             [] MMIO: Can configure MMIO addresses     
+
+
+
+Debugging
+break *0x934 at SVC
+break *0x988 at SVC exception return
+break *0x23ac at StartForkServer()
+break *0x23c8 at 2nd SVC call (SVC 0x3f). First was SVC 0x1
 
 /* Getting executable binary from a proper ELF */  
 arm-none-eabi-objcopy -O binary <elf> <bin>

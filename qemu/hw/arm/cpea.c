@@ -13,37 +13,14 @@
 #include "exec/address-spaces.h"
 #include "exec/memory.h"
 #include "cpea/emulatorConfig.h"
-
-// Address map for K64 32-bit mcu 
-#define FLASH_BASE 0
-#define FLASH_SIZE 0x1FFF0000
-
-#define SRAM_BASE 0x1FFF0000
-#define SRAM_SIZE 0x2000ffff
-
-#define MMIO_BASE 0x40000000
-#define MMIO_SIZE 0x20000000
-
-#define RAM1_BASE 0x60000000
-#define RAM1_SIZE 0x20000000
-
-#define RAM2_BASE 0x80000000
-#define RAM2_SIZE 0x20000000
-
-#define DEVICE1_BASE 0xA0000000
-#define DEVICE1_SIZE 0xBF000000
-
-#define DEVICE2_BASE 0xC0000000
-#define DEVICE2_SIZE 0x20000000
-
-#define SYSTEM_BASE 0xE0000000
-#define SYSTEM_SIZE 0x20000000 
+#include "hw/arm/cpea.h"
 
 #define SYSCLK_FRQ 120000000ULL
 
 static MMIO_handle *findMod(uint64_t, MMIO_handle**);  // Find peripheral module accessed in callback. 
 
 // Callback for writing to mmio region
+// Idea: Might be interesting on what sort of data is written to MMIO (especially DRs)
 static void mmio_write(void *opaque, hwaddr addr,
                       uint64_t val, unsigned size)
 {
@@ -74,9 +51,13 @@ static uint64_t mmio_read(void *opaque, hwaddr addr,
     periphx = findMod(reg_addr, &periphx);
     if (periphx == NULL)
         return -1;
+    /*
+    // Print the current state of the ARM core. (R15 is the most recent PC, not the current.)    
     for (int i=0; i < 16; i++){
         printf("Reg%d: 0x%x\n", i, armv7m->cpu->env.regs[i]);
     }
+    */
+    
     /*
         Register Handling
         Determine if we are accessing DR or SR: Handle accordingly. Otherwise return 0.
@@ -142,20 +123,24 @@ static uint64_t mmio_read(void *opaque, hwaddr addr,
 		        printf("PC_inst: 0x%x\n", PC);	  
 	            // Loop SR instances & look for match
 	            for (index = 0; index < inst_i; index++){
-	            
-	                // Check if SR instance matches PC address.  
-	                if (SR_INSTANCE[index]->PROG_ADDR == PC){ 
-	                    SR_temp = periphx->SR[addr_i];
+	                
+	                // HACK: We only have access to the previous PC. Check if SR instance is within a byte of PC. 
+	                if (SR_INSTANCE[index]->INST_ADDR >= PC && SR_INSTANCE[index]->INST_ADDR <= PC + 4){ 
+	                    //SR_temp = periphx->SR[addr_i];
 	                    SR_bit = SR_INSTANCE[index]->BIT;
 	                    SR_val = SR_INSTANCE[index]->VAL;
 	                    if (SR_val == 1)
-	                        SET_BIT(SR_temp, SR_bit);
+	                        SET_BIT(periphx->SR[addr_i], SR_bit);
+	                        //SET_BIT(SR_temp, SR_bit);
 	                    else
-	                        CLEAR_BIT(SR_temp, SR_bit);
-	                    printf("SR_inst: 0x%x\n", SR_temp);
-	                    // TODO: A single SR check may require more than 1 instance, might be a good idea to 
-	                    //       allow someone to apply multiple for a single access point. 
-	                    return SR_temp;    
+	                        CLEAR_BIT(periphx->SR[addr_i], SR_bit);
+	                        //CLEAR_BIT(SR_temp, SR_bit);
+	                        
+	                    printf("SR_inst: 0x%x\n", periphx->SR[addr_i]);    
+	                    //printf("SR_inst: 0x%x\n", SR_temp);
+	                    
+	                    return periphx->SR[addr_i];
+	                    //return SR_temp;    
 	                } 
 	            }
 	            
@@ -193,20 +178,86 @@ static void cpea_init(MachineState *machine)
     MemoryRegion *sram = g_new(MemoryRegion, 1);
     MemoryRegion *mmio = g_new(MemoryRegion, 1);
     MemoryRegion *system_memory = get_system_memory();
+           
+    uint32_t flash_base;
+    uint32_t flash_size;
+    uint32_t sram_base;
+    uint32_t sram_size;
+    uint32_t sram_base2;
+    uint32_t sram_size2;
+    uint32_t sram_base3;
+    uint32_t sram_size3;
     
-    // Init mem regions, and add them to system memory
-    memory_region_init_rom(flash, NULL, "flash", FLASH_SIZE,
+    // Default Core and Memory. These are (not yet) configurable in TOML.
+    // See workflow for further work on this.
+    CP_config config = {
+        .CP_core = {
+            .cpu_model = "cortex-m4",           
+            .has_mpu = true,    
+            .has_itm = true, 
+            .has_etm = true,
+            .num_irq = 57,      // Research what nIRQ we can get away with.
+            .nvic_bits = 4,     // Needa learn what this refers to
+        },
+        
+        // Want a mapping that works for most cases right? That probably needs research.
+        .CP_mem = {
+            .flash_base = 0x0,          // Probably fine. This is something that likely needs configured. 
+            .flash_size_kb = 32768,     // Chose a relatively large flash_size. Can almost certainly go bigger.
+            .sram_base = 0x1fff0000,    // Need a more universal default. I think it's probably possible to find one.
+            .sram_size_kb = 256,        // Can probably go bigger. Not beyond 32Mb
+            
+            // Do we need other srams? Or can we just make 1 large region by default. 
+            // Skip region if size is 0x0 (region doesn't exist)    
+            .sram_base2 = 0x0,  
+            .sram_size_kb2 = 0x0,
+            .sram_base3 = 0x0,
+            .sram_size_kb3 = 0,              
+        }   
+    };
+     
+    // TODO: pass CP_config to this.    
+    // Handle all TOML configurations                   
+    emuConfig();
+    
+    // Init mem regions, and add them to system memory  
+    
+    flash_base = config.CP_mem.flash_base;
+    flash_size = config.CP_mem.flash_size_kb * 1024;    
+    memory_region_init_rom(flash, NULL, "flash", flash_size,
                            &error_fatal);
                      
-    memory_region_add_subregion(system_memory, FLASH_BASE, flash);
+    memory_region_add_subregion(system_memory, flash_base, flash);
 
-    memory_region_init_ram(sram, NULL, "sram", SRAM_SIZE,
+    sram_base = config.CP_mem.sram_base;
+    sram_size = config.CP_mem.sram_size_kb * 1024; 
+    memory_region_init_ram(sram, NULL, "sram", sram_size,
                            &error_fatal);
                                                
-    memory_region_add_subregion(system_memory, SRAM_BASE, sram);                                                  
+    memory_region_add_subregion(system_memory, sram_base, sram);                                                  
+    
+    sram_base2 = config.CP_mem.sram_base2;
+    sram_size2 = config.CP_mem.sram_size_kb2 * 1024;     
+    if (sram_size2){
+        MemoryRegion *sram2 = g_new(MemoryRegion, 1);
+        memory_region_init_ram(sram2, NULL, "sram2", sram_size2,
+                               &error_fatal);
+                                               
+        memory_region_add_subregion(system_memory, sram_base2, sram2);
+    }
+    
+    sram_base3 = config.CP_mem.sram_base3;
+    sram_size3 = config.CP_mem.sram_size_kb3 * 1024;     
+    if (sram_size3){
+        MemoryRegion *sram3 = g_new(MemoryRegion, 1);
+        memory_region_init_ram(sram3, NULL, "sram3", sram_size3,
+                               &error_fatal);
+                                               
+        memory_region_add_subregion(system_memory, sram_base3, sram3);
+    }
     
     memory_region_init_io(mmio, NULL, &mmio_ops, (void *)armv7m, "mmio", 
-                          MMIO_SIZE);
+                          0x20000000);
     
     memory_region_add_subregion(system_memory, 0x40000000, mmio);                        
         
@@ -235,10 +286,8 @@ static void cpea_init(MachineState *machine)
     sysbus_realize_and_unref(SYS_BUS_DEVICE(cpu_dev), &error_fatal);
      
     armv7m_load_kernel(ARM_CPU(first_cpu), machine->kernel_filename,
-                       FLASH_SIZE);
-                    
-    // Parse TOML configurations                   
-    emuConfig();                     
+                       flash_size);
+                                       
 }
 
 /* 
@@ -278,8 +327,8 @@ static void cpea_machine_init(MachineClass *mc){
     mc->desc = "CPEA Generic Machine";
     mc->is_default = true;                  
     mc->init = cpea_init;
-    mc->default_cpu_type = ARM_CPU_TYPE_NAME("cortex-m4");
-    mc->default_ram_size = 0.5 * GiB;   
+    //mc->default_cpu_type = ARM_CPU_TYPE_NAME("cortex-m4");
+    //mc->default_ram_size = 0.5 * GiB;   
        
 }
 

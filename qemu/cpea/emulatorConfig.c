@@ -70,11 +70,12 @@ toml_table_t* parseTOML(toml_table_t* root_table){
     /*
     	Traverse to [mem_map] table
     */
+    /*
  	toml_table_t* mem_map = toml_table_in(root_table, "mem_map");
  	if (!mem_map){
  		error("missing [mem_map]", "", "");
  	} 
- 	
+ 	*/
     /*
     	TODO: May keep these incase user wants to optionally enter their memory map in.
     	Extract values from memory map
@@ -119,7 +120,7 @@ toml_table_t* parseTOML(toml_table_t* root_table){
 	// NOTE: This is used in individual peripheral config functions.
  	toml_table_t* mmio = toml_table_in(root_table, "mmio");
  	if (!mmio){
- 		error("missing [mem_map.mmio]", "", "");
+ 		error("missing [mmio]", "", "");
  	}
        
     /*
@@ -127,7 +128,7 @@ toml_table_t* parseTOML(toml_table_t* root_table){
     	Traverse to [firmware] table
     */
     
-	
+	/*
  	toml_table_t* firmware = toml_table_in(root_table, "firmware");
  	if (!firmware){
  		error("missing [firmware]", "", "");
@@ -137,7 +138,8 @@ toml_table_t* parseTOML(toml_table_t* root_table){
  	toml_table_t* code = toml_table_in(firmware, "code");
  	if (!code){
  		error("missing [firmware.code]", "", "");
- 	}  
+ 	} 
+ 	*/ 
  	 /*
  	// code address
     toml_datum_t code_addr = toml_int_in(code, "code_addr");
@@ -183,11 +185,12 @@ toml_table_t* parseTOML(toml_table_t* root_table){
     */     	
     
  	// Traverse to [firmware.execution]
+ 	/*
  	toml_table_t* execution = toml_table_in(firmware, "execution");
  	if (!execution){
  		error("missing [firmware.execution]", "", "");
  	}        	
-    	
+    */	
  	// entry point
  	/*
  	TODO: See if we need this for ELF files not specific to an MCU. 
@@ -650,7 +653,7 @@ int setFlags(toml_table_t* flag_tab, int mod_i){
     		        
     		        // Save SR instance		
     	            flag_addr = flag_int.u.i;
-    	            SR_INSTANCE[inst_i]->PROG_ADDR = flag_addr;
+    	            SR_INSTANCE[inst_i]->INST_ADDR = flag_addr;
     	            SR_INSTANCE[inst_i]->BIT = flag_bit;
     	            SR_INSTANCE[inst_i]->VAL = flag_val;
     	                	            

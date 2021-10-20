@@ -34,35 +34,6 @@ void fire_intr();       // Fires interrupt every 1,000 basic blocks (bbls)
 // Check kth bit in a register
 #define CHECK_BIT(reg, k)   (reg & (1<<k))
 
-/* Firmware */
-/*
-extern uint32_t CODE_ADDR;
-extern uint32_t DATA_ADDR;
-extern uint32_t START;             // Start addr of FW execution
-extern uint32_t END;               // End addr of FW execution
-*/
-
-/* ARM Core Registers */
-/*	
-extern uint32_t r_r0;          // r0
-extern uint32_t r_r1;          // r1
-extern uint32_t r_r2;          // r2 
-extern uint32_t r_r3;          // r3
-extern uint32_t r_r4;          // r4
-extern uint32_t r_r5;          // r5
-extern uint32_t r_r6;          // r6
-extern uint32_t r_r7;          // r7 
-extern uint32_t r_r8;          // r8
-extern uint32_t r_r9;          // r9
-extern uint32_t r_r10;         // r10
-extern uint32_t FP;            // r11  
-extern uint32_t r_r12;         // r12
-extern uint32_t SP;            // r13
-extern uint32_t LR;            // r14
-extern uint32_t PC;            // r15
-*/
-
-
 /* Interrupts */
 /*
 extern int INTR_EN;            // Interrupt firing enabled/disabled for emulator
@@ -91,7 +62,6 @@ enum periphID {uartID, gpioID, genericID};
 enum Status_Register {SR1, SR2, SR3, SR4, SR5, SR6, SR7, SR8};
 enum Data_Register {DR1, DR2};
 
-// TODO: Need to init these arrays because they contain garbage.
 // MMIO Structure for all peripherals. 
 typedef struct MMIO{
     // MMIO Metadata
@@ -117,11 +87,8 @@ typedef struct MMIO{
 	
 	// Instance flag to see if instance exists for this module. 
 	int SR_INST;
-
 	
 } MMIO_handle;
-
-// Create a global MMIO instance.
 extern MMIO_handle *MMIO[MAX_MMIO];      // Holds pointers to different instances of peripherals		
 
 
@@ -129,13 +96,11 @@ extern MMIO_handle *MMIO[MAX_MMIO];      // Holds pointers to different instance
 extern int inst_i;                         // Instance index, to keep track of current index when allocating.  
 typedef struct SR_INSTANCE{
 
-    uint32_t PROG_ADDR;                   // Program address SR is accessed at.
-    int BIT;                              // SR Bit location 
-    int VAL;                              // SR Bit value
+    uint32_t INST_ADDR;                   // Program address SR is accessed at.
+    int BIT;                              // SR Bit location   
+    int VAL;                              // SR Bit 0/1             //unsigned int VAL :1; TODO: Could make this binary.
     
 } INST_handle;
-
-// Create global SR_INSTANCE instance. 
 extern INST_handle *SR_INSTANCE[MAX_INST];
 
 

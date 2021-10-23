@@ -1,20 +1,36 @@
 # TODO
 # 1) Find better way to ignore keys than '0xFFFF' when user doesn't want to use the key.
-#
+# 2) Add a way to change the flag count. e.g. Generic_Flag1 -> Generic_Flagx
 
-# CPU Core configs
-[core]
+[config]
+[config.options]
+core = 1
+mem_map = 1
 
-# Memory map configs
-[mem_map]
+    [config.core]
+    cpu_model = "cortex-m4"
+    mpu = 1
+    itm = 1
+    etm = 1
+    num_irq = 57
+    nvic_bits = 4   
 
-
-# ARM mmio map 0x40000000 - 0x5fffffff
+    [config.mem_map]
+    flash_base = 0x0
+    flash_size = 0x1f40000
+    sram_base = 0x1fff0000
+    sram_size = 0x3e800
+    sram_base2 = 0x0
+    sram_size2 = 0x0
+    sram_base3 = 0x0
+    sram_size3 = 0x0
+    
 [mmio]
 [mmio.count]
-uart_count	= 0								
-gpio_count 	= 0
-generic_count = 1							
+uart_count = 0
+gpio_count = 0
+generic_count = 1					
+
 
     [mmio.generic]
     [mmio.generic.0]
@@ -30,12 +46,13 @@ generic_count = 1
     SR1_reset = 0x0
 
     [mmio.generic.0.flags]
-    Generic_Flag1 = {reg = "SR1", bit = 4, val = 1, addr = "optional"}
-    Generic_Flag2 = {reg = "SR1", bit = 3, val = 1, addr = 0x19f2}
-    Generic_Flag3 = {reg = "SR1", bit = 5, val = 0, addr = "optional"}
-    Generic_Flag4 = {reg = "SR1", bit = 6, val = 1, addr = "optional"}
-    Generic_Flag5 = {reg = "SR1", bit = 2, val = 1, addr = 0x1aec}
-    Generic_Flag6 = {reg = "SR1", bit = 3, val = 1, addr = 0x1a86}
-    Generic_Flag7 = {reg = "SR1", bit = 5, val = 1, addr = 0x1a9c}
+    Flag1 = {reg = "SR1", bit = 4, val = 1, addr = "optional"}
+    Flag2 = {reg = "SR1", bit = 3, val = 1, addr = 0x19f2}
+    Flag3 = {reg = "SR1", bit = 5, val = 0, addr = "optional"}
+    Flag4 = {reg = "SR1", bit = 6, val = 1, addr = "optional"}
+    Flag5 = {reg = "SR1", bit = 2, val = 1, addr = 0x1aec}
+    Flag6 = {reg = "SR1", bit = 3, val = 1, addr = 0x1a86}
+    Flag7 = {reg = "SR1", bit = 5, val = 1, addr = 0x1a9c}
+
 
 

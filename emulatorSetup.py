@@ -5,17 +5,16 @@ Things to add:
     - Argument parsing when running script.
         1) Elf File 
         2) Verbose Mode to print results
-	
-    - See if we ever need to calculate .text or .data size here since emulator currently handles that.
-	
-    - *** IMPORTANT *** Update exit addr to end of main, or find another suitable last instruction
-"""
+        3) Option to generate a TOML template from scratch, incase original template is messed up.
+           Preferably without overwriting original, so original isn't accidently overwritten.
+   
 
+"""
 import argparse
 import subprocess
 from tomlkit import parse
 from tomlkit import dumps
-from tomlkit import integer  
+from tomlkit import integer
 from tomlkit import comment
 from tomlkit import key
 from tomlkit import table
@@ -25,29 +24,102 @@ from tomlkit import ws
 from elftools.elf.elffile import ELFFile
 from elftools.elf.elffile import SymbolTableSection
 
-
 def generate_periph(config_file):
-	
-    p_flags = {'uart': {'f1': "TX_data_empty", 'f2': "RX_data_full", 'f3': "TX_Complete",
-                        'f4': "RX_enable_ack", 'f5': "TX_enable_ack"},
-               'gpio': {'f1': "Generic_Flag1", 'f2': "Generic_Flag2", 'f3': "Generic_Flag3"},
-               'generic': {'f1': "Generic_Flag1", 'f2': "Generic_Flag2", 'f3': "Generic_Flag3",
-                           'f4': "Generic_Flag4", 'f5': "Generic_Flag5", 'f6': "Generic_Flag6"}}
-                        
+
+	# TODO: Let someone configure number of flags they want.   
+    p_flags = {'f1': "Flag1", 'f2': "Flag2", 'f3': "Flag3",
+               'f4': "Flag4", 'f5': "Flag5", 'f6': "Flag6"}
+                           
     count = 0           # Number of modules we want to generate	
     num_exist = 0       # Number of modules that currently exist in TOML
     index = 0           # Index of modules
-		
+
     # Load entire TOML as a dictionary
     # Returns TOMLDocument/Dictionary
     config = parse(open(config_file).read())
-
+    
+    # TODO: Get this working
+    # Update emulator configurations
+    if config['config']['options']:
+    
+        options = ["core", "mem_map"]
+        
+        # Acceptable model names for ARM
+        arm_cpus = ["cortex-m4"]
+        
+        # Cycle options to generate the correct configurations
+        for option in options:
+        
+            # Remove config option
+            if config['config']['options'][option] == 0: 
+                if option in config['config']:
+                    config['config'].remove(option)            
+                        
+            
+            # Config option should exist
+            elif config['config']['options'][option] == 1:
+                if option not in config['config']:
+                
+                    # Determine the option we will generate
+                    if option == "core":                      
+                        config['config'].update({option: {'cpu_model': "cortex-m4",
+                                                        'mpu': 1,
+                                                        'itm': 1,
+                                                        'etm': 1,
+                                                        'num_irq': 57,
+                                                        'nvic_bits': 4}})
+                        config['config'][option].indent(4)
+                        
+                    elif option == "mem_map":                                         
+                        config['config'].update({option: {'flash_base': hex(0x0),
+                                                        'flash_size': hex(0x1F40000),
+                                                        'sram_base': hex(0x1fff0000),
+                                                        'sram_size': hex(0x3E800),
+                                                        'sram_base2': hex(0x0),
+                                                        'sram_size2': hex(0x0),
+                                                        'sram_base3': hex(0x0),
+                                                        'sram_size3': hex(0x0)}})
+                        config['config'][option].indent(4) 
+                
+                # Configs already exist. 
+                # TODO: Check that configs have correct boundaries. (e.g. mpu should be a boolean value, flash_base >0, etc)
+                else:
+                
+                    # Determine the option to check
+                    if option == "core":
+                    
+                        # Check all "core" config boundaries
+                        if config['config'][option]['cpu_model'] not in arm_cpus:
+                            print("Must use a supported CPU model. You used %s" % (config['config'][option]['cpu_model']))
+                            print("Type ")
+                            quit()
+                        #elif:       
+                        
+                    elif option == "mem_map":    
+                        print("mem")
+                          
+                                                                  
+            else:
+                print("ERROR: [config.options.%s] must be a boolean value (0 or 1)" % (option))         
+                quit()
+               
+    
+    # Update mmio table
     if config['mmio']:
-      
+        
         # Cycle Peripheral Counts
         for p_count in config['mmio']['count']:
-        
-            # Get count of peripherals to generate.
+           
+            # Get [periph] from [periph]_count
+            if p_count.endswith("_count"):
+                periph = p_count[:-6]    
+            
+            # Leave if peripheral naming convention wrong.
+            else:
+                print("ERROR: Naming convention for [mmio.count] keys must be [periph]_count")
+                print("       You have: %s" % (p_count))
+                quit()
+            
             count = config['mmio']['count'][p_count]
 
             # SKIP peripheral if invalid number
@@ -59,58 +131,58 @@ def generate_periph(config_file):
                 count = 16
                 config['mmio']['count'][p_count] = 16
                 print("No more than 16 modules allowed. Generating 16.")
-			
-            # Cycle Peripheral Table, looking for a match.	
-            for peri in p_flags:
-				
-                # Check for Peripheral Table Match w/ Peripheral Count.
-                if p_count == peri + "_count":
-					
-                    # Check if current peripheral already exists in TOML.				
-                    num_exist = check_existance(config, peri)
-										
-                    # Peripheral already exists at specified count, so don't update.	
-                    if count == num_exist:
-					
-                        # Check if we need to update register counts before we leave
-                        update_regs(config, peri, count)				
-                        break		
-				
-                    # Erase the excess peripheral modules
-                    elif count < num_exist:
-                        index = str(num_exist-1)
-                        while (count < num_exist):
-						
-                            # Erase peripheral
-                            if count == 0:
-                                config['mmio'].remove(peri)
-                                break
-							
-                            # Erase modules	
-                            else:	
-                                config['mmio'][peri].remove(index)
-                                index = str( int(index)-1 )
-                                num_exist = num_exist - 1
-								
-                        # Check if we need to update register counts before we leave		
-                        update_regs(config, peri, count)									
-                        break
-					
-                    # Generate more modules
-                    elif count > num_exist:			
-                        # Only indent first instance. Don't overwrite existing modules
-                        if num_exist == 0:
-                            config['mmio'][peri] = table()
-                            config['mmio'][peri].indent(4)
-					
-                        # Generate as many modules as 'count' specifies
-                        for i in range(num_exist, count):
-                            generate_module(config, peri, p_flags, i)
-							
-                        # Check if we need to update register counts before we leave
-                        update_regs(config, peri, count)
-						
 
+            # Check if current peripheral already exists in TOML.				
+            num_exist = check_existance(config, periph)
+										
+            # Peripheral already exists at specified count, so don't update.	
+            if count == num_exist:	
+                # Check if we need to update register counts before we leave
+                # TODO: Will also need to check if flag count has changed.
+                update_regs(config, periph, count)					
+				
+            # Erase the excess peripheral modules
+            elif count < num_exist:
+                diff = num_exist - count
+                print("Deleting %0d %s" % (diff, periph))	
+                                
+                index = str(num_exist-1)
+                while (count < num_exist):
+						
+                    # Erase peripheral
+                    if count == 0:
+                        config['mmio'].remove(periph)
+                        break
+							
+                    # Erase modules	
+                    else:	
+                        config['mmio'][periph].remove(index)
+                        index = str( int(index)-1 )
+                        num_exist = num_exist - 1
+								
+                # Check if we need to update register counts before we leave	
+                # TODO: Will need to check if flag count has changed	
+                update_regs(config, periph, count)									
+					
+            # Generate more modules TODO: Make this an else statement? idk why it's elif
+            elif count > num_exist:	
+                diff = count - num_exist
+                print("Adding %0d more %s" % (diff, periph))
+                	
+                # Only indent first instance. Don't overwrite existing modules
+                if num_exist == 0:
+                    config['mmio'][periph] = table()
+                    config['mmio'][periph].indent(4)
+					
+                # Generate as many modules as 'count' specifies
+                for i in range(num_exist, count):
+                    generate_module(config, periph, p_flags, i)
+							
+                # Check if we need to update register counts before we leave
+                update_regs(config, periph, count)
+						
+        # Check if any peripherals exist which are no longer under [mmio.count]
+        check_existance(config, 0)
 						
 		
     #print(config)
@@ -126,56 +198,80 @@ def generate_periph(config_file):
     with open(config_file, 'w') as f:
         f.write(parsed_config)
 
-def generate_module(config, peri, p_flags, i):
+def generate_module(config, periph, p_flags, i):
 
     mod_i = str(i)
     # Generate config table
-    config['mmio'][peri].update({mod_i: {'config': {'SR_count': 2, 'DR_count': 2}}})
+    config['mmio'][periph].update({mod_i: {'config': {'SR_count': 2, 'DR_count': 2}}})
     # TODO: Move the indentations to the end of this.
 						
-    config['mmio'][peri][mod_i].indent(4)
-    config['mmio'][peri][mod_i]['config'].indent(4)					
+    config['mmio'][periph][mod_i].indent(4)
+    config['mmio'][periph][mod_i]['config'].indent(4)					
 					
     # Generate addr table
-    config['mmio'][peri][mod_i].update({'addr': {'base_addr': hex(0), 'SR1_addr': hex(0), 
+    config['mmio'][periph][mod_i].update({'addr': {'base_addr': hex(0), 'SR1_addr': hex(0), 
 													'SR2_addr': hex(0), 'DR1_addr': hex(0), 'DR2_addr': hex(0)}})
 					
-    config['mmio'][peri][mod_i]['addr'].indent(4)					
+    config['mmio'][periph][mod_i]['addr'].indent(4)					
 									
     # Generate reset table
-    config['mmio'][peri][mod_i].update({'reset': {'SR1_reset': hex(0), 'SR2_reset': hex(0), 
+    config['mmio'][periph][mod_i].update({'reset': {'SR1_reset': hex(0), 'SR2_reset': hex(0), 
 													'DR1_reset': hex(0), 'DR2_reset': hex(0)}})
 					
-    config['mmio'][peri][mod_i]['reset'].indent(4)						
+    config['mmio'][periph][mod_i]['reset'].indent(4)						
 					
     # Generate flag table											   
-    config['mmio'][peri][mod_i].update({'flags': {}})
-    config['mmio'][peri][mod_i]['flags'].indent(4)
-    for flag in p_flags[peri].values():
-        config['mmio'][peri][mod_i]['flags'].add(flag, inline_table())
-        config['mmio'][peri][mod_i]['flags'][flag].append('reg', "reg")
-        config['mmio'][peri][mod_i]['flags'][flag].append('bit', 0)
-        config['mmio'][peri][mod_i]['flags'][flag].append('val', 1)
-        config['mmio'][peri][mod_i]['flags'][flag].append('addr', "optional")
+    config['mmio'][periph][mod_i].update({'flags': {}})
+    config['mmio'][periph][mod_i]['flags'].indent(4)
+
+    for flag in p_flags.values():
+        config['mmio'][periph][mod_i]['flags'].add(flag, inline_table())
+        config['mmio'][periph][mod_i]['flags'][flag].append('reg', "reg")
+        config['mmio'][periph][mod_i]['flags'][flag].append('bit', 0)
+        config['mmio'][periph][mod_i]['flags'][flag].append('val', 1)
+        config['mmio'][periph][mod_i]['flags'][flag].append('addr', "optional")
 
 
 # Check if peripheral already exists in TOML and how many.
-def check_existance(config, peri):
-    # Check if peripheral already exists in TOML. 
-    for existing in config['mmio']:
-        if existing == peri:					
-            # Get the number that exist already.
-            for exist_i in config['mmio'][existing]:
+def check_existance(config, periph):
+
+    # Check if arg is non-zero
+    if periph:
+    
+        # Check if peripheral already exists in TOML.    
+        if periph in config['mmio']:
+        				
+            #Get the number that exist already.
+            for exist_i in config['mmio'][periph]:
                 index = exist_i		
-            # Convert to integer. Get existing count from index.	
+	
             num_exist = int(index) + 1  
             return num_exist
-			
-    # If no match is made, periph doesn't exist.	
-    return 0	
+            
+        # If no match is made, periph doesn't exist.
+        else:
+            return 0
+    
+    # 0 provided: Check if [periph] exists when its [periph]_count does not exist    
+    else:  
+        del_list = []   # Keep list of existing peripherals to delete   	
+        for existing in config['mmio']:
+            if existing != "count":
+                p_count = existing + "_count"
+                
+                # Add the peripheral to deletion list if its [periph]_count missing
+                if p_count not in config['mmio']['count']:
+                    #print("Doesn't exist anymore: ", end = "")
+                    #print(existing)
+                    del_list.append(existing)
+        
+        # Delete periphs
+        for periph in del_list:
+            config['mmio'].remove(periph)                
+                
+                    
 
-
-def update_regs(config, peri, count):
+def update_regs(config, periph, count):
 	
     SR_count = 0	# Number of SR that we want to generate
     DR_count = 0	# Number of DR that we want to generate
@@ -187,11 +283,11 @@ def update_regs(config, peri, count):
     for i in range(count):
         mod_i = str(i)
 		
-        p_config = config['mmio'][peri][mod_i]['config']			
+        p_config = config['mmio'][periph][mod_i]['config']			
         SR_count = p_config['SR_count']
         DR_count = p_config['DR_count']
-        addr_tab = config['mmio'][peri][mod_i]['addr']
-        reset_tab = config['mmio'][peri][mod_i]['reset']	
+        addr_tab = config['mmio'][periph][mod_i]['addr']
+        reset_tab = config['mmio'][periph][mod_i]['reset']	
 		
         # Save the keys for re-ordering SR and DR.	
         addr_keys = list(zip(addr_tab.keys(), addr_tab.values()))
@@ -200,7 +296,7 @@ def update_regs(config, peri, count):
         SR_exist = 0
         DR_exist = 0
         # Cycle through register addresses, counting the SR and DR.
-        for addr_i in config['mmio'][peri][mod_i]['addr']:			
+        for addr_i in config['mmio'][periph][mod_i]['addr']:			
             # Detect SR or DR
             if "SR" in addr_i:
                 SR_exist = SR_exist + 1
@@ -334,9 +430,39 @@ def del_DR(p_config, addr_tab, reset_tab, DR_count, DR_exist):
         DR_exist = DR_exist - 1
     return		
 
-		
-# TODO: Add 2nd argument to include the TOML file to write to.
+# Remove unwanted quotations around hexadecimal values.
+def del_quotes(config):
+
+    # Re-write config
+    parsed_config = ""
+
+    # IMPORTANT: Add to this list anytime you want to keep quotations on a particular line.    
+    # Keep quotations on lines these keys appear on
+    keep_quotes = ["reg", "cpu_model"]
+    
+    # Re-write line by line
+    for line in config.splitlines():
+    	
+        # Delete quotes.
+        if all(key not in line for key in keep_quotes):
+            for ch in range(0, len(line)):
+                if (line[ch] != "\""):
+                    parsed_config = parsed_config + line[ch]
+					
+            # Add newline.		
+            parsed_config = parsed_config + "\n"
+			
+        # Re-write quotes ONLY if on same line as "reg."		
+        else:
+            parsed_config = parsed_config + line + "\n"
+	
+    return parsed_config
+    		
+
 # If using elf file, extract useful FW and Emulator information from elf file
+# TODO: Can use arm-none-eabi-objcopy -O binary <elf> <bin> instead for ARM ELFs.
+#       However, keeping this incase it's needed for other architectures
+#       or has other benefits.
 def extract_elf(elf):
 	# Get emulator and firmware configuration details
     """
@@ -437,28 +563,6 @@ def extract_elf(elf):
     f.write(bin_file)
     f.close
     quit()
-    
-    # TODO: Keep for editing later.
-    # Print Relevant Unicorn Information extracted from ELF
-    """
-    print("Memory Map")
-    print("   Start: " + hex(ExecVAddr))
-    print("   Size:  " + hex(emu_mem_size))
-    print("\nMemory Write Information")
-    print("   .text Addr: " + hex(TextAddr))
-    print("   .text Size: " + hex(TextSize))
-    print("   .data Addr: " + hex(DataAddr))
-    print("   .data Size: " + hex(DataSize))
-
-    # NOTE: Can use the function after main() as the stopping address
-    print("\nEmulator Begin and Until Addresses")
-    print("   Begin: " + hex(MainAddr))
-    print("   Until: " + hex(ExitAddr))
-
-    print("\nGenerated Binary Files for Unicorn:")
-    print("   " + TextBin)
-    print("   " + DataBin)
-    """
 	
     # Update toml dictionary with ELF data
 
@@ -515,34 +619,25 @@ def extract_elf(elf):
     #with open('emulatorConfig.toml', 'w') as f:
     #	f.write(parsed_config)
 
-# Remove unwanted quotations around hexadecimal values.
-def del_quotes(config):
-    # Re-write config
-    parsed_config = ""
-	
-    # Re-write line by line
-    for line in config.splitlines():	
-        # Don't re-write quotes.
-        if ("reg" not in line):
-            for ch in range(0, len(line)):
-                if (line[ch] != "\""):
-                    parsed_config = parsed_config + line[ch]
-					
-            # Add newline.		
-            parsed_config = parsed_config + "\n"
-			
-        # Re-write quotes ONLY if on same line as "reg."		
-        else:
-            parsed_config = parsed_config + line + "\n"
-	
-    return parsed_config
+def list_arch(x):
 
+    # Dict of supported architectures and cpus
+    cpu_archs = {'archs': {'arm': {'cpu1': "test_cpu", 
+                                   'cpu2': "cortex-m4"},
+                          'test_arch': {'cpu1': "test_cpu"}
+                          }}
 
+    
+    for arch in cpu_archs['archs']:
+        print(arch)
+        for cpu in cpu_archs['archs'][arch]:
+            print("  " + cpu_archs['archs'][arch][cpu])
+        
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Setup emulator and configuration file')
-    parser.add_argument('-g', '--gen-periph',
-                        help='Generate Peripheral Modules and Registers',
+    parser.add_argument('-g', '--gen-config',
+                        help='Generate peripheral & emulator configurations',
                         metavar='TOML_File',
                         dest='gen_periph')	
 	
@@ -550,12 +645,22 @@ if __name__ == "__main__":
                         help='Extract FW and emulator info from elf',
                         metavar='ELF_File',
                         dest='extract_elf')
+                        
+    parser.add_argument('-s', '--support',
+                        help='Show supported architectures and CPUs',
+                        action='store_true',                            # Hack to provide an argument
+                        dest='list_arch')                    
 																	
     args = parser.parse_args();
+
+    #print(args)
 
     if args.gen_periph:
         generate_periph(args.gen_periph)
 		
     elif args.extract_elf:
         extract_elf(args.extract_elf)
+        
+    elif args.list_arch:
+        list_arch(args.list_arch)    
         

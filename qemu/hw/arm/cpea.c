@@ -34,7 +34,7 @@ static uint64_t mmio_read(void *opaque, hwaddr addr,
 {
     ARMv7MState *armv7m;            // Holds CPU state
     uint32_t PC;                    // program counter
-	uint32_t SR_temp;               // Temporary SR holding register
+	//uint32_t SR_temp;               // Temporary SR holding register
 	int SR_bit;                     // SR bit location to write to (0-31)
 	int SR_val;                     // Hold SR bit value (1 or 0)
 	int addr_i;                     // Index registers' addresses
@@ -51,41 +51,12 @@ static uint64_t mmio_read(void *opaque, hwaddr addr,
     periphx = findMod(reg_addr, &periphx);
     if (periphx == NULL)
         return -1;
+        
     /*
     // Print the current state of the ARM core. (R15 is the most recent PC, not the current.)    
     for (int i=0; i < 16; i++){
         printf("Reg%d: 0x%x\n", i, armv7m->cpu->env.regs[i]);
     }
-    */
-    
-    /*
-        Register Handling
-        Determine if we are accessing DR or SR: Handle accordingly. Otherwise return 0.
-        
-        SR: Determine if there is an instance or not and act accordingly
-        DR: Return 0 for now. Ideally, would fuzz in future.
-        CR: Return 0 because CRs are ignored.
-        
-    */
-
-    /*
-    
-        TODO:
-        Logic:
-        1) [x] Find the correct register being accessed by searching register addresses and matching with access address.
-        2) [x] Determine if SR or DR access to know which to handle. (CRs ignored)
-        3) [x] Return appropriate value.
-        
-        API:
-        1) [p] Find a replacement for uc_reg_read() to read off PC.
-               - See Problems 2)
-               
-        Problems:
-        1) This callback seems to be issued when an MMIO address is loaded, but not exactly when it is accessed.
-           (e.g.) ldr r3, 0x40064006 will issue callback, but 
-                  ldr r3, [0x40064006] does not. 
-                  
-                  
     */
     
     // Find register being accessed and handle according to type (DR or SR)
@@ -192,7 +163,7 @@ static void cpea_init(MachineState *machine)
     // See workflow for further work on this.
     CP_config config = {
         .CP_core = {
-            .cpu_model = "cortex-m4",           
+            .cpu_model = "cortex-m4",   // TODO: Need to make this variable hold more characters to be able to change the string contents.            
             .has_mpu = true,    
             .has_itm = true, 
             .has_etm = true,
@@ -203,41 +174,40 @@ static void cpea_init(MachineState *machine)
         // Want a mapping that works for most cases right? That probably needs research.
         .CP_mem = {
             .flash_base = 0x0,          // Probably fine. This is something that likely needs configured. 
-            .flash_size_kb = 32768,     // Chose a relatively large flash_size. Can almost certainly go bigger.
+            .flash_size = 32768000,     // Chose a relatively large flash_size. Can almost certainly go bigger.
             .sram_base = 0x1fff0000,    // Need a more universal default. I think it's probably possible to find one.
-            .sram_size_kb = 256,        // Can probably go bigger. Not beyond 32Mb
+            .sram_size = 256000,        // Can probably go bigger. Not beyond 32Mb
             
             // Do we need other srams? Or can we just make 1 large region by default. 
             // Skip region if size is 0x0 (region doesn't exist)    
             .sram_base2 = 0x0,  
-            .sram_size_kb2 = 0x0,
+            .sram_size2 = 0x0,
             .sram_base3 = 0x0,
-            .sram_size_kb3 = 0,              
+            .sram_size3 = 0x0,              
         }   
     };
-     
-    // TODO: pass CP_config to this.    
-    // Handle all TOML configurations                   
-    emuConfig();
+         
+    // Handle all TOML configurations, possibly modifing default configs.                   
+    config = emuConfig(config);
     
     // Init mem regions, and add them to system memory  
     
     flash_base = config.CP_mem.flash_base;
-    flash_size = config.CP_mem.flash_size_kb * 1024;    
+    flash_size = config.CP_mem.flash_size;    
     memory_region_init_rom(flash, NULL, "flash", flash_size,
                            &error_fatal);
                      
     memory_region_add_subregion(system_memory, flash_base, flash);
 
     sram_base = config.CP_mem.sram_base;
-    sram_size = config.CP_mem.sram_size_kb * 1024; 
+    sram_size = config.CP_mem.sram_size; 
     memory_region_init_ram(sram, NULL, "sram", sram_size,
                            &error_fatal);
                                                
     memory_region_add_subregion(system_memory, sram_base, sram);                                                  
     
     sram_base2 = config.CP_mem.sram_base2;
-    sram_size2 = config.CP_mem.sram_size_kb2 * 1024;     
+    sram_size2 = config.CP_mem.sram_size;     
     if (sram_size2){
         MemoryRegion *sram2 = g_new(MemoryRegion, 1);
         memory_region_init_ram(sram2, NULL, "sram2", sram_size2,
@@ -247,7 +217,7 @@ static void cpea_init(MachineState *machine)
     }
     
     sram_base3 = config.CP_mem.sram_base3;
-    sram_size3 = config.CP_mem.sram_size_kb3 * 1024;     
+    sram_size3 = config.CP_mem.sram_size;     
     if (sram_size3){
         MemoryRegion *sram3 = g_new(MemoryRegion, 1);
         memory_region_init_ram(sram3, NULL, "sram3", sram_size3,
@@ -335,23 +305,3 @@ static void cpea_machine_init(MachineClass *mc){
 // Macro defined in 'include/hw/boards.h.' 
 // Generates TypeInfo for our Machine object, initializes a MachineClass object for us, and registers this type. 
 DEFINE_MACHINE("cpea", cpea_machine_init); 
-
-/*
-static void cpea_machine_init_class_init(ObjectClass *oc, void *data)
-{
-    MachineClass *mc = MACHINE_CLASS(oc);
-    cpea_machine_init(mc);
-}
-
-static const TypeInfo cpea_machine_init_typeinfo = {
-    .name       = MACHINE_TYPE_NAME("cpea")
-    .parent     = TYPE_MACHINE,
-    .class_init = cpea_machine_init_class_init,
-};
-
-static void cpea_machine_init_register_types(void)
-{
-    type_register_static(&cpea_machine_init_typeinfo);
-}
-type_init(cpea_machine_init_register_types)
-*/

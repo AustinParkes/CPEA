@@ -1,7 +1,7 @@
 /*
  * Cortex-M MCU emulation.
  *
- * Modifed by Austin Parkes
+ * Modifed by Austin Parkes.
  *
  * Copyright (c) 2015 Liviu Ionescu.
  *
@@ -57,7 +57,7 @@ typedef enum {
 typedef struct {
 
     /* The cpu_model naming convention is "cortex-m3-r1p2". */
-    const char *cpu_model;
+    char cpu_model[20];
 
     /* Values computed from cpu_model */
     cortexm_models_t model; /* binary value to easily identify the core */
@@ -86,17 +86,17 @@ typedef struct {
  */
 typedef struct {
     // Bo: change to support 3 sram + 1 flash w/ base + size
-    const uint32_t flash_base;
-    const uint32_t flash_size_kb; /* size of main program area, in KB */
+    uint32_t flash_base;
+    uint32_t flash_size; /* size of main program area */
     // Bo: in ascending order of sram_base
-    const uint32_t sram_base;
-    const uint32_t sram_size_kb; /* size of main RAM area, in KB */
-    const uint32_t sram_base2;
-    const uint32_t sram_size_kb2;
-    const uint32_t sram_base3;
-    const uint32_t sram_size_kb3;
+    uint32_t sram_base;
+    uint32_t sram_size; /* size of main RAM area */
+    uint32_t sram_base2;
+    uint32_t sram_size2;
+    uint32_t sram_base3;
+    uint32_t sram_size3;
 
-    const CortexMCoreCapabilities *core;
+    CortexMCoreCapabilities *core;
 
 } CortexMCapabilities;
 

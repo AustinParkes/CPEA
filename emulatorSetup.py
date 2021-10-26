@@ -7,7 +7,6 @@ Things to add:
         2) Verbose Mode to print results
         3) Option to generate a TOML template from scratch, incase original template is messed up.
            Preferably without overwriting original, so original isn't accidently overwritten.
-   
 
 """
 import argparse
@@ -38,7 +37,6 @@ def generate_periph(config_file):
     # Returns TOMLDocument/Dictionary
     config = parse(open(config_file).read())
     
-    # TODO: Get this working
     # Update emulator configurations
     if config['config']['options']:
     
@@ -81,8 +79,8 @@ def generate_periph(config_file):
                                                         'sram_size3': hex(0x0)}})
                         config['config'][option].indent(4) 
                 
-                # Configs already exist. 
-                # TODO: Check that configs have correct boundaries. (e.g. mpu should be a boolean value, flash_base >0, etc)
+                # Configs already exist. Check if entered values are allowed. 
+                # Boundaries may change over time. Just give general boundaries for now.
                 else:
                 
                     # Determine the option to check
@@ -90,13 +88,71 @@ def generate_periph(config_file):
                     
                         # Check all "core" config boundaries
                         if config['config'][option]['cpu_model'] not in arm_cpus:
-                            print("Must use a supported CPU model. You used %s" % (config['config'][option]['cpu_model']))
-                            print("Type ")
+                            print("ERROR: Must use a supported CPU model. You used %s" % (config['config'][option]['cpu_model']))
+                            print("Supported models can be seen with -s [--support] option")
                             quit()
-                        #elif:       
                         
+                        # Ideally, this never gets executed due to first check.    
+                        elif len(config['config'][option]['cpu_model']) > 19:
+                            print("ERROR: CPU string too long. Must be less than 20 characters.")
+                            quit()     
+                            
+                        elif config['config'][option]['mpu'] < 0 or config['config'][option]['mpu'] > 1:    
+                            print("ERROR: [config.%s.mpu] must be a boolean value (0 or 1)" % (option))
+                            quit()
+                            
+                        elif config['config'][option]['itm'] < 0 or config['config'][option]['itm'] > 1:    
+                            print("ERROR: [config.%s.itm] must be a boolean value (0 or 1)" % (option))
+                            quit() 
+                            
+                        elif config['config'][option]['etm'] < 0 or config['config'][option]['etm'] > 1:    
+                            print("ERROR: [config.%s.etm] must be a boolean value (0 or 1)" % (option))
+                            quit()
+                        
+                        # TODO: Find an upper limit for num_irq    
+                        elif config['config'][option]['num_irq'] < 0 or config['config'][option]['num_irq'] > 256:    
+                            print("ERROR: [config.%s.num_irq] must be in range [0, 256]" % (option))
+                            quit() 
+                            
+                        # TODO: Find limits for nvic_bits   
+                        elif config['config'][option]['nvic_bits'] < 0 or config['config'][option]['nvic_bits'] > 1000000:    
+                            print("ERROR: [config.%s.nvic_bits] must be in range [0, idk_yet]" % (option))
+                            quit()                                                                                          
+                    
+                    # TODO: Find more appropriate memory limits   
+                    # TODO: Make sure memory doesn't overlap? Maybe overlapping is allowed in QEMU ... not sure.  
                     elif option == "mem_map":    
-                        print("mem")
+                        if config['config'][option]['flash_base'] < 0 or config['config'][option]['flash_base'] > 0xffffffff:
+                            print("ERROR: [config.%s.flash_base] must be in range [0, 0xffffffff]" % (option))
+                            quit()
+                            
+                        elif config['config'][option]['flash_size'] < 0 or config['config'][option]['flash_size'] > 0x20000000:
+                            print("ERROR: [config.%s.flash_size] must be in range [0, 0x20000000]" % (option))
+                            quit()   
+                        
+                        elif config['config'][option]['sram_base'] < 0 or config['config'][option]['sram_base'] > 0xffffffff:
+                            print("ERROR: [config.%s.sram_base] must be in range [0, 0xffffffff]" % (option))
+                            quit()  
+                            
+                        elif config['config'][option]['sram_size'] < 0 or config['config'][option]['sram_size'] > 0xffffffff:
+                            print("ERROR: [config.%s.sram_size] must be in range [0, 0x0x20000000]" % (option))
+                            quit()
+                            
+                        elif config['config'][option]['sram_base2'] < 0 or config['config'][option]['sram_base2'] > 0xffffffff:
+                            print("ERROR: [config.%s.sram_base2] must be in range [0, 0xffffffff]" % (option))
+                            quit()  
+                            
+                        elif config['config'][option]['sram_size2'] < 0 or config['config'][option]['sram_size2'] > 0xffffffff:
+                            print("ERROR: [config.%s.sram_size2] must be in range [0, 0x0x20000000]" % (option))
+                            quit()     
+                            
+                        elif config['config'][option]['sram_base3'] < 0 or config['config'][option]['sram_base3'] > 0xffffffff:
+                            print("ERROR: [config.%s.sram_base] must be in range [0, 0xffffffff]" % (option))
+                            quit()  
+                            
+                        elif config['config'][option]['sram_size3'] < 0 or config['config'][option]['sram_size3'] > 0xffffffff:
+                            print("ERROR: [config.%s.sram_size] must be in range [0, 0x0x20000000]" % (option))
+                            quit()                                                                                                                                                        
                           
                                                                   
             else:

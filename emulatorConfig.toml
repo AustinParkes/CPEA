@@ -4,33 +4,14 @@
 
 [config]
 [config.options]
-core = 1
-mem_map = 1
+core = 0
+mem_map = 0
 
-    [config.core]
-    cpu_model = "cortex-m4"
-    mpu = 1
-    itm = 1
-    etm = 1
-    num_irq = 57
-    nvic_bits = 4   
-
-    [config.mem_map]
-    flash_base = 0x0
-    flash_size = 0x1f40000
-    sram_base = 0x1fff0000
-    sram_size = 0x3e800
-    sram_base2 = 0x0
-    sram_size2 = 0x0
-    sram_base3 = 0x0
-    sram_size3 = 0x0
-    
 [mmio]
 [mmio.count]
 uart_count = 0
 gpio_count = 0
 generic_count = 1					
-
 
     [mmio.generic]
     [mmio.generic.0]

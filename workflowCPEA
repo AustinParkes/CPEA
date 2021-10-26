@@ -393,7 +393,9 @@ Following GDB
       0.0) [p] Make struct in "include/hw/arm/cpea.h" to help contain all generic configs. 
                -> Made high level struct "CP_config" encompassing Core and Memory.
                
-      0.1) [] Extend these configs to TOML
+      0.1) [P] Extend these configs to TOML 
+               - Modifiable in TOML
+               [] Need to read it out in emulatorConfig
            
       1) [] Make memory generic
             - P2IM uses vmstate_register_ram_global() in addition to their mem init.

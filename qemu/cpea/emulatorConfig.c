@@ -12,6 +12,7 @@
 #include "exec/cpu-common.h"
 #include "cpea/emulatorConfig.h"
 #include "cpea/toml.h"
+#include "hw/arm/cpea.h"
 
 MMIO_handle *MMIO[MAX_MMIO];
 INST_handle *SR_INSTANCE[MAX_INST];
@@ -26,7 +27,7 @@ int DR_count;
 int inst_i=0;
 
 // Read peripheral configurations and commit them to memory
-void emuConfig(void){
+CP_config emuConfig(CP_config config){
  	
  	/***********************************
 		Parse Configuration File and Store configurations   
@@ -47,8 +48,8 @@ void emuConfig(void){
    	if (!root_table)
    		error("cannot parse emulatorConfig.toml - ", errbuf, "");
     
-    // Gather and Store firmware and memory map info    	
-    mmio = parseTOML(root_table);
+    // Gather and Store firmware and memory map info. Return 'mmio' and 'config' tables    	
+    mmio = parseTOML(root_table, &config);
     
     /***********************************
 		Peripheral Configurations   
@@ -60,157 +61,167 @@ void emuConfig(void){
     /*** Free Memory for config file ***/
     toml_free(root_table); 
       
-    printf("   - Complete\n\n");         
+    printf("   - Complete\n\n"); 
+    
+    return config;        
 }
 
 // Gather and Store configurations from TOML.
-toml_table_t* parseTOML(toml_table_t* root_table){
+toml_table_t* parseTOML(toml_table_t* root_table, CP_config *config){
 	
 	
     /*
-    	Traverse to [mem_map] table
+    	Traverse to [config] table
     */
-    /*
- 	toml_table_t* mem_map = toml_table_in(root_table, "mem_map");
- 	if (!mem_map){
- 		error("missing [mem_map]", "", "");
- 	} 
+    
+ 	toml_table_t* config_tab = toml_table_in(root_table, "config");
+ 	if (!config_tab){
+ 		error("missing [config]", "", "");
+ 	}  	
+ 	    
+ 	/*
+        Traverse to [config.options] table 	 	
  	*/
-    /*
-    	TODO: May keep these incase user wants to optionally enter their memory map in.
-    	Extract values from memory map
-    */
+ 	toml_table_t* opts_tab = toml_table_in(config_tab, "options");
+ 	if (!opts_tab){
+ 		error("missing [config.options]", "", "");
+ 	} 
+ 	
+ 	/*
+ 	    Check if core configs exist.
+ 	    Allowed values are checked in Python script.
+ 	*/
+ 	toml_table_t* core_tab = toml_table_in(config_tab, "core");
+ 	
+ 	// Handle core configs
+ 	// TODO: Check if core_tab or mem_map_tab if-blocks execute when core and mem_map don't exist in TOML
+ 	if (core_tab){
+
+        // cpu model  
+        toml_datum_t cpu_key = toml_string_in(core_tab, "cpu_model");
+        if (!cpu_key.ok){
+    	    error("Cannot read config.core.cpu_model. It should exist.", "", "");
+        }
+
+        // mpu
+        toml_datum_t mpu_key = toml_int_in(core_tab, "mpu");
+        if (!mpu_key.ok){
+    	    error("Cannot read config.core.mpu. It should exist.", "", "");
+        }
+        
+        // itm
+        toml_datum_t itm_key = toml_int_in(core_tab, "itm");
+        if (!itm_key.ok){
+    	    error("Cannot read config.core.itm. It should exist.", "", "");
+        }
+        
+        // etm
+        toml_datum_t etm_key = toml_int_in(core_tab, "etm");
+        if (!etm_key.ok){
+    	    error("Cannot read config.core.etm. It should exist.", "", "");
+        }
+        
+        // num_irq
+        toml_datum_t irq_key = toml_int_in(core_tab, "num_irq");
+        if (!irq_key.ok){
+    	    error("Cannot read config.core.num_irq. It should exist.", "", "");
+        }         
+        
+        // nvic_bits
+        toml_datum_t nvic_bits_key = toml_int_in(core_tab, "nvic_bits");
+        if (!nvic_bits_key.ok){
+    	    error("Cannot read config.core.nvic_bits. It should exist.", "", "");
+        }                               
+        
+        // Update new core configs, replacing old defaults. 
+        strcpy(config->CP_core.cpu_model, cpu_key.u.s);       
+        config->CP_core.has_mpu = mpu_key.u.i;
+        config->CP_core.has_itm = itm_key.u.i;
+        config->CP_core.has_etm = etm_key.u.i;
+        config->CP_core.num_irq = irq_key.u.i;
+        config->CP_core.nvic_bits = nvic_bits_key.u.i;
+       	
+       	// Need to free string associated with toml_datum_t structure.
+ 	    free(cpu_key.u.s);  	    
+ 	}
+ 	
+
+ 	
+ 	/*
+ 	    Check if core mem_map exists
+ 	*/
+    toml_table_t* mem_map_tab = toml_table_in(config_tab, "mem_map");
+    
+    // Handle mem_map configs
+    if (mem_map_tab){
+
+        // flash base
+        toml_datum_t flash_base_key = toml_int_in(mem_map_tab, "flash_base");
+        if (!flash_base_key.ok){
+    	    error("Cannot read config.mem_map.flash_base. It should exist.", "", "");
+        }
+        
+        // flash size
+        toml_datum_t flash_size_key = toml_int_in(mem_map_tab, "flash_size");
+        if (!flash_size_key.ok){
+    	    error("Cannot read config.mem_map.flash_size. It should exist.", "", "");
+        }        
+        
+        // sram base
+        toml_datum_t sram_base_key = toml_int_in(mem_map_tab, "sram_base");
+        if (!sram_base_key.ok){
+    	    error("Cannot read config.mem_map.sram_base. It should exist.", "", "");
+        }        
+        
+        // sram size
+        toml_datum_t sram_size_key = toml_int_in(mem_map_tab, "sram_size");
+        if (!sram_size_key.ok){
+    	    error("Cannot read config.mem_map.sram_size. It should exist.", "", "");
+        }        
+        
+        // sram base 2
+        toml_datum_t sram_base2_key = toml_int_in(mem_map_tab, "sram_base2");
+        if (!sram_base2_key.ok){
+    	    error("Cannot read config.mem_map.sram_base2. It should exist.", "", "");
+        }        
+        
+        // sram size 2
+        toml_datum_t sram_size2_key = toml_int_in(mem_map_tab, "sram_size2");
+        if (!sram_size2_key.ok){
+    	    error("Cannot read config.mem_map.sram_size2. It should exist.", "", "");
+        }        
+        
+        // sram base 3
+        toml_datum_t sram_base3_key = toml_int_in(mem_map_tab, "sram_base3");
+        if (!sram_base3_key.ok){
+    	    error("Cannot read config.mem_map.sram_base3. It should exist.", "", "");
+        }        
+        
+        // sram size 3
+        toml_datum_t sram_size3_key = toml_int_in(mem_map_tab, "sram_size3");
+        if (!sram_size3_key.ok){
+    	    error("Cannot read config.mem_map.sram_size3. It should exist.", "", "");
+        }        
+        
+        // Update new mem_map configs, replacing old defaults
+        config->CP_mem.flash_base = flash_base_key.u.i;
+        config->CP_mem.flash_size = flash_size_key.u.i;
+        config->CP_mem.sram_base = sram_base_key.u.i;
+        config->CP_mem.sram_size = sram_size_key.u.i;
+        config->CP_mem.sram_base2 = sram_base2_key.u.i;
+        config->CP_mem.sram_size2 = sram_size2_key.u.i;
+        config->CP_mem.sram_base3 = sram_base3_key.u.i;
+        config->CP_mem.sram_size3 = sram_size3_key.u.i;
+            
+    } 
     
     /*
-    // code addresses
-    toml_datum_t code_addr = toml_int_in(mem_map, "code_addr");
-    if (!code_addr.ok){
-    	error("Cannot read mem_map.code_addr", "");
-    }
-    CODE_ADDR = (uint32_t)code_addr.u.i;   // Get integer from union  
-    
-    // code size
-    toml_datum_t code_size = toml_int_in(mem_map, "code_size");
-    if (!code_size.ok){
-    	error("Cannot read mem_map.code_size", "");
-    }
-    CODE_SIZE = (uint32_t)code_size.u.i;     
-    
-    // SRAM addr
-    toml_datum_t sram_addr = toml_int_in(mem_map, "sram_addr");
-    if (!sram_addr.ok){
-    	error("Cannot read mem_map.sram_addr", "");
-    }
-    SRAM_ADDR = (uint32_t)sram_addr.u.i;   
-    
-    // SRAM size
-    toml_datum_t sram_size = toml_int_in(mem_map, "sram_size");
-    if (!sram_size.ok){
-    	error("Cannot read mem_map.sram_size", "");
-    }
-    SRAM_SIZE = (uint32_t)sram_size.u.i;    
+        Traverse to mmio table
     */
-    
-    /*
-    	Done reading general memory map information
-    	Store ptr to [mmio] table for peripheral configurations
-    */
-    
-	// mmio == mem_map.mmio
-	// NOTE: This is used in individual peripheral config functions.
  	toml_table_t* mmio = toml_table_in(root_table, "mmio");
  	if (!mmio){
  		error("missing [mmio]", "", "");
  	}
-       
-    /*
-    	Done reading mmio information
-    	Traverse to [firmware] table
-    */
-    
-	/*
- 	toml_table_t* firmware = toml_table_in(root_table, "firmware");
- 	if (!firmware){
- 		error("missing [firmware]", "", "");
- 	} 
- 	  
- 	// Traverse to [firmware.code]
- 	toml_table_t* code = toml_table_in(firmware, "code");
- 	if (!code){
- 		error("missing [firmware.code]", "", "");
- 	} 
- 	*/ 
- 	 /*
- 	// code address
-    toml_datum_t code_addr = toml_int_in(code, "code_addr");
-    if (!code_addr.ok){
-    	error("Cannot read code.code_addr", "", "");
-    }
-    CODE_ADDR = (uint32_t)code_addr.u.i; 
-    */
-    
-    // NOTE: code size currently determined by file size at the moment
-    /*
-    toml_datum_t code_size = toml_int_in(code, "code_size");
-    if (!code_size.ok){
-    	error("Cannot read code.code_size", "");
-    }
-    CODE_SIZE = (uint32_t)code_size.u.i; 
-    */ 
-    
-    /*	
- 	// Traverse to [firmware.data]
- 	toml_table_t* data = toml_table_in(firmware, "data");
- 	if (!code){
- 		error("missing [firmware.data]", "", "");
- 	}  
- 	*/
- 	   	
-    /*	
- 	// data address
-    toml_datum_t data_addr = toml_int_in(data, "data_addr");
-    if (!data_addr.ok){
-    	error("Cannot read data.data_addr", "", "");
-    }
-    DATA_ADDR = (uint32_t)data_addr.u.i; 
- 	*/
- 	
-    // NOTE: data size currently determined by file size at the moment
-    /*
-    toml_datum_t data_size = toml_int_in(data, "data_size");
-    if (!data_size.ok){
-    	error("Cannot read data.data_size", "");
-    }
-    DATA_SIZE = (uint32_t)data_size.u.i; 
-    */     	
-    
- 	// Traverse to [firmware.execution]
- 	/*
- 	toml_table_t* execution = toml_table_in(firmware, "execution");
- 	if (!execution){
- 		error("missing [firmware.execution]", "", "");
- 	}        	
-    */	
- 	// entry point
- 	/*
- 	TODO: See if we need this for ELF files not specific to an MCU. 
- 	      Currently, reading Reset Handler from Vector Table. 
-    toml_datum_t entry = toml_int_in(execution, "entry");
-    if (!entry.ok){
-    	error("Cannot read execution.entry", "");
-    }
-    START = (uint32_t)entry.u.i; 
-    */    
-    
-    //TODO: See if we need this for ELF files. We would need for ending at particular points. 
- 	// end of execution
- 	/*
-    toml_datum_t end = toml_int_in(execution, "end");
-    if (!end.ok){
-    	error("Cannot read execution.end", "", "");
-    }
-    END = (uint32_t)end.u.i;
-    */
     
     return mmio;
     
@@ -232,7 +243,8 @@ int mmioConfig(toml_table_t* mmio){
 	int pid;					// Iterable Peripheral Index
 	int p_total;				// Total number of possible peripherals
 	
-
+    // TODO: No longer maintaining list of acceptable peripherals in TOML. Need to 
+    //       get rid of the list here as well. 
 	const char periph_str[3][10] = {"uart", "gpio", "generic"};
 	p_total = sizeof(periph_str)/sizeof(periph_str[0]);
 
@@ -266,8 +278,7 @@ int mmioConfig(toml_table_t* mmio){
 		}
     	
     	mod_count = mod_count + (int)num_mods.u.i;	// Get total number of peripheral modules for this periph
-
- 		
+		
  		// Get peripheral ID for struct.
  		for (pid=0; pid<=p_total; pid++){
  			if (pid == p_total)
@@ -278,9 +289,8 @@ int mmioConfig(toml_table_t* mmio){
 			if (!strcmp(p_str, periph_count))
 				break;
 	
- 		}
- 		
- 		 // Get current peripheral string name
+ 		} 		
+ 		// Get current peripheral string name based on periphal ID above.
     	strcpy(p_str, periph_str[pid]);
     		
     	// Get current peripheral ptr

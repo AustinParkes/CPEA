@@ -1,12 +1,16 @@
+#ifndef emulatorConfig_H_
+#define emulatorConfig_H_
+
 #include <stdint.h>
 #include "cpea/toml.h"
+#include "hw/arm/cpea.h"
 
-void error(const char *, const char *, const char *);					// Prints Error Messages in parsing
-toml_table_t *parseTOML(toml_table_t *);		// Gather data from TOML file.
-void emuConfig(void);
-int mmioConfig(toml_table_t *);				// Configure peripheral emulation.
-int setFlags(toml_table_t *, int);					// Sets the configured status register values.
-void parseKeys(char *, const char *, toml_table_t *, const char *, int);				// Gathers key data and stores it.
+void error(const char *, const char *, const char *);   // Prints Error Messages in parsing
+toml_table_t *parseTOML(toml_table_t *, CP_config *);	// Gather data from TOML file.
+CP_config emuConfig(CP_config);
+int mmioConfig(toml_table_t *);				            // Configure peripheral emulation.
+int setFlags(toml_table_t *, int);					    // Sets the configured status register values.
+void parseKeys(char *, const char *, toml_table_t *, const char *, int);    // Gathers key data and stores it.
 void cp_mem_write(uint64_t, const void *, size_t);
 void cp_mem_read(uint64_t, void *, size_t);
 
@@ -103,4 +107,4 @@ typedef struct SR_INSTANCE{
 } INST_handle;
 extern INST_handle *SR_INSTANCE[MAX_INST];
 
-
+#endif /* emulatorConfig_H_ */

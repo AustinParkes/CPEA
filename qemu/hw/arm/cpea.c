@@ -142,8 +142,10 @@ static void cpea_init(MachineState *machine)
     DeviceState *cpu_dev;   // To create CPU device  
     //MachineClass *mc = MACHINE_GET_CLASS(machine);
     
-    cpu_dev = qdev_new(TYPE_ARMV7M);      // Create ARMv7m device
-    armv7m = ARMV7M(cpu_dev);             // To pass CPU state to callback     
+    
+    
+    cpu_dev = qdev_new(TYPE_ARMV7M);      // Create ARMv7m cpu device
+    armv7m = ARMV7M(cpu_dev);             // Get armv7m State: To pass CPU state to callback     
     
     MemoryRegion *flash = g_new(MemoryRegion, 1);
     MemoryRegion *sram = g_new(MemoryRegion, 1);
@@ -159,6 +161,8 @@ static void cpea_init(MachineState *machine)
     uint32_t sram_base3;
     uint32_t sram_size3;
     
+    char arm_cpu_model[30];
+    
     // Default Core and Memory. These are (not yet) configurable in TOML.
     // See workflow for further work on this.
     CP_config config = {
@@ -168,7 +172,7 @@ static void cpea_init(MachineState *machine)
             .has_itm = true, 
             .has_etm = true,
             .num_irq = 57,      // Research what nIRQ we can get away with.
-            .nvic_bits = 4,     // Needa learn what this refers to
+            .nvic_bits = 4,     // Needa learn what this refers to. Don't see much reference to it. 
         },
         
         // Want a mapping that works for most cases right? That probably needs research.
@@ -207,7 +211,7 @@ static void cpea_init(MachineState *machine)
     memory_region_add_subregion(system_memory, sram_base, sram);                                                  
     
     sram_base2 = config.CP_mem.sram_base2;
-    sram_size2 = config.CP_mem.sram_size;     
+    sram_size2 = config.CP_mem.sram_size2;     
     if (sram_size2){
         MemoryRegion *sram2 = g_new(MemoryRegion, 1);
         memory_region_init_ram(sram2, NULL, "sram2", sram_size2,
@@ -217,7 +221,7 @@ static void cpea_init(MachineState *machine)
     }
     
     sram_base3 = config.CP_mem.sram_base3;
-    sram_size3 = config.CP_mem.sram_size;     
+    sram_size3 = config.CP_mem.sram_size3;  
     if (sram_size3){
         MemoryRegion *sram3 = g_new(MemoryRegion, 1);
         memory_region_init_ram(sram3, NULL, "sram3", sram_size3,
@@ -244,9 +248,13 @@ static void cpea_init(MachineState *machine)
        Can add a configuration for this in the toml file.   
     */
     
+    strcpy(arm_cpu_model, config.CP_core.cpu_model);
+    strcat(arm_cpu_model, "-arm-cpu");              // Replaces ARM_CPU_TYPE_NAME(name) macro. 
     
-    qdev_prop_set_string(cpu_dev, "cpu-type", ARM_CPU_TYPE_NAME("cortex-m4"));
+    qdev_prop_set_string(cpu_dev, "cpu-type", arm_cpu_model);
     qdev_prop_set_bit(cpu_dev, "enable-bitband", true);
+    // Can we always just max this out? (num-irq here should just include external IRQs. However, NVICState::num_irq counts ALL exceptions. 480 max for # external intr. in armv7m)
+    qdev_prop_set_uint32(cpu_dev, "num-irq", 480);
     
     // Add system memory to device? So that it knows our memory make up?
     object_property_set_link(OBJECT(cpu_dev), "memory",

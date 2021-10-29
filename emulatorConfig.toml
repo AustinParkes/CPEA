@@ -34,6 +34,5 @@ generic_count = 1
     Flag5 = {reg = "SR1", bit = 2, val = 1, addr = 0x1aec}
     Flag6 = {reg = "SR1", bit = 3, val = 1, addr = 0x1a86}
     Flag7 = {reg = "SR1", bit = 5, val = 1, addr = 0x1a9c}
-
-
-
+    
+    

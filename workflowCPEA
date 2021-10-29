@@ -212,7 +212,7 @@ Testing Emulator with Real Firmware
                      -> Need memory map for flash, mmio, etc.
                      -> Need to set up NVIC to accompany CPU creation.
        
-       3) [p] Execute a FW meant for Cortex-m4
+       3) [p] Executing a FW meant for Cortex-m4
               0) Running commands (for ref)
                  ./qemu-system-arm -display none -s -S -monitor stdio -kernel firmware/test.bin
                  gdb --args ./qemu-system-arm --display none -s -kernel firmware/test.bin
@@ -232,45 +232,57 @@ Testing Emulator with Real Firmware
               
        4) [p] Understanding QOM, Qdev, SysBus, ARMV7M, ARMCPU, MemoryRegionOps APIs for making our machine.
               0.1) Where to find ARM class definitions             
-                 ARMv7MState: struct that contains ARMCPU and other info for Cortex-M CPUs (Since ARMv7M is for cortex-m)
-                         @ "include/hw/arm/armv7m.h": 53
+                 ARMv7MState: struct that contains ARMCPU and other info for cortex-m CPUs (Since ARMv7M is for  cortex-m)
+                              Properties for this device are also commented!
+                        @ "include/hw/arm/armv7m.h": 53
+     
                          
                  ARMCPUClass: Class struct. This file declares ARMCPU as instance struct, ARMCPUClass as class struct, and ARM_CPU as object name.
                               In short, ARM_CPU is declared as object via OBJECT_DECLARE_TYPE.
                               Provides the 3 standard typedef macros for the object.                                                         
-                         @ "target/arm/cpu-qom.h"
+                        @ "target/arm/cpu-qom.h"
                  
                  ARMCPU: Primary ARM struct to access ARM CPU. Contains CPUARMState via "env" variable. 
-                         @ "target/arm/cpu.h": 765
+                        @ "target/arm/cpu.h": 765
                          
                  CPUARMState (env): Contained in ARMCPU. Holds ARM state such as registers, nvic, etc. 
-                         @ "target/arm/cpu.h": 229
+                        @ "target/arm/cpu.h": 229
                  
                  TypeInfo/type_init: Let's QEMU know about the ARM_CPU type to initialize it. Contains init functions:                
                                        - arm_cpu_initfn, arm_cpu_finalizefn, arm_cpu_class_init
                                      which belong to the same file.                                    
                                      Also, arm_cpu_realizefn is set as realize function in arm_cpu_class_init. (Where our CPU check fails for Cortex-m4)                                      
-                         @ "target/arm/cpu.c": 2343                
+                        @ "target/arm/cpu.c": 2343                
               
               0.2) Where to find Qdev class/state definitions
                  DeviceClass: 
-                         @ "include/hw/qdev-core.h": 97
+                        @ "include/hw/qdev-core.h": 97
                  
                  DeviceState:
-                         @ "include/hw/qdev-core.h": 174 
+                        @ "include/hw/qdev-core.h": 174 
                                  
               0.3) Where to find Memory API for messing with MemoryRegions and such.
                  MemoryRegionOps: Allows modification of callback parameters so callbacks are issued in ways you'd want them. 
-                         @ "include/exec/memory.h": 167
+                        @ "include/exec/memory.h": 167
                    
               0.4) Where to find Machine API
                  MachineClass:
-                         @ "include/hw/boards.h": 158
+                        @ "include/hw/boards.h": 158
                          
                  MachineState:
-                         @ "include/hw/boards.h": 254          
+                        @ "include/hw/boards.h": 254   
+                              
+              0.5) Where to find device Properties
+                 Property API: API for defining & setting device properties.
+                        @ "~/school/thesis/CPEA/qemu/include/hw/qdev-properties.h"
+                   
+                 armv7m_properties: cpu_type, num_irq, etc
+                        @ "~/school/thesis/CPEA/qemu/hw/arm/armv7m.c": 254 
+                        
+                        
                                                         
-              1) Code fails somewhere in cpu_create()
+        5) Following code execution to find how it fails
+           1) Code fails somewhere in cpu_create()
                  [x] How does cpu_create() make cpu?
                       - Creates a new CPU object generically.
                       - Doesn't provide nvic based on the cpu-type we pass.
@@ -283,22 +295,22 @@ Testing Emulator with Real Firmware
                          - DO:   I noticed qdev_new() used to encapsulate an entire device e.g. ARMv7m, STM32 SOC, more??
                                  I'm guessing this is where NVIC can be encapsulated. 
                                                 
-See 4.1) for tracing execution below.                                                                  
-Following GDB
-    cpu_create -> object_new("cortex-m4") -> object_new_with_type -> object_initialize_with_type ->
-       break qom/object.c:510 <- Need this to continue past memset
-    -> many many many functions -> device_initfn -> object_init_with_type -> 
-       break cpu_common_initfn <- to skip to this function
-    cpu_common_initfn -> arm_cpu_initfn -> arm_cpu_instance_init -> (few more init funcs)
+            See 5.1) for tracing execution below.                                                                  
+            Following GDB
+            cpu_create -> object_new("cortex-m4") -> object_new_with_type -> object_initialize_with_type ->
+                break qom/object.c:510 <- Need this to continue past memset
+            -> many many many functions -> device_initfn -> object_init_with_type -> 
+                break cpu_common_initfn <- to skip to this function
+            -> cpu_common_initfn -> arm_cpu_initfn -> arm_cpu_instance_init -> (few more init funcs)
        
-    General Breakdown of execution
-    qemu_init -> qemu_init_subsystems -> module_call_init(MODULE_INIT_QOM) -> QTAILQ_FOREACH (loop that cycles "register_types" functions) -> cpea_machine_init_register_types -> 
-    select_machine -> arm_cpu_class_init (knows I'm using arm binary I guess?) -> cpea_machine_init_class_init -> cpea_machine_init -> qemu_create_machine -> cpea_init -> 
-    // this part could change, so placing it down here away from the stuff that won't change
-    cpu_create -> object_new -> many functions (setting up object system I'm guessing) -> device_initfc -> object_init_with_type -> cpu_common_initfn -> arm_cpu_initfn ->
-    arm_cpu_instance_init -> (few more init funcs) -> DEVICE (qdev_realize arg) -> qdev_realize -> object_property_set_bool (ret by qdev_Realize) -> object_property_set_qobject ->
-    many object.c functions (guessing it's trying to determine child objects) -> device_set_realized -> arm_cpu_realizefn -> 
-       RETURNS false and causes exit. Ultimately, the error occurs in arm_cpu_realizefn @ "target/arm/cpu.c": 1337 due to lack of NVIC.
+            General Breakdown of execution
+            qemu_init -> qemu_init_subsystems -> module_call_init(MODULE_INIT_QOM) -> QTAILQ_FOREACH (loop that cycles "register_types" functions) -> cpea_machine_init_register_types -> 
+            select_machine -> arm_cpu_class_init (knows I'm using arm binary I guess?) -> cpea_machine_init_class_init -> cpea_machine_init -> qemu_create_machine -> cpea_init -> 
+            // this part could change, so placing it down here away from the stuff that won't change
+            cpu_create -> object_new -> many functions (setting up object system I'm guessing) -> device_initfc -> object_init_with_type -> cpu_common_initfn -> arm_cpu_initfn ->
+            arm_cpu_instance_init -> (few more init funcs) -> DEVICE (qdev_realize arg) -> qdev_realize -> object_property_set_bool (ret by qdev_Realize) -> object_property_set_qobject ->
+            many object.c functions (guessing it's trying to determine child objects) -> device_set_realized -> arm_cpu_realizefn -> 
+                RETURNS false and causes exit. Ultimately, the error occurs in arm_cpu_realizefn @ "target/arm/cpu.c": 1337 due to lack of NVIC.
 
 /* Integrating CPEA code into QEMU */
 5) [p] Integrating CPEA into QEMU
@@ -377,11 +389,21 @@ Following GDB
                         1) [] Recording ascii writes in a log for their respective mmio address AND program address.   
               
               5) [] Get Interrupt Firing working
+                    /* Austin: Found this in armv7m_nvic and in an example. Discard this comment when we get it working.
+                     *         Can use whatever device exposes num_irq (our armv7m device should)
+                     *
+                     * Iterating through all exceptions should typically be done with
+                     * for (i = 1; i < s->num_irq; i++) to avoid the unused slot 0.
+                     *
+                     * See ~/school/thesis/CPEA/qemu/hw/intc/armv7m_nvic.c for IRQ counting.
+                    */              
+              
                     1) Need to read NVIC to maintain list of enabled/disabled interrupts.
-                     
+                    
 
 /* Making ARM Machine more generic/configurable for any firmware */      
-6) [] Make ARM Cortex-M machine more generic. Probably should read up on Cortex-m features to be comprehensive.
+6) [] Make ARM Cortex-M machine more configurable and automated. 
+      Probably should read up on Cortex-m features to be comprehensive.
       Ref:
       Our struct in 0.0)
       See ~/school/thesis/p2im-master/qemu/src/qemu.git/hw/arm/stm32-mcus.c for how they configure machine.
@@ -420,38 +442,73 @@ Following GDB
                                 Or, do we need the option for multiple regions?
                               
              
-      2) [] Make Cortex-M CPU more configurable
-            Initialized default values for these. Have not implemented all.
-                                            
-            [p] CPU Model (e.g. cortex-m4)
-                Need to implement.
+      2) [] Make Cortex-M CPUs more configurable & automated. 
+            A lot of these options are QEMU properties for their CPU device.
+            // TODO: Can find the properties for the devices to know what we are able to configure or not.
+            //       (e.g. should be properties for DeviceState -> CPUState -> "ARMState" -> "armv7mState")
+                                                       
+            [p] CPU Model
+                -> Implemented default values and a way of editing these defaults. 
+                [] Ultimately, need support for all cortex-m cpus: (armv6m, armv7m, armv8m manuals are online. guessing that encompasses all cortex-m)
+                   [x] Find list of CPUs that QEMU supports. "-cpu help"
+                       cortex-m0, cortex-m3, cortex-m33, cortex-m4, cortex-m55, cortex-m7  
+            
+            [p] # CPUs 
+                [p] Find out how this could be configurable. 
+                    [] Find if there is a property for this. (look up CPUState)
+                                
+            [p] MPU (e.g. y/n): Memory Protection Unit
+                Is this a property for CPU devices anywhere? I don't see it anywhere.
                 
-            [p] MPU (e.g. y/n)
+            [p] ITM (e.g. y/n): Type of debug module
                 Find where to implement this in QEMU machine creation.
+                I don't think this is a property we can define.                
                 
-            [p] ITM (e.g. y/n): What is this?
-                Find where to implement this in QEMU machine creation.
-                
-            [p] ETM (e.g. y/n): What is this?
+            [p] ETM (e.g. y/n): Type of debug module
                 Find where to implement this in QEMU machine creation.                 
-                For MPU, ITM, ETM: May be implemented already when defining our CPU type. Need to figure that out.
+                I don't see this as a property of any device either.
                 
             [p] # IRQ: Must be a multiple of 32. (e.g. num_irq = (num_irq + 31) & (~31) ) <- gives next highest multiple of 32.
-                       What's the limit? Can we just max this out with no issues?
+                       [] Find out if we can max this out to 480 (armv8m maximum for external intrs.).
+                          - It seems like we can max it out for a CPUs max with little issue. (e.g. 32 for cortex-m0, 240 for cortex-m3,  etc)                                 
                       
             [p] NVIC bits: What's this?
-                Find where to implement.
+                I don't see any properties for this. I've seen no one set # of NVIC bits in any of their emulators.
+                [] Verify whether or not this property exists in QEMU.
+                   - Didn't see it used in P2IM anywhere.
             
-      3) [] Other Board configs to make generic
+      3) [] Other Board configs to possibly make more automated.
             Need to see more examples of additional configs
             [] hsi freq
+               - When is this needed for Cortex-m devices?
             [] lsi freq      
-            [] bitband
-            [] fpu
-            
+               - When is this needed for Cortex-m devices?
+               
+            [p] bitband: expose bitbanded IO
+               - Does bitband apply to all Cortex-M devices? 
+               - This is a property of CPU devices.
+               [p] List of CPUs this applies to (confirmed thusfar)
+                   cortex-m3
+                   
+            [p] sVTOR: Secure VTOR is configurable in the armv7m dev.
+               - This is a configurable property of armv7m devices
+               [] Find out about VTOR, perhaps sVTOR is used in place of VTOR 
+               
+            [p] idau: IDAU interface, What is this?
+               - This is also a configurable property of armv7m devices
+               [] Find out if this needs to be configurable.
+                   
+            [x] FPU instructions: Always set true for armv7m
+               - Optional extension in armv7m, so we would want to enable this always as it doesn't hurt anything.
+               -> Set true for the "armv7m" device I created according to qtree
+                 
+            [x] DSP instructions: Always set true for armv7m
+               - Optional extension in armv7m, so we would want to enable this always as it doesn't hurt anything
+               -> Set true for the "armv7m" device I created according to qtree
+                              
       3) [x] Make MMIO configurable 
-             [] MMIO: Can configure MMIO addresses     
-
+             [x] Can add peripherals, edit number of DR/SRs, apply addresses registers, and 
+                 set/unset SR bits at particular addresses to pass SR checks.    
 
 
 Debugging

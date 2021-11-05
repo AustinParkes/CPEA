@@ -61,11 +61,11 @@ def generate_periph(config_file):
                     # Determine the option we will generate
                     if option == "core":                      
                         config['config'].update({option: {'cpu_model': "cortex-m4",
-                                                        'mpu': 1,
-                                                        'itm': 1,
-                                                        'etm': 1,
                                                         'num_irq': 57,
-                                                        'nvic_bits': 4}})
+                                                        'sVTOR': hex(0),
+                                                        'bitband': 1,
+                                                        'idau': 1}})
+                                                        
                         config['config'][option].indent(4)
                         
                     elif option == "mem_map":                                         
@@ -77,6 +77,7 @@ def generate_periph(config_file):
                                                         'sram_size2': hex(0x0),
                                                         'sram_base3': hex(0x0),
                                                         'sram_size3': hex(0x0)}})
+                                                        
                         config['config'][option].indent(4) 
                 
                 # Configs already exist. Check if entered values are allowed. 
@@ -96,28 +97,27 @@ def generate_periph(config_file):
                         elif len(config['config'][option]['cpu_model']) > 19:
                             print("ERROR: CPU string too long. Must be less than 20 characters.")
                             quit()     
-                            
-                        elif config['config'][option]['mpu'] < 0 or config['config'][option]['mpu'] > 1:    
-                            print("ERROR: [config.%s.mpu] must be a boolean value (0 or 1)" % (option))
-                            quit()
-                            
-                        elif config['config'][option]['itm'] < 0 or config['config'][option]['itm'] > 1:    
-                            print("ERROR: [config.%s.itm] must be a boolean value (0 or 1)" % (option))
-                            quit() 
-                            
-                        elif config['config'][option]['etm'] < 0 or config['config'][option]['etm'] > 1:    
-                            print("ERROR: [config.%s.etm] must be a boolean value (0 or 1)" % (option))
-                            quit()
+
                         
                         # TODO: Find an upper limit for num_irq    
                         elif config['config'][option]['num_irq'] < 0 or config['config'][option]['num_irq'] > 256:    
                             print("ERROR: [config.%s.num_irq] must be in range [0, 256]" % (option))
                             quit() 
+
+                        # TODO:  
+                        elif config['config'][option]['sVTOR'] < 0 or config['config'][option]['sVTOR'] > 0x20000000:    
+                            print("ERROR: [config.%s.sVTOR] must be in range [0, 0x20000000]" % (option))
+                            quit() 
                             
-                        # TODO: Find limits for nvic_bits   
-                        elif config['config'][option]['nvic_bits'] < 0 or config['config'][option]['nvic_bits'] > 1000000:    
-                            print("ERROR: [config.%s.nvic_bits] must be in range [0, idk_yet]" % (option))
-                            quit()                                                                                          
+                        # TODO:    
+                        elif config['config'][option]['bitband'] < 0 or config['config'][option]['bitband'] > 1:    
+                            print("ERROR: [config.%s.bitband] must be a boolean value (0 or 1)" % (option))
+                            quit() 
+                            
+                        # TODO:    
+                        elif config['config'][option]['idau'] < 0 or config['config'][option]['idau'] > 1:    
+                            print("ERROR: [config.%s.idau] must be a boolean value (0 or 1)" % (option))
+                            quit()                                                                                                                                                  
                     
                     # TODO: Find more appropriate memory limits   
                     # TODO: Make sure memory doesn't overlap? Maybe overlapping is allowed in QEMU ... not sure.  
@@ -678,9 +678,13 @@ def extract_elf(elf):
 def list_arch(x):
 
     # Dict of supported architectures and cpus
-    cpu_archs = {'archs': {'arm': {'cpu1': "test_cpu", 
-                                   'cpu2': "cortex-m4"},
-                          'test_arch': {'cpu1': "test_cpu"}
+    cpu_archs = {'archs': {'arm': {'cpu1': "cortex-m0",
+                                   'cpu2': "cortex-m1",
+                                   'cpu3': "cortex-m3", 
+                                   'cpu4': "cortex-m4",
+                                   'cpu5': "cortex-m7"},
+                                   
+                          'avr': {'cpu1': "None"}
                           }}
 
     

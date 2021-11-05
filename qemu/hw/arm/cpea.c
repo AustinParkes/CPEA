@@ -14,21 +14,55 @@
 #include "exec/memory.h"
 #include "cpea/emulatorConfig.h"
 #include "hw/arm/cpea.h"
+#include "qom/object.h"
 
+struct CpeaMachineState {
+    MachineState parent;
+    
+    /* Core */
+    char cpu_model[30];
+    
+    unsigned int has_bitband :1;    /* True/False */
+    unsigned int num_irq;           /* # External Interrupts */
+    
+    /* Memory */
+    uint32_t flash_base;
+    uint32_t flash_size;
+
+    uint32_t sram_base;
+    uint32_t sram_size;
+    
+    uint32_t sram_base2;
+    uint32_t sram_size2;
+    
+    uint32_t sram_base3;
+    uint32_t sram_size3;
+
+};
+
+#define TYPE_CPEA_MACHINE MACHINE_TYPE_NAME("cpea")
+OBJECT_DECLARE_SIMPLE_TYPE(CpeaMachineState, CPEA_MACHINE)
+
+/* SYSCLK frequency: Chose a value that works.
+   TODO: Make configurable? Don't see a need yet. Just care about FW execution. 
+*/
 #define SYSCLK_FRQ 120000000ULL
 
 static MMIO_handle *findMod(uint64_t, MMIO_handle**);  // Find peripheral module accessed in callback. 
 
-// Callback for writing to mmio region
-// Idea: Might be interesting on what sort of data is written to MMIO (especially DRs)
+// Callback for writes to mmio region
+// TODO: Log data that is written to registers.
 static void mmio_write(void *opaque, hwaddr addr,
                       uint64_t val, unsigned size)
 {
     return;
 }   
 
-// Callback for reading from mmio region
-// TODO: Could only issue callbacks for the registers defined in TOML file to save resources. I think mmio_ops lets you do that.
+// Callback for reads from mmio region
+/* TODO: Could only issue callbacks for the registers defined in TOML file to optimize performance. 
+         mmio_ops might let you restrict register addresses.
+
+*/
 static uint64_t mmio_read(void *opaque, hwaddr addr,
                       unsigned size)
 {
@@ -138,12 +172,10 @@ static const MemoryRegionOps mmio_ops = {
 
 static void cpea_init(MachineState *machine)
 {
-    ARMv7MState *armv7m;    // To access Cortex-M CPU           
-    DeviceState *cpu_dev;   // To create CPU device  
-    //MachineClass *mc = MACHINE_GET_CLASS(machine);
-    
-    
-    
+    CpeaMachineState *cms = CPEA_MACHINE(machine);
+    DeviceState *cpu_dev;   
+    ARMv7MState *armv7m;          
+         
     cpu_dev = qdev_new(TYPE_ARMV7M);      // Create ARMv7m cpu device
     armv7m = ARMV7M(cpu_dev);             // Get armv7m State: To pass CPU state to callback     
     
@@ -151,6 +183,8 @@ static void cpea_init(MachineState *machine)
     MemoryRegion *sram = g_new(MemoryRegion, 1);
     MemoryRegion *mmio = g_new(MemoryRegion, 1);
     MemoryRegion *system_memory = get_system_memory();
+    
+    // TODO: Initialize CPEA state here!!!   
            
     uint32_t flash_base;
     uint32_t flash_size;
@@ -163,16 +197,12 @@ static void cpea_init(MachineState *machine)
     
     char arm_cpu_model[30];
     
-    // Default Core and Memory. These are (not yet) configurable in TOML.
-    // See workflow for further work on this.
     CP_config config = {
         .CP_core = {
-            .cpu_model = "cortex-m4",   // TODO: Need to make this variable hold more characters to be able to change the string contents.            
-            .has_mpu = true,    
-            .has_itm = true, 
-            .has_etm = true,
-            .num_irq = 57,      // Research what nIRQ we can get away with.
-            .nvic_bits = 4,     // Needa learn what this refers to. Don't see much reference to it. 
+            .cpu_model = "cortex-m4",              
+            .has_bitband = true,
+            .num_irq = 57,
+
         },
         
         // Want a mapping that works for most cases right? That probably needs research.
@@ -251,12 +281,13 @@ static void cpea_init(MachineState *machine)
     strcpy(arm_cpu_model, config.CP_core.cpu_model);
     strcat(arm_cpu_model, "-arm-cpu");              // Replaces ARM_CPU_TYPE_NAME(name) macro. 
     
-    qdev_prop_set_string(cpu_dev, "cpu-type", arm_cpu_model);
-    qdev_prop_set_bit(cpu_dev, "enable-bitband", true);
-    // Can we always just max this out? (num-irq here should just include external IRQs. However, NVICState::num_irq counts ALL exceptions. 480 max for # external intr. in armv7m)
-    qdev_prop_set_uint32(cpu_dev, "num-irq", 480);
+    qdev_prop_set_string(cpu_dev, "cpu-type", arm_cpu_model);    
+    qdev_prop_set_bit(cpu_dev, "enable-bitband", config.CP_core.has_bitband);
     
-    // Add system memory to device? So that it knows our memory make up?
+    // Can we always just max this out? (num-irq here should just include external IRQs. However, NVICState::num_irq counts ALL exceptions. 480 max for # external intr. in armv7m)
+    qdev_prop_set_uint32(cpu_dev, "num-irq", config.CP_core.num_irq);
+    
+    // Write system memory to device's memory through it's "memory" property
     object_property_set_link(OBJECT(cpu_dev), "memory",
                              OBJECT(get_system_memory()), &error_abort);
                              
@@ -297,19 +328,28 @@ static MMIO_handle *findMod(uint64_t address, MMIO_handle** periph){
 
 	return periphx;
 
-}
+}  
 
-// See MachineClass detailed description in 'include/hw/boards.h'
-static void cpea_machine_init(MachineClass *mc){
+// NOTE: Don't think you can get a State from a Class.    
+static void cpea_class_init(ObjectClass *oc, void *data)
+{
+    MachineClass *mc = MACHINE_CLASS(oc);
     
     mc->desc = "CPEA Generic Machine";
     mc->is_default = true;                  
-    mc->init = cpea_init;
-    //mc->default_cpu_type = ARM_CPU_TYPE_NAME("cortex-m4");
-    //mc->default_ram_size = 0.5 * GiB;   
-       
-}
+    mc->init = cpea_init; 
+          
+}  
 
-// Macro defined in 'include/hw/boards.h.' 
-// Generates TypeInfo for our Machine object, initializes a MachineClass object for us, and registers this type. 
-DEFINE_MACHINE("cpea", cpea_machine_init); 
+// TODO: Need instance and class sizes of our CpeaMachineState and CpeaMachineClass
+static const TypeInfo cpea_info = {
+    .name       = TYPE_CPEA_MACHINE,
+    .parent     = TYPE_MACHINE,
+    .instance_size = sizeof(CpeaMachineState),
+    .class_init = cpea_class_init,
+};
+
+static void cpea_machine_init(void){
+    type_register_static(&cpea_info);
+}  
+type_init(cpea_machine_init);

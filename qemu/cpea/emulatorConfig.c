@@ -104,42 +104,22 @@ toml_table_t* parseTOML(toml_table_t* root_table, CP_config *config){
         }
 
         // mpu
-        toml_datum_t mpu_key = toml_int_in(core_tab, "mpu");
-        if (!mpu_key.ok){
-    	    error("Cannot read config.core.mpu. It should exist.", "", "");
-        }
-        
-        // itm
-        toml_datum_t itm_key = toml_int_in(core_tab, "itm");
-        if (!itm_key.ok){
-    	    error("Cannot read config.core.itm. It should exist.", "", "");
-        }
-        
-        // etm
-        toml_datum_t etm_key = toml_int_in(core_tab, "etm");
-        if (!etm_key.ok){
-    	    error("Cannot read config.core.etm. It should exist.", "", "");
+        toml_datum_t bitband_key = toml_int_in(core_tab, "bitband");
+        if (!bitband_key.ok){
+    	    error("Cannot read config.core.bitband. It should exist.", "", "");
         }
         
         // num_irq
         toml_datum_t irq_key = toml_int_in(core_tab, "num_irq");
         if (!irq_key.ok){
     	    error("Cannot read config.core.num_irq. It should exist.", "", "");
-        }         
-        
-        // nvic_bits
-        toml_datum_t nvic_bits_key = toml_int_in(core_tab, "nvic_bits");
-        if (!nvic_bits_key.ok){
-    	    error("Cannot read config.core.nvic_bits. It should exist.", "", "");
-        }                               
+        }                                   
         
         // Update new core configs, replacing old defaults. 
         strcpy(config->CP_core.cpu_model, cpu_key.u.s);       
-        config->CP_core.has_mpu = mpu_key.u.i;
-        config->CP_core.has_itm = itm_key.u.i;
-        config->CP_core.has_etm = etm_key.u.i;
+        config->CP_core.has_bitband = bitband_key.u.i;
         config->CP_core.num_irq = irq_key.u.i;
-        config->CP_core.nvic_bits = nvic_bits_key.u.i;
+
        	
        	// Need to free string associated with toml_datum_t structure.
  	    free(cpu_key.u.s);  	    
@@ -690,12 +670,8 @@ int setFlags(toml_table_t* flag_tab, int mod_i){
 
 }
 
-
-
 void error(const char *msg, const char *msg1, const char *msg2)
 {
 	fprintf(stderr, "ERROR: %s%s%s\n", msg, msg1?msg1:"", msg2?msg2:"");
 	exit(1);
 }
-
-

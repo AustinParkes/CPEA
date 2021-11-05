@@ -1,4 +1,4 @@
-/* Declarations for use by board files for creating devices.  */
+/* Declarations for use by board files for creating devices. */
 
 #ifndef HW_BOARDS_H
 #define HW_BOARDS_H

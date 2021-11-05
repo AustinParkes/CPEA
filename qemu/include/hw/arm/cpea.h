@@ -1,7 +1,12 @@
-#include "cpea/cortexm-mcu.h"
+/*
+    Created by Austin Parkes.
+*/
 
 #ifndef CPEA_H_
 #define CPEA_H_
+
+#include "cpea/cortexm-mcu.h"
+#include "hw/boards.h"
 
 // TODO: Could move emulatorConfig.h here?
 

@@ -231,55 +231,84 @@ Testing Emulator with Real Firmware
                                   "info qtree" more detailed qom tree
               
        4) [p] Understanding QOM, Qdev, SysBus, ARMV7M, ARMCPU, MemoryRegionOps APIs for making our machine.
+              Parent Directory: "~/school/thesis/CPEA/qemu/"
               0.1) Where to find ARM class definitions             
                  ARMv7MState: struct that contains ARMCPU and other info for cortex-m CPUs (Since ARMv7M is for  cortex-m)
                               Properties for this device are also commented!
-                        @ "include/hw/arm/armv7m.h": 53
+                        @ "~/school/thesis/CPEA/qemu/include/hw/arm/armv7m.h": 53
      
                          
                  ARMCPUClass: Class struct. This file declares ARMCPU as instance struct, ARMCPUClass as class struct, and ARM_CPU as object name.
                               In short, ARM_CPU is declared as object via OBJECT_DECLARE_TYPE.
                               Provides the 3 standard typedef macros for the object.                                                         
-                        @ "target/arm/cpu-qom.h"
+                        @ "~/school/thesis/CPEA/qemu/target/arm/cpu-qom.h"
                  
                  ARMCPU: Primary ARM struct to access ARM CPU. Contains CPUARMState via "env" variable. 
-                        @ "target/arm/cpu.h": 765
+                        @ "~/school/thesis/CPEA/qemu/target/arm/cpu.h": 765
                          
                  CPUARMState (env): Contained in ARMCPU. Holds ARM state such as registers, nvic, etc. 
-                        @ "target/arm/cpu.h": 229
+                        @ "~/school/thesis/CPEA/qemu/target/arm/cpu.h": 229
                  
                  TypeInfo/type_init: Let's QEMU know about the ARM_CPU type to initialize it. Contains init functions:                
                                        - arm_cpu_initfn, arm_cpu_finalizefn, arm_cpu_class_init
                                      which belong to the same file.                                    
                                      Also, arm_cpu_realizefn is set as realize function in arm_cpu_class_init. (Where our CPU check fails for Cortex-m4)                                      
-                        @ "target/arm/cpu.c": 2343                
+                        @ "~/school/thesis/CPEA/qemu/target/arm/cpu.c": 2343                
               
-              0.2) Where to find Qdev class/state definitions
+              0.2) Where to find QOM API
+                 TypeInfo: Helps define object types you create
+                        @ "~/school/thesis/CPEA/qemu/include/qom/object.h": 413         
+              
+              
+              0.3) Where to find Qdev API
                  DeviceClass: 
-                        @ "include/hw/qdev-core.h": 97
+                        @ "~/school/thesis/CPEA/qemu/include/hw/qdev-core.h": 97
                  
                  DeviceState:
-                        @ "include/hw/qdev-core.h": 174 
+                        @ "~/school/thesis/CPEA/qemu/include/hw/qdev-core.h": 174 
                                  
-              0.3) Where to find Memory API for messing with MemoryRegions and such.
+              0.4) Where to find Memory API
                  MemoryRegionOps: Allows modification of callback parameters so callbacks are issued in ways you'd want them. 
-                        @ "include/exec/memory.h": 167
+                        @ "~/school/thesis/CPEA/qemu/include/exec/memory.h": 167
+                  
                    
-              0.4) Where to find Machine API
+              0.5) Where to find Machine API
                  MachineClass:
-                        @ "include/hw/boards.h": 158
+                        @ "~/school/thesis/CPEA/qemu/include/hw/boards.h": 158
                          
                  MachineState:
-                        @ "include/hw/boards.h": 254   
+                        @ "~/school/thesis/CPEA/qemu/include/hw/boards.h": 254   
                               
-              0.5) Where to find device Properties
+              0.6) Where to find device Properties:                       
+                 [x] How are some properties made available to devices they don't belong to.
+                       For example, 'num-irq' isn't an 'armv7m' property, but it's made available to 'armv7m' through 'armv7m_nvic'
+                       Answer: object_property_add_alias() will forward property access from one Type to another. In this case, we forward access to 
+                               NVICState from ARMv7MState to use the 'num_irq' Property: "~/school/thesis/CPEA/qemu/hw/arm/armv7m.c": 140
+              
                  Property API: API for defining & setting device properties.
+                        - Properties are generally stored in members of DeviceStates. (e.g. NVICState contains the property num-irq)
+                        - Proprties can usually be found where object Types are created. Will be an array of type "Property" and will be
+                          associated with a State Structure (e.g. NVICState)
+                        - 
+                          
                         @ "~/school/thesis/CPEA/qemu/include/hw/qdev-properties.h"
+                 
+                 armv7m_nvic_properties: Contains 'num_irq' which is accessed thru armv7m
+                        @ "~/school/thesis/CPEA/qemu/hw/intc/armv7m_nvic.c": 2724
                    
-                 armv7m_properties: cpu_type, num_irq, etc
+                 armv7m_properties: Many of these Properties are forwared to ARM_CPU object
                         @ "~/school/thesis/CPEA/qemu/hw/arm/armv7m.c": 254 
+                  
+                 arm_cpu_properties: Includes 'core_count'
+                        @ "~/school/thesis/CPEA/qemu/target/arm/cpu.c": 2222 
+                            
+                 cpu_properties: Not any we need to interact with.
+                        @ "~/school/thesis/CPEA/qemu/hw/core/cpu.c": 387     
                         
-                        
+                 arm_gic_properties: Includes 'num-cpu'. 'num_cpu' property is also defined in other files for differenty cortex-a machines.
+                        - Note: This property is ONLY defined and used for Cortex-A cpus
+                        @ "~/school/thesis/CPEA/qemu/hw/intc/arm_gic_common.c": 349       
+
                                                         
         5) Following code execution to find how it fails
            1) Code fails somewhere in cpu_create()
@@ -411,6 +440,8 @@ Testing Emulator with Real Firmware
       Ideas on setting up machine:
       ~/school/thesis/p2im-master/qemu/src/qemu.git/hw/arm/cortexm-mcu.c
       
+      Great list of cortex-m components and hardware:
+      https://en.wikipedia.org/wiki/ARM_Cortex-M
       
       0.0) [p] Make struct in "include/hw/arm/cpea.h" to help contain all generic configs. 
                -> Made high level struct "CP_config" encompassing Core and Memory.
@@ -419,112 +450,145 @@ Testing Emulator with Real Firmware
                - Modifiable in TOML
                [] Need to read it out in emulatorConfig
            
-      1) [] Make memory generic
-            - P2IM uses vmstate_register_ram_global() in addition to their mem init.
-            - P2IM inits bitband differently w/ cortexm_bitband_init(). Not sure if our "enable bitband" property works in place of this. 
-            - P2IM uses read-only RAM as its flash region
+      1) [p] Make memory generic and configurable
+             - P2IM uses vmstate_register_ram_global() in addition to their mem init.
+             - P2IM inits bitband differently w/ cortexm_bitband_init(). Not sure if our "enable bitband" property works in place of this. 
+             - P2IM uses read-only RAM as its flash region
                        
-            [p] Flash: Have only provided defaults. Need to make configurable in TOML.
-                [p] Base: Set to 0x0. Many other examples set to other addresses.
-                          Need to look into alias regions to see exactly how they work.
+             [p] Flash: Have only provided defaults. Need to make configurable in TOML.
+                 [p] Base: Set to 0x0. Many other examples set to other addresses.
+                           Need to look into alias regions to see exactly how they work.
                                                   
-                [p] Size: Chose a relatively large size. Can probably make this excessively large. 
+                 [p] Size: Chose a relatively large size. Can probably make this excessively large. 
                
-            [p] SRAM: Have only provided defaults: Need to make configurable in TOML.
-                [p] Base: Set to 0x20000000 (Start of SRAM in cortex-m)
-                         HOWEVER, sram can start in flash region. Might want to reconsider a lower address.
+             [p] SRAM: Have only provided defaults: Need to make configurable in TOML.
+                 [p] Base: Set for our current MCU
                         
-                [p] Size: Chose a relatively large size. Can probably make this excessively large as well.
-                          Note: Don't think this can exceed 32Mb, otherwise might overlap with bitbanding area.
+                 [p] Size: Chose a relatively large size. Can probably make this excessively large as well.
+                           Note: Don't think this can exceed 32Mb, otherwise might overlap with bitbanding area.
                            
-                [p] SRAM count: Option for multiple SRAMs. Default is 1 SRAM.
-                                By default, can we make 1 large SRAM region that engulfs any other regions that could exist?
-                                Or, do we need the option for multiple regions?
+                 [p] SRAM count: Option for multiple SRAMs. Default is 1 SRAM.
+                                 By default, can we make 1 large SRAM region that engulfs any other regions that could exist?
+                                 Or, do we need the option for multiple regions?
                               
              
-      2) [] Make Cortex-M CPUs more configurable & automated. 
-            A lot of these options are QEMU properties for their CPU device.
-            // TODO: Can find the properties for the devices to know what we are able to configure or not.
-            //       (e.g. should be properties for DeviceState -> CPUState -> "ARMState" -> "armv7mState")
+      2) [p] Make Cortex-M CPUs more configurable & automated. 
+             A lot of these options are QEMU properties for their CPU device.
                                                        
-            [p] CPU Model
-                -> Implemented default values and a way of editing these defaults. 
-                [] Ultimately, need support for all cortex-m cpus: (armv6m, armv7m, armv8m manuals are online. guessing that encompasses all cortex-m)
-                   [x] Find list of CPUs that QEMU supports. "-cpu help"
-                       cortex-m0, cortex-m3, cortex-m33, cortex-m4, cortex-m55, cortex-m7  
+             [x] CPU Model
+                 [x] Find way to emulate for ALL Cortex-m machines 
+                    - Ultimately, need support for all cortex-m cpus: (armv6m, armv7m, armv8m manuals are online. guessing that encompasses all cortex-m)
+                    [x] Find list of CPUs that QEMU supports: "-cpu help"
+                        cortex-m0, cortex-m3, cortex-m33, cortex-m4, cortex-m55, cortex-m7 
+                    [x] Emulate any cortex-m cpu
+                        armv7m object allows execution of cortex-m0, cortex-m3, cortex-m33, cortex-m4 (all verified)
+                           (armv6m is upward compatible with armv7m.)   
+                        No cortex-m55 example exists in qemu  
+                        The properties you'd need to set for any of these devices are available through the armv7m object.
+                        Other hardware dependencies are taken care of by QEMU when you specify your CPU model. Not sure to what degree since 
+                        it depends on what hardware QEMU supports, but this is true to an extent. 
+                        For example, if you choose cortex-m0, your machine won't have an MPU since cortex-m0 doesn't have an MPU.                           
             
-            [p] # CPUs 
-                [p] Find out how this could be configurable. 
-                    [] Find if there is a property for this. (look up CPUState)
-                                
-            [p] MPU (e.g. y/n): Memory Protection Unit
-                Is this a property for CPU devices anywhere? I don't see it anywhere.
+             [p] # CPUs
+                 - No Co-processors for cortex-m except for m33,m35p cores.
+                  
+                 [p] Find out how this could be configurable. 
+                     [x] Find if there is a property for this.
+                         This is a property of arm_cpu: 'core-count' @ "~/school/thesis/CPEA/qemu/target/arm/cpu.c": 2222
+                         However, it isn't needed to add cores. Only see it used in a Cortex-A machine.
+                        
+                     [p] How to add cpu cores
+                         - Can put each CPU in a distinct cluster to have either option:
+                             1) configure them differently OR 
+                             2) configure them all the same
+                            
+                           See armsse.c for making the clusters. armsse is just a Device used for making other SSE type machines,
+                           but still contains code that could be useful for our machine.
+                        
+                         - Other cortex-m examples: 2 other examples, but they utilize the armsse code. Appears that armsse is the only example  
+                           that really creates multi-core device.
+                          
+                                                        
+             [x] MPU (e.g. y/n): Memory Protection Unit
+                 [x] Find where to implement this in QEMU machine creation.
+                     Not a property that exists for armv7m, arm_cpu, or cpu objects.
+                     Most likely exists depending on the CPU model chosen since it's a flag in ARMCPU.                   
                 
-            [p] ITM (e.g. y/n): Type of debug module
-                Find where to implement this in QEMU machine creation.
-                I don't think this is a property we can define.                
+             [x] ITM (e.g. y/n): Type of debug module
+                 [x] Find where to implement this in QEMU machine creation.
+                     Not a property that exists for armv7m, arm_cpu, or cpu objects.               
                 
-            [p] ETM (e.g. y/n): Type of debug module
-                Find where to implement this in QEMU machine creation.                 
-                I don't see this as a property of any device either.
+             [x] ETM (e.g. y/n): Type of debug module
+                 [x] Find where to implement this in QEMU machine creation.                 
+                     Not a property that exists for armv7m, arm_cpu, or cpu objects.
                 
-            [p] # IRQ: Must be a multiple of 32. (e.g. num_irq = (num_irq + 31) & (~31) ) <- gives next highest multiple of 32.
-                       [] Find out if we can max this out to 480 (armv8m maximum for external intrs.).
-                          - It seems like we can max it out for a CPUs max with little issue. (e.g. 32 for cortex-m0, 240 for cortex-m3,  etc)                                 
+             [p] # IRQ: Must be a multiple of 32. (e.g. num_irq = (num_irq + 31) & (~31) ) <- gives next highest multiple of 32.
+                        [p] Find out if we can max this out to 480 (armv8m maximum for external intrs.).
+                           - It seems like we can max it out for a CPUs max with little issue. (e.g. 32 for cortex-m0, 240 for cortex-m3,  etc)                                 
                       
-            [p] NVIC bits: What's this?
-                I don't see any properties for this. I've seen no one set # of NVIC bits in any of their emulators.
-                [] Verify whether or not this property exists in QEMU.
-                   - Didn't see it used in P2IM anywhere.
+             [x] NVIC bits: What's this?
+                 I don't see any properties for this. I've seen no one set # of NVIC bits in any of their emulators.
+                 [x] Verify whether or not this property exists in QEMU.
+                    - Does not exist as a property in NVICState.
             
-      3) [] Other Board configs to possibly make more automated.
-            Need to see more examples of additional configs
-            [] hsi freq
-               - When is this needed for Cortex-m devices?
-            [] lsi freq      
-               - When is this needed for Cortex-m devices?
-               
-            [p] bitband: expose bitbanded IO
-               - Does bitband apply to all Cortex-M devices? 
-               - This is a property of CPU devices.
-               [p] List of CPUs this applies to (confirmed thusfar)
-                   cortex-m3
+      3) [p] Other Board configs to possibly make more automated.                            
+             [p] SysStick timer: Currently have 1 that's non-configurable, with non-configurable freq.
+                 [p] Does this need to be configurable?
+                     Systick is optional for m0,m1,m23. Required for m3,m4,m7,m33,m35p
+                     I don't think it hurts to enable for all.
+                        
+             [x] bitband: expose bitbanded IO. Is a property for armv7m obj.
+                 Bitband Properties: P2IM seemed to use these at one point. Keeping as reference.
+                     @ "~/school/thesis/CPEA/qemu/hw/arm/armv7m.c":338
+                 - 2 Bitband regions occupy the lowest 1MB of SRAM and peripheral memory regions.
+                     @ [0x20000000, 0x2010000) & [0x40000000, 0x40100000)  
+                 - Also exists 2 32MB alias regions to access bitband regions
+                     @ [0x22000000, 0x24000000) & [0x42000000, 0x44000000)
                    
-            [p] sVTOR: Secure VTOR is configurable in the armv7m dev.
-               - This is a configurable property of armv7m devices
-               [] Find out about VTOR, perhaps sVTOR is used in place of VTOR 
-               
-            [p] idau: IDAU interface, What is this?
-               - This is also a configurable property of armv7m devices
-               [] Find out if this needs to be configurable.
+                 [x] What cortex-m cpus have bitbanding
+                     optional for m3,m4,m7 AND feature can be added to m0/m0+ 
+                     
+                 [x] Should we make configurable?: YES       
+                     Yes, because we don't want to always include bitband for cpus that DONT have a bitband.
+                     Otherwise, accesses to alias region will attempt to access bitband region.
                    
-            [x] FPU instructions: Always set true for armv7m
-               - Optional extension in armv7m, so we would want to enable this always as it doesn't hurt anything.
-               -> Set true for the "armv7m" device I created according to qtree
+             [p] sVTOR/nsVTOR: Secure VTOR is a configurable property in the armv7m dev.
+                 - VTOR indifcates offset of vector table from 0x0. [29:7]. Bit 29 determines if it's in code (0) or SRAM region (1) 
+                 - nsVTOR patch: https://patchwork.kernel.org/project/qemu-devel/patch/20210520152840.24453-10-peter.maydell@linaro.org/
+                   Currently, not in our QEMU version. But, is in upstream version.
+                 - Look into this: cpu->env.v7m.vecbase  
+                 [] What cortex-m cpus have bitbanding
+                    optional for m1,m3,m4,m7,m23. Required for m33,m35p. None for m0
+                    - m23,m33,m35p can have up to 2, but I'm unsure how. VTOR and SVTOR???
+                    
+                 [] Find examples of how sVTOR/VTOR are used in QEMU.                         
                  
-            [x] DSP instructions: Always set true for armv7m
-               - Optional extension in armv7m, so we would want to enable this always as it doesn't hurt anything
-               -> Set true for the "armv7m" device I created according to qtree
+                 [] Can sVTOR be used in place of VTOR? (Can't find a VTOR property)
+                   
+               
+             [p] idau: IDAU interface, What is this?
+                 - This is also a configurable property of armv7m devices
+                 [] Find out if this needs to be configurable.
+                   
+             [x] FPU instructions: Always set true for armv7m
+                 - Optional extension in armv7m, so we would want to enable this always as it doesn't hurt anything.
+                 -> Set true for the "armv7m" device I created according to qtree
+                 
+             [x] DSP instructions: Always set true for armv7m
+                 - Optional extension in armv7m, so we would want to enable this always as it doesn't hurt anything
+                 -> Set true for the "armv7m" device I created according to qtree
                               
       3) [x] Make MMIO configurable 
              [x] Can add peripherals, edit number of DR/SRs, apply addresses registers, and 
                  set/unset SR bits at particular addresses to pass SR checks.    
 
 
-Debugging
-break *0x934 at SVC
-break *0x988 at SVC exception return
-break *0x23ac at StartForkServer()
-break *0x23c8 at 2nd SVC call (SVC 0x3f). First was SVC 0x1
-
 /* Getting executable binary from a proper ELF */  
 arm-none-eabi-objcopy -O binary <elf> <bin>
 
                                                        
 /* Compiling the Emulators */
-// TODO: Eventually want to make my added files apart of the unicorn library
 gcc EmulateUart.c emulatorConfig.c toml.c tester.c -lunicorn -lpthread
-
 
 /* Generating ELF file: Compiling the Source Code to emulate */
 arm-none-eabi-gcc -specs=nosys.specs SimpleUart.c -o SimpleUart.elf

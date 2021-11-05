@@ -57,25 +57,18 @@ typedef enum {
 typedef struct {
 
     /* The cpu_model naming convention is "cortex-m3-r1p2". */
-    char cpu_model[20];
+    char cpu_model[30];
 
     /* Values computed from cpu_model */
     cortexm_models_t model; /* binary value to easily identify the core */
-    uint8_t major; /* rN, 4 bits */
-    uint8_t minor; /* pN, 4 bits */
 
     /* Capabilities bits; keep them compact. */
-    unsigned int has_mpu :1; /* true/false */
-    unsigned int has_fpu :1; /* true/false */
-    unsigned int has_etm :1; /* true/false */
-    unsigned int has_itm :1; /* true/false */
-
-    unsigned int fpu_type; /* CORTEX_M_FPU_TYPE_*; may be not needed */
+    unsigned int has_bitband :1; /* True/False */
+    
 
     unsigned int num_irq; /* number of interrupts (excluding first
      * 15 core interrupts). */
-
-    unsigned int nvic_bits; /* bits used for irqs in NVIC. */
+    uint32_t svtor;       /**/
 } CortexMCoreCapabilities;
 
 /*

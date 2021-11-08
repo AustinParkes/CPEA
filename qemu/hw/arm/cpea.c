@@ -16,32 +16,7 @@
 #include "hw/arm/cpea.h"
 #include "qom/object.h"
 
-struct CpeaMachineState {
-    MachineState parent;
-    
-    /* Core */
-    char cpu_model[30];
-    
-    unsigned int has_bitband :1;    /* True/False */
-    unsigned int num_irq;           /* # External Interrupts */
-    
-    /* Memory */
-    uint32_t flash_base;
-    uint32_t flash_size;
 
-    uint32_t sram_base;
-    uint32_t sram_size;
-    
-    uint32_t sram_base2;
-    uint32_t sram_size2;
-    
-    uint32_t sram_base3;
-    uint32_t sram_size3;
-
-};
-
-#define TYPE_CPEA_MACHINE MACHINE_TYPE_NAME("cpea")
-OBJECT_DECLARE_SIMPLE_TYPE(CpeaMachineState, CPEA_MACHINE)
 
 /* SYSCLK frequency: Chose a value that works.
    TODO: Make configurable? Don't see a need yet. Just care about FW execution. 
@@ -184,80 +159,51 @@ static void cpea_init(MachineState *machine)
     MemoryRegion *mmio = g_new(MemoryRegion, 1);
     MemoryRegion *system_memory = get_system_memory();
     
-    // TODO: Initialize CPEA state here!!!   
-           
-    uint32_t flash_base;
-    uint32_t flash_size;
-    uint32_t sram_base;
-    uint32_t sram_size;
-    uint32_t sram_base2;
-    uint32_t sram_size2;
-    uint32_t sram_base3;
-    uint32_t sram_size3;
-    
     char arm_cpu_model[30];
     
-    CP_config config = {
-        .CP_core = {
-            .cpu_model = "cortex-m4",              
-            .has_bitband = true,
-            .num_irq = 57,
-
-        },
-        
-        // Want a mapping that works for most cases right? That probably needs research.
-        .CP_mem = {
-            .flash_base = 0x0,          // Probably fine. This is something that likely needs configured. 
-            .flash_size = 32768000,     // Chose a relatively large flash_size. Can almost certainly go bigger.
-            .sram_base = 0x1fff0000,    // Need a more universal default. I think it's probably possible to find one.
-            .sram_size = 256000,        // Can probably go bigger. Not beyond 32Mb
-            
-            // Do we need other srams? Or can we just make 1 large region by default. 
-            // Skip region if size is 0x0 (region doesn't exist)    
-            .sram_base2 = 0x0,  
-            .sram_size2 = 0x0,
-            .sram_base3 = 0x0,
-            .sram_size3 = 0x0,              
-        }   
-    };
+    // Default Core 
+    strcpy(cms->cpu_model, "cortex-m4");
+    cms->has_bitband = true;
+    cms->num_irq = 57;
+    
+    // Default Memory
+    cms->flash_base = 0x0;
+    cms->flash_size = 32768000;
+    cms->sram_base = 0x1fff0000;
+    cms->sram_size = 256000;
+    cms->sram_base2 = 0;
+    cms->sram_size2 = 0;
+    cms->sram_base3 = 0;
+    cms->sram_size3 = 0;    
          
     // Handle all TOML configurations, possibly modifing default configs.                   
-    config = emuConfig(config);
+    cms = emuConfig(cms);
     
-    // Init mem regions, and add them to system memory  
-    
-    flash_base = config.CP_mem.flash_base;
-    flash_size = config.CP_mem.flash_size;    
-    memory_region_init_rom(flash, NULL, "flash", flash_size,
+    // Init mem regions, and add them to system memory      
+    memory_region_init_rom(flash, NULL, "flash", cms->flash_size,
                            &error_fatal);
                      
-    memory_region_add_subregion(system_memory, flash_base, flash);
+    memory_region_add_subregion(system_memory, cms->flash_base, flash);
 
-    sram_base = config.CP_mem.sram_base;
-    sram_size = config.CP_mem.sram_size; 
-    memory_region_init_ram(sram, NULL, "sram", sram_size,
+    memory_region_init_ram(sram, NULL, "sram", cms->sram_size,
                            &error_fatal);
                                                
-    memory_region_add_subregion(system_memory, sram_base, sram);                                                  
-    
-    sram_base2 = config.CP_mem.sram_base2;
-    sram_size2 = config.CP_mem.sram_size2;     
-    if (sram_size2){
+    memory_region_add_subregion(system_memory, cms->sram_base, sram);                                                  
+     
+    if (cms->sram_size2){
         MemoryRegion *sram2 = g_new(MemoryRegion, 1);
-        memory_region_init_ram(sram2, NULL, "sram2", sram_size2,
+        memory_region_init_ram(sram2, NULL, "sram2", cms->sram_size2,
                                &error_fatal);
                                                
-        memory_region_add_subregion(system_memory, sram_base2, sram2);
+        memory_region_add_subregion(system_memory, cms->sram_base2, sram2);
     }
-    
-    sram_base3 = config.CP_mem.sram_base3;
-    sram_size3 = config.CP_mem.sram_size3;  
-    if (sram_size3){
+ 
+    if (cms->sram_size3){
         MemoryRegion *sram3 = g_new(MemoryRegion, 1);
-        memory_region_init_ram(sram3, NULL, "sram3", sram_size3,
+        memory_region_init_ram(sram3, NULL, "sram3", cms->sram_size3,
                                &error_fatal);
                                                
-        memory_region_add_subregion(system_memory, sram_base3, sram3);
+        memory_region_add_subregion(system_memory, cms->sram_base3, sram3);
     }
     
     memory_region_init_io(mmio, NULL, &mmio_ops, (void *)armv7m, "mmio", 
@@ -278,14 +224,14 @@ static void cpea_init(MachineState *machine)
        Can add a configuration for this in the toml file.   
     */
     
-    strcpy(arm_cpu_model, config.CP_core.cpu_model);
+    strcpy(arm_cpu_model, cms->cpu_model);
     strcat(arm_cpu_model, "-arm-cpu");              // Replaces ARM_CPU_TYPE_NAME(name) macro. 
     
     qdev_prop_set_string(cpu_dev, "cpu-type", arm_cpu_model);    
-    qdev_prop_set_bit(cpu_dev, "enable-bitband", config.CP_core.has_bitband);
+    qdev_prop_set_bit(cpu_dev, "enable-bitband", cms->has_bitband);
     
     // Can we always just max this out? (num-irq here should just include external IRQs. However, NVICState::num_irq counts ALL exceptions. 480 max for # external intr. in armv7m)
-    qdev_prop_set_uint32(cpu_dev, "num-irq", config.CP_core.num_irq);
+    qdev_prop_set_uint32(cpu_dev, "num-irq", cms->num_irq);
     
     // Write system memory to device's memory through it's "memory" property
     object_property_set_link(OBJECT(cpu_dev), "memory",
@@ -295,7 +241,7 @@ static void cpea_init(MachineState *machine)
     sysbus_realize_and_unref(SYS_BUS_DEVICE(cpu_dev), &error_fatal);
      
     armv7m_load_kernel(ARM_CPU(first_cpu), machine->kernel_filename,
-                       flash_size);
+                       cms->flash_size);
                                        
 }
 

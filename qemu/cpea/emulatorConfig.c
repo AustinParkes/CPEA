@@ -27,7 +27,7 @@ int DR_count;
 int inst_i=0;
 
 // Read peripheral configurations and commit them to memory
-CP_config emuConfig(CP_config config){
+CpeaMachineState *emuConfig(CpeaMachineState *config){
  	
  	/***********************************
 		Parse Configuration File and Store configurations   
@@ -67,7 +67,7 @@ CP_config emuConfig(CP_config config){
 }
 
 // Gather and Store configurations from TOML.
-toml_table_t* parseTOML(toml_table_t* root_table, CP_config *config){
+toml_table_t* parseTOML(toml_table_t* root_table, CpeaMachineState **config){
 	
 	
     /*
@@ -116,9 +116,9 @@ toml_table_t* parseTOML(toml_table_t* root_table, CP_config *config){
         }                                   
         
         // Update new core configs, replacing old defaults. 
-        strcpy(config->CP_core.cpu_model, cpu_key.u.s);       
-        config->CP_core.has_bitband = bitband_key.u.i;
-        config->CP_core.num_irq = irq_key.u.i;
+        strcpy((*config)->cpu_model, cpu_key.u.s);       
+        (*config)->has_bitband = bitband_key.u.i;
+        (*config)->num_irq = irq_key.u.i;
 
        	
        	// Need to free string associated with toml_datum_t structure.
@@ -184,14 +184,14 @@ toml_table_t* parseTOML(toml_table_t* root_table, CP_config *config){
         }        
         
         // Update new mem_map configs, replacing old defaults
-        config->CP_mem.flash_base = flash_base_key.u.i;
-        config->CP_mem.flash_size = flash_size_key.u.i;
-        config->CP_mem.sram_base = sram_base_key.u.i;
-        config->CP_mem.sram_size = sram_size_key.u.i;
-        config->CP_mem.sram_base2 = sram_base2_key.u.i;
-        config->CP_mem.sram_size2 = sram_size2_key.u.i;
-        config->CP_mem.sram_base3 = sram_base3_key.u.i;
-        config->CP_mem.sram_size3 = sram_size3_key.u.i;
+        (*config)->flash_base = flash_base_key.u.i;
+        (*config)->flash_size = flash_size_key.u.i;
+        (*config)->sram_base = sram_base_key.u.i;
+        (*config)->sram_size = sram_size_key.u.i;
+        (*config)->sram_base2 = sram_base2_key.u.i;
+        (*config)->sram_size2 = sram_size2_key.u.i;
+        (*config)->sram_base3 = sram_base3_key.u.i;
+        (*config)->sram_size3 = sram_size3_key.u.i;
             
     } 
     

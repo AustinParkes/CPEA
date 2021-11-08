@@ -236,8 +236,7 @@ Testing Emulator with Real Firmware
                  ARMv7MState: struct that contains ARMCPU and other info for cortex-m CPUs (Since ARMv7M is for  cortex-m)
                               Properties for this device are also commented!
                         @ "~/school/thesis/CPEA/qemu/include/hw/arm/armv7m.h": 53
-     
-                         
+                             
                  ARMCPUClass: Class struct. This file declares ARMCPU as instance struct, ARMCPUClass as class struct, and ARM_CPU as object name.
                               In short, ARM_CPU is declared as object via OBJECT_DECLARE_TYPE.
                               Provides the 3 standard typedef macros for the object.                                                         

@@ -6,8 +6,8 @@
 #include "hw/arm/cpea.h"
 
 void error(const char *, const char *, const char *);   // Prints Error Messages in parsing
-toml_table_t *parseTOML(toml_table_t *, CP_config *);	// Gather data from TOML file.
-CP_config emuConfig(CP_config);
+toml_table_t *parseTOML(toml_table_t *, CpeaMachineState **);	// Gather data from TOML file.
+CpeaMachineState *emuConfig(CpeaMachineState *);
 int mmioConfig(toml_table_t *);				            // Configure peripheral emulation.
 int setFlags(toml_table_t *, int);					    // Sets the configured status register values.
 void parseKeys(char *, const char *, toml_table_t *, const char *, int);    // Gathers key data and stores it.

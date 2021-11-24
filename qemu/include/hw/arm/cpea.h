@@ -1,13 +1,23 @@
 /*
-    Created by Austin Parkes.
+ * MachineState for CPEA. Contains all configurable variables needed for Cortex-M
+ * TODO: Extend description
+ * Written by Austin Parkes.
 */
 
 #ifndef CPEA_H_
 #define CPEA_H_
 
-#include "cpea/cortexm-mcu.h"
 #include "hw/boards.h"
+#include "hw/sysbus.h"
 
+#define TYPE_CPEA_MACHINE MACHINE_TYPE_NAME("cpea")
+OBJECT_DECLARE_SIMPLE_TYPE(CpeaMachineState, CPEA_MACHINE)
+
+#define TYPE_CPEA_MMIO "cpea-mmio"
+OBJECT_DECLARE_SIMPLE_TYPE(CpeaMMIOState, CPEA_MMIO)
+
+#define TYPE_CPEA_IRQ_DRIVER "cpea-irq-driver"
+OBJECT_DECLARE_SIMPLE_TYPE(CpeaIRQDriverState, CPEA_IRQ_DRIVER)
 
 struct CpeaMachineState {
     MachineState parent;
@@ -33,20 +43,20 @@ struct CpeaMachineState {
 
 };
 
-#define TYPE_CPEA_MACHINE MACHINE_TYPE_NAME("cpea")
-OBJECT_DECLARE_SIMPLE_TYPE(CpeaMachineState, CPEA_MACHINE)
 
-// TODO: Could move emulatorConfig.h here?
 
-/* 
-    Attempt to contain ALL the board configurations the user might need to provide
-    except for MMIO.
-*/
-typedef struct CP_board_configs {
+struct CpeaMMIOState {
+    SysBusDevice parent_obj;
 
-    CortexMCoreCapabilities CP_core;
-    CortexMCapabilities CP_mem;   
+    // Memory Region declaration?
+    qemu_irq *irq;          /* Made pointer to dynamically change # IRQs that can be raised. */
+};
 
-} CP_config;
+
+struct CpeaIRQDriverState {
+    SysBusDevice parent_obj;
+    
+    qemu_irq *irq;          /*  */
+};
 
 #endif /* CPEA_H_ */

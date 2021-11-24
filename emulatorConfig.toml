@@ -1,19 +1,14 @@
-# TODO
+# TODO:
 # 1) Find better way to ignore keys than '0xFFFF' when user doesn't want to use the key.
 # 2) Add a way to change the flag count. e.g. Generic_Flag1 -> Generic_Flagx
 # 3) Can make an inline table for memory map to add additional 'alias' option to memory regions.
+# 4) Configuration registers could return to make certain flags configurable for interrupts.
+# 5) Give option to provide an address for an IRQ rather than IRQn. Can compute irqn from address. 
 
 [config]
 [config.options]
 core = 1
 mem_map = 1
-
-    [config.core]
-    cpu_model = "cortex-m4"
-    num_irq = 57
-    sVTOR = 0x0
-    bitband = 1
-    idau = 1
 
     [config.mem_map]
     flash_base = 0x0
@@ -24,6 +19,11 @@ mem_map = 1
     sram_size2 = 0x0
     sram_base3 = 0x0
     sram_size3 = 0x0
+    
+    [config.core]
+    cpu_model = "cortex-m4"
+    num_irq = 480
+    bitband = 1
     
 [mmio]
 [mmio.count]
@@ -36,6 +36,7 @@ generic_count = 1
     [mmio.generic.0.config]
     SR_count = 1
     DR_count = 0
+    irq = {enabled = 0, irqn = "null"}           # Does this peripheral have an IRQ? If yes, what is it's irqn?
 
     [mmio.generic.0.addr]
     base_addr = 0x40064000
@@ -52,5 +53,5 @@ generic_count = 1
     Flag5 = {reg = "SR1", bit = 2, val = 1, addr = 0x1aec}
     Flag6 = {reg = "SR1", bit = 3, val = 1, addr = 0x1a86}
     Flag7 = {reg = "SR1", bit = 5, val = 1, addr = 0x1a9c}
-    
-    
+        
+

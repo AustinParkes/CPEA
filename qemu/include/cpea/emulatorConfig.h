@@ -5,12 +5,12 @@
 #include "cpea/toml.h"
 #include "hw/arm/cpea.h"
 
-void error(const char *, const char *, const char *);   // Prints Error Messages in parsing
-toml_table_t *parseTOML(toml_table_t *, CpeaMachineState **);	// Gather data from TOML file.
+void error(const char *, const char *, const char *, const char *);           
+toml_table_t *parseConfig(toml_table_t *, CpeaMachineState **);	
 CpeaMachineState *emuConfig(CpeaMachineState *);
-int mmioConfig(toml_table_t *);				            // Configure peripheral emulation.
-int setFlags(toml_table_t *, int);					    // Sets the configured status register values.
-void parseKeys(char *, const char *, toml_table_t *, const char *, int);    // Gathers key data and stores it.
+int mmioConfig(toml_table_t *);				            
+int setFlags(toml_table_t *, int);					   
+void parseKeys(char *, const char *, toml_table_t *, const char *, int);
 void cp_mem_write(uint64_t, const void *, size_t);
 void cp_mem_read(uint64_t, void *, size_t);
 
@@ -68,10 +68,11 @@ enum Data_Register {DR1, DR2};
 
 // MMIO Structure for all peripherals. 
 typedef struct MMIO{
-    // MMIO Metadata
+    // Metadata
     int periphID;                           // ID of which peripheral this struct is for. e.g. uart, gpio, etc.
     int modID;                              // ID for which module this is. e.g. 0, 1, 2, etc
     int modCount;                           // Number of total modules for this peripheral
+    
     // FIXME: Currently not finding min/max for modules. 
     int minAddr;                            // Lowest register address for this module 
     int maxAddr;                            // Highest register address for this module
@@ -85,19 +86,19 @@ typedef struct MMIO{
     uint32_t SR_RESET[MAX_SR];                  // TODO: Same as above
     uint32_t DR_RESET[2];
 
-    // UART regs to temporarily hold values	
+    // regs to temporarily hold values	
     uint32_t SR[MAX_SR];                        // TODO: Same as above above
     uint32_t DR[2];
 	
 	// Instance flag to see if instance exists for this module. 
 	int SR_INST;
 	
-} MMIO_handle;
-extern MMIO_handle *MMIO[MAX_MMIO];      // Holds pointers to different instances of peripherals		
+} CpeaMMIO;
+extern CpeaMMIO *MMIO[MAX_MMIO];      // Holds pointers to different instances of peripherals		
 
 
 // Saves SR instances for particular SR accesses.
-extern int inst_i;                         // Instance index, to keep track of current index when allocating.  
+extern int inst_i;
 typedef struct SR_INSTANCE{
 
     uint32_t INST_ADDR;                   // Program address SR is accessed at.

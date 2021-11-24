@@ -14,7 +14,7 @@
 #include "cpea/toml.h"
 #include "hw/arm/cpea.h"
 
-MMIO_handle *MMIO[MAX_MMIO];
+CpeaMMIO *MMIO[MAX_MMIO];
 INST_handle *SR_INSTANCE[MAX_INST];
 
 uint32_t minPeriphaddr = 0xffffffff;
@@ -40,16 +40,16 @@ CpeaMachineState *emuConfig(CpeaMachineState *config){
 	
 	fp = fopen("../../emulatorConfig.toml", "r");	
     if (!fp)
-        error("cannot open emulatorConfig.toml - ", strerror(errno), "");
+        error("cannot open emulatorConfig.toml - ", strerror(errno), "", "");
  
     // Root table 
     toml_table_t* root_table = toml_parse_file(fp, errbuf, sizeof(errbuf));
     fclose(fp);
    	if (!root_table)
-   		error("cannot parse emulatorConfig.toml - ", errbuf, "");
+   		error("cannot parse emulatorConfig.toml - ", errbuf, "", "");
     
     // Gather and Store firmware and memory map info. Return 'mmio' and 'config' tables    	
-    mmio = parseTOML(root_table, &config);
+    mmio = parseConfig(root_table, &config);
     
     /***********************************
 		Peripheral Configurations   
@@ -66,8 +66,8 @@ CpeaMachineState *emuConfig(CpeaMachineState *config){
     return config;        
 }
 
-// Gather and Store configurations from TOML.
-toml_table_t* parseTOML(toml_table_t* root_table, CpeaMachineState **config){
+// Parse data from config.core and config.mem_map
+toml_table_t* parseConfig(toml_table_t* root_table, CpeaMachineState **config){
 	
 	
     /*
@@ -76,7 +76,7 @@ toml_table_t* parseTOML(toml_table_t* root_table, CpeaMachineState **config){
     
  	toml_table_t* config_tab = toml_table_in(root_table, "config");
  	if (!config_tab){
- 		error("missing [config]", "", "");
+ 		error("missing [config]", "", "", "");
  	}  	
  	    
  	/*
@@ -84,12 +84,12 @@ toml_table_t* parseTOML(toml_table_t* root_table, CpeaMachineState **config){
  	*/
  	toml_table_t* opts_tab = toml_table_in(config_tab, "options");
  	if (!opts_tab){
- 		error("missing [config.options]", "", "");
+ 		error("missing [config.options]", "", "", "");
  	} 
  	
  	/*
  	    Check if core configs exist.
- 	    Allowed values are checked in Python script.
+ 	    Allowed values are checked in Python script, but should also be checked here.
  	*/
  	toml_table_t* core_tab = toml_table_in(config_tab, "core");
  	
@@ -100,27 +100,26 @@ toml_table_t* parseTOML(toml_table_t* root_table, CpeaMachineState **config){
         // cpu model  
         toml_datum_t cpu_key = toml_string_in(core_tab, "cpu_model");
         if (!cpu_key.ok){
-    	    error("Cannot read config.core.cpu_model. It should exist.", "", "");
+    	    error("Cannot read config.core.cpu_model. It should exist.", "", "", "");
         }
 
         // mpu
         toml_datum_t bitband_key = toml_int_in(core_tab, "bitband");
         if (!bitband_key.ok){
-    	    error("Cannot read config.core.bitband. It should exist.", "", "");
+    	    error("Cannot read config.core.bitband. It should exist.", "", "", "");
         }
         
         // num_irq
         toml_datum_t irq_key = toml_int_in(core_tab, "num_irq");
         if (!irq_key.ok){
-    	    error("Cannot read config.core.num_irq. It should exist.", "", "");
+    	    error("Cannot read config.core.num_irq. It should exist.", "", "", "");
         }                                   
         
         // Update new core configs, replacing old defaults. 
         strcpy((*config)->cpu_model, cpu_key.u.s);       
         (*config)->has_bitband = bitband_key.u.i;
         (*config)->num_irq = irq_key.u.i;
-
-       	
+      	
        	// Need to free string associated with toml_datum_t structure.
  	    free(cpu_key.u.s);  	    
  	}
@@ -138,49 +137,49 @@ toml_table_t* parseTOML(toml_table_t* root_table, CpeaMachineState **config){
         // flash base
         toml_datum_t flash_base_key = toml_int_in(mem_map_tab, "flash_base");
         if (!flash_base_key.ok){
-    	    error("Cannot read config.mem_map.flash_base. It should exist.", "", "");
+    	    error("Cannot read config.mem_map.flash_base. It should exist.", "", "", "");
         }
         
         // flash size
         toml_datum_t flash_size_key = toml_int_in(mem_map_tab, "flash_size");
         if (!flash_size_key.ok){
-    	    error("Cannot read config.mem_map.flash_size. It should exist.", "", "");
+    	    error("Cannot read config.mem_map.flash_size. It should exist.", "", "", "");
         }        
         
         // sram base
         toml_datum_t sram_base_key = toml_int_in(mem_map_tab, "sram_base");
         if (!sram_base_key.ok){
-    	    error("Cannot read config.mem_map.sram_base. It should exist.", "", "");
+    	    error("Cannot read config.mem_map.sram_base. It should exist.", "", "", "");
         }        
         
         // sram size
         toml_datum_t sram_size_key = toml_int_in(mem_map_tab, "sram_size");
         if (!sram_size_key.ok){
-    	    error("Cannot read config.mem_map.sram_size. It should exist.", "", "");
+    	    error("Cannot read config.mem_map.sram_size. It should exist.", "", "", "");
         }        
         
         // sram base 2
         toml_datum_t sram_base2_key = toml_int_in(mem_map_tab, "sram_base2");
         if (!sram_base2_key.ok){
-    	    error("Cannot read config.mem_map.sram_base2. It should exist.", "", "");
+    	    error("Cannot read config.mem_map.sram_base2. It should exist.", "", "", "");
         }        
         
         // sram size 2
         toml_datum_t sram_size2_key = toml_int_in(mem_map_tab, "sram_size2");
         if (!sram_size2_key.ok){
-    	    error("Cannot read config.mem_map.sram_size2. It should exist.", "", "");
+    	    error("Cannot read config.mem_map.sram_size2. It should exist.", "", "", "");
         }        
         
         // sram base 3
         toml_datum_t sram_base3_key = toml_int_in(mem_map_tab, "sram_base3");
         if (!sram_base3_key.ok){
-    	    error("Cannot read config.mem_map.sram_base3. It should exist.", "", "");
+    	    error("Cannot read config.mem_map.sram_base3. It should exist.", "", "", "");
         }        
         
         // sram size 3
         toml_datum_t sram_size3_key = toml_int_in(mem_map_tab, "sram_size3");
         if (!sram_size3_key.ok){
-    	    error("Cannot read config.mem_map.sram_size3. It should exist.", "", "");
+    	    error("Cannot read config.mem_map.sram_size3. It should exist.", "", "", "");
         }        
         
         // Update new mem_map configs, replacing old defaults
@@ -200,7 +199,7 @@ toml_table_t* parseTOML(toml_table_t* root_table, CpeaMachineState **config){
     */
  	toml_table_t* mmio = toml_table_in(root_table, "mmio");
  	if (!mmio){
- 		error("missing [mmio]", "", "");
+ 		error("missing [mmio]", "", "", "");
  	}
     
     return mmio;
@@ -208,7 +207,7 @@ toml_table_t* parseTOML(toml_table_t* root_table, CpeaMachineState **config){
 }
 
 
-// Configure MMIO emulation.
+// Parse MMIO configurations
 int mmioConfig(toml_table_t* mmio){
 	
 	toml_table_t* periph;		// Ptr to peripheral table
@@ -230,10 +229,10 @@ int mmioConfig(toml_table_t* mmio){
 
     toml_table_t* mmio_count = toml_table_in(mmio, "count");
  	if (!mmio){
- 		error("missing [mmio.count]", "", "");
+ 		error("missing [mmio.count]", "", "", "");
  	}
  	 
- 	// Index Peripheral Counts/Modules and allocate memory for each peripheral. Init MMIO struct
+ 	// Index [mmio.count] and allocate memory for each peripheral. Init MMIO struct.
  	for (periph_i=0; ;periph_i++){
  	
  		// Get current peripheral & count. Leave if none.
@@ -244,7 +243,7 @@ int mmioConfig(toml_table_t* mmio){
  		// Get number of Peripheral modules
     	toml_datum_t num_mods = toml_int_in(mmio_count, periph_count);
     	if (!num_mods.ok){
-    		error("Cannot read mmio.count.%s", periph_count, "");
+    		error("Cannot read mmio.count.%s", periph_count, "", "");
     	}
     	
     	// Check for invalid module count
@@ -262,7 +261,7 @@ int mmioConfig(toml_table_t* mmio){
  		// Get peripheral ID for struct.
  		for (pid=0; pid<=p_total; pid++){
  			if (pid == p_total)
- 				error("No peripheral match in mmio.count", "", "");
+ 				error("No peripheral match in mmio.count", "", "", "");
 
  			strcpy(p_str, periph_str[pid]);
 			strcat(p_str, "_count");
@@ -276,26 +275,21 @@ int mmioConfig(toml_table_t* mmio){
     	// Get current peripheral ptr
     	periph = toml_table_in(mmio, p_str);
  		if (!periph){
- 			error("missing [mmio.]", p_str, "");
+ 			error("missing [mmio.]", p_str, "", "");
  		}
  		
  		// Allocate space for modules. Init MMIO metadata, addresses, resets, and flags		
  		for (mod_i=0; struct_i<mod_count; struct_i++, mod_i++){
-    		MMIO[struct_i] = (MMIO_handle *)malloc(sizeof(MMIO_handle));
+    		MMIO[struct_i] = (CpeaMMIO *)malloc(sizeof(CpeaMMIO));
     		if (MMIO[struct_i] == NULL){
     			// TODO: Update message
     			printf("Periph struct memory not allocated for module%d\n", struct_i);
-    		}	
-    		
-    		//printf("periph: %s\n", periph_count);
+    		}
     		
     		// Add metadata to MMIO struct 
     		MMIO[struct_i]->periphID = pid;
-    		//printf("pid: %d\n", MMIO[struct_i]->periphID);
     		MMIO[struct_i]->modID = mod_i;
-    		//printf("mod: %d\n", MMIO[struct_i]->modID);
-    		MMIO[struct_i]->modCount = (int)num_mods.u.i;
-    		//printf("modCount: %d\n", MMIO[struct_i]->modCount);  	
+    		MMIO[struct_i]->modCount = (int)num_mods.u.i;	
     		   		
     		// Initialize MMIO struct to 0s. 
     		for (init_i=0; init_i<20; init_i++){
@@ -309,34 +303,30 @@ int mmioConfig(toml_table_t* mmio){
     		    MMIO[struct_i]->SR_RESET[init_i] = 0;
     		    MMIO[struct_i]->SR[init_i] = 0;   		    
     		}    		
-    		MMIO[struct_i]->SR_INST = 0;
-
-    		
-			// Add config, addr, reset, flags to MMIO struct 
+    		MMIO[struct_i]->SR_INST = 0;   	
 			
- 			// Get current module string   
+			/*
+			    Parse config, addr, reset, & flags tables
+			*/  
     		const char* module_str = toml_key_in(periph, mod_i);
     		if (!module_str) 
     			break;
     		
-    		// Get current module ptr
     		toml_table_t* module_ptr = toml_table_in(periph, module_str);
     		if (!module_ptr)
     			// TODO: Change error message
- 				error("Failed to get periph table from module %s", module_str, "");
+ 				error("Failed to get periph table from module %s", module_str, "", "");
  			
-			// Loop config, addr, reset, & flags table. Parse Each.
+			// Loop config, addr, reset, & flags tables. Parse Each.
  			for (tab_i=0; ;tab_i++){
  		
- 				// Get table string. 
  				const char* table_str = toml_key_in(module_ptr, tab_i);
  				if (!table_str)
  					break;
  		
- 				// Get table ptr 
  				table_ptr = toml_table_in(module_ptr, table_str);
  				if (!table_ptr)
- 					error("Failed to get table from module %s", module_str, "");
+ 					error("Failed to get table from module %s", module_str, "", "");
  		 	
  		 		// Not on "flags" table
  		 		if (strcmp(table_str, "flags"))
@@ -363,14 +353,24 @@ void parseKeys(char* periph_str, const char* module_str, toml_table_t* table_ptr
  	int SR_i=0;				// Status Register Index
  	int DR_i=0;				// Data Register Index
  	int key_i=0;			// Key Index
+ 	int has_irq;            // Store if irq exists or not
+ 	int irqn;               // Store irqn
+ 	const char *has_irq_s;  // Store boolean string for irq
  	
- 	const char* key_str;	// Store name of any key
+ 	const char* key_str;	// Store name of any key 	  
+ 	
+ 	toml_table_t* irq_ptr;	// ptr to irq inline table
+ 	toml_datum_t irq_true;  // irq enabled for peripheral
+ 	toml_datum_t irqn_key;  // Defines IRQn  
  	toml_datum_t key_data;	// Store data from any key
+ 	
  		
  	uint32_t base_addr;     // Need base address to check if user entered and offset or absolute address.
  	uint32_t data;			// Key Data to store.
  	
- 	// Get SR and DR counts. 
+ 	
+ 	
+ 	// Parse SR/DR counts & irq info 
  	if (!strcmp(table_str, "config")){
  		// Get SR_count string
 		key_str = toml_key_in(table_ptr, 0);
@@ -378,7 +378,7 @@ void parseKeys(char* periph_str, const char* module_str, toml_table_t* table_ptr
 		// Get SR_count number
 		key_data = toml_int_in(table_ptr, key_str);
 		if (!key_data.ok)
-    		error("Cannot read key data", "", "");
+    		error("Cannot read key data", "", "", "");
 		data = key_data.u.i;
 		
 		// SR count must be between 0 and 17 
@@ -395,7 +395,7 @@ void parseKeys(char* periph_str, const char* module_str, toml_table_t* table_ptr
 		// Get DR_count number
 		key_data = toml_int_in(table_ptr, key_str);
 		if (!key_data.ok)
-    		error("Cannot read key data", "", "");
+    		error("Cannot read key data", "", "", "");
 		data = (uint32_t)key_data.u.i;
 		
 		// DR count must be between 0 and 17 
@@ -405,6 +405,62 @@ void parseKeys(char* periph_str, const char* module_str, toml_table_t* table_ptr
 			DR_count = data;		
 		else	
 			DR_count = data;
+			
+		// Parse IRQ info
+		key_str = toml_key_in(table_ptr, 2);
+		if (!key_str){
+            fprintf(stderr, "ERROR: Missing irq table in [mmio].[%s].[%s].[%s]\n", periph_str, module_str, table_str);
+            exit(1);	
+    	}	    	
+    	irq_ptr = toml_table_in(table_ptr, key_str);
+    	
+    	
+    	// Parse 'true' key
+    	irq_true = toml_int_in(irq_ptr, "enabled");
+    	
+        // User didn't enter integer
+    	if (!irq_true.ok){    	    
+  	        irq_true = toml_string_in(irq_ptr, "enabled"); 	         
+  	        if(!irq_true.ok){
+  	            fprintf(stderr, "ERROR: Bad data for \"true\" in [mmio.%s.%s.%s.irq]\n", periph_str, module_str, table_str);
+                exit(1);  
+  	        }   	        
+  	        has_irq_s = irq_true.u.s;
+  	        if (!strcmp(has_irq_s, "false"))
+  	            has_irq = 0;
+  	        else if (!strcmp(has_irq_s, "true"))
+  	            has_irq = 1;
+  	        else{
+  	            fprintf(stderr, "ERROR: Must use boolean for \"true\" in [mmio.%s.%s.%s.irq]\n", periph_str, module_str, table_str);
+                exit(1);    	        
+  	        }
+  	        free(irq_true.u.s);       
+    	}
+    	
+    	// User entered integer
+    	else{
+            has_irq = irq_true.u.i;
+            if (has_irq < 0 || has_irq > 1){
+  	            fprintf(stderr, "ERROR: Must use boolean for \"true\" in [mmio.%s.%s.%s.irq]\n", periph_str, module_str, table_str);
+                exit(1);                 
+            }
+    	}
+    
+        // Parse 'irqn' key
+        if (has_irq){
+            irqn_key = toml_int_in(irq_ptr, "irqn");
+            if (!irqn_key.ok){
+        	    fprintf(stderr, "ERROR: [mmio.%s.%s.%s.irq] has an irq enabled, but no IRQn\n", periph_str, module_str, table_str);
+                exit(1);           
+            }                
+            irqn = irqn_key.u.i;
+            if (irqn < 0 || irqn > 480){
+        	    fprintf(stderr, "ERROR: [mmio.%s.%s.%s.irq] must have irqn in range [0, 480]\n", periph_str, module_str, table_str);
+                exit(1);              
+            }
+            // Need to store irqn and enabled bit in mmio struct
+        }    	
+			
 	}	
 		
 	// Get the register addresses	
@@ -420,7 +476,7 @@ void parseKeys(char* periph_str, const char* module_str, toml_table_t* table_ptr
   			// Get data from the current key
     		toml_datum_t key_data = toml_int_in(table_ptr, key_str);
     		if (!key_data.ok)
-    			error("Cannot read key data", "", "");
+    			error("Cannot read key data", "", "", "");
     		data = (uint32_t)key_data.u.i;			
  			
  			// Skip Storing data if 0xFFFF
@@ -488,7 +544,7 @@ void parseKeys(char* periph_str, const char* module_str, toml_table_t* table_ptr
   			// Get data from the current key
     		toml_datum_t key_data = toml_int_in(table_ptr, key_str);
     		if (!key_data.ok)
-    			error("Cannot read key data", "", "");
+    			error("Cannot read key data", "", "", "");
     		data = (uint32_t)key_data.u.i;			
  			
  			// Skip Storing data if 0xFFFF
@@ -518,7 +574,7 @@ void parseKeys(char* periph_str, const char* module_str, toml_table_t* table_ptr
  	else if (!strcmp(table_str, "flags"))
  		;
  	else
-    	error("Trying to access a module table that doesn't exist.", "", "");  	
+    	error("Trying to access a module table that doesn't exist.", "", "", "");  	
  	
  
  	// Get address range for this module
@@ -562,12 +618,12 @@ int setFlags(toml_table_t* flag_tab, int mod_i){
 		// Get the current Flag table ptr from its name
     	flag_ptr = toml_table_in(flag_tab, flag_name);
     	if (!flag_ptr)
- 			error("Failed to get Flag table: %s", flag_name, "");
+ 			error("Failed to get Flag table: %s", flag_name, "", "");
  			
  		// Get the register the flag belongs to 
     	reg_str = toml_string_in(flag_ptr, "reg");
     	if (!reg_str.ok)
-    		error("Failed to get flag register from: %s", flag_name, "");
+    		error("Failed to get flag register from: %s", flag_name, "", "");
     	flag_reg = reg_str.u.s;
         		
 		// Skip flag and exit.    		 
@@ -580,7 +636,7 @@ int setFlags(toml_table_t* flag_tab, int mod_i){
  		// Get the bit location the flag belongs to	(must be 0 - 31)	
 		flag_int = toml_int_in(flag_ptr, "bit");
     	if (!flag_int.ok)
-    		error("Failed to get flag bit location from: %s", flag_name, "");	
+    		error("Failed to get flag bit location from: %s", flag_name, "", "");	
     	flag_bit = flag_int.u.i;
     	
     	if (flag_bit < 0 || flag_bit > 31){
@@ -591,7 +647,7 @@ int setFlags(toml_table_t* flag_tab, int mod_i){
     	// Get the flag value (must be 1 or 0)		
 		flag_int = toml_int_in(flag_ptr, "val");
     	if (!flag_int.ok)
-    		error("Failed to get flag value from: ", flag_name, "");	
+    		error("Failed to get flag value from: ", flag_name, "", "");	
     	flag_val = flag_int.u.i;
     	   	
     	if (flag_val != 0 && flag_val != 1){
@@ -610,7 +666,7 @@ int setFlags(toml_table_t* flag_tab, int mod_i){
     	        if (!flag_int.ok){
                     addr_str = toml_string_in(flag_ptr, "addr");
                     if(!addr_str.ok)
-                        error("Failed to get addr value from: ", flag_name, ""); 
+                        error("Failed to get addr value from: ", flag_name, "", ""); 
                     else{
                         
      			        // Set/Clear SR bit. 
@@ -659,7 +715,7 @@ int setFlags(toml_table_t* flag_tab, int mod_i){
     		else{  		
     			if (SR_i == 7){
     			    free(reg_str.u.s);
-    				error("Please give \"reg\" name in formats SR(1-8) or sr(1-8). You gave: ", flag_reg, "");
+    				error("Please give \"reg\" name in formats SR(1-8) or sr(1-8). You gave: ", flag_reg, "", "");
     			}
     		}	
     	}
@@ -670,8 +726,8 @@ int setFlags(toml_table_t* flag_tab, int mod_i){
 
 }
 
-void error(const char *msg, const char *msg1, const char *msg2)
+void error(const char *msg, const char *msg1, const char *msg2, const char *msg3)
 {
-	fprintf(stderr, "ERROR: %s%s%s\n", msg, msg1?msg1:"", msg2?msg2:"");
+	fprintf(stderr, "ERROR: %s%s%s%s\n", msg, msg1?msg1:"", msg2?msg2:"", msg3?msg3:"");
 	exit(1);
 }

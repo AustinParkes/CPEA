@@ -37,12 +37,15 @@ def generate_periph(config_file):
     # Returns TOMLDocument/Dictionary
     config = parse(open(config_file).read())
     
+    """
+    core and mem_map
+    """
     # Update emulator configurations
     if config['config']['options']:
     
         options = ["core", "mem_map"]
         
-        # Acceptable model names for ARM
+        # Acceptable model names for ARM TODO: Can update this now for supported QEMU cortex-m models
         arm_cpus = ["cortex-m4"]
         
         # Cycle options to generate the correct configurations
@@ -61,14 +64,15 @@ def generate_periph(config_file):
                     # Determine the option we will generate
                     if option == "core":                      
                         config['config'].update({option: {'cpu_model': "cortex-m4",
-                                                        'num_irq': 57,
-                                                        'sVTOR': hex(0),
-                                                        'bitband': 1,
-                                                        'idau': 1}})
-                                                        
+                                                        'num_irq': 480,
+                                                        #'sVTOR': hex(0),   # Unused
+                                                        'bitband': 1
+                                                        #'idau': 1          # Unused
+                                                         }})
                         config['config'][option].indent(4)
                         
-                    elif option == "mem_map":                                         
+                    # TODO: Still want to figure out the best default mem_map    
+                    elif option == "mem_map":                                       
                         config['config'].update({option: {'flash_base': hex(0x0),
                                                         'flash_size': hex(0x1F40000),
                                                         'sram_base': hex(0x1fff0000),
@@ -81,7 +85,7 @@ def generate_periph(config_file):
                         config['config'][option].indent(4) 
                 
                 # Configs already exist. Check if entered values are allowed. 
-                # Boundaries may change over time. Just give general boundaries for now.
+                # TODO: Boundaries will likely change in future to reflect more realisticly. Just give general boundaries for now.
                 else:
                 
                     # Determine the option to check
@@ -100,24 +104,15 @@ def generate_periph(config_file):
 
                         
                         # TODO: Find an upper limit for num_irq    
-                        elif config['config'][option]['num_irq'] < 0 or config['config'][option]['num_irq'] > 256:    
-                            print("ERROR: [config.%s.num_irq] must be in range [0, 256]" % (option))
+                        elif config['config'][option]['num_irq'] < 0 or config['config'][option]['num_irq'] > 480:    
+                            print("ERROR: [config.%s.num_irq] must be in range [0, 480]" % (option))
                             quit() 
 
-                        # TODO:  
-                        elif config['config'][option]['sVTOR'] < 0 or config['config'][option]['sVTOR'] > 0x20000000:    
-                            print("ERROR: [config.%s.sVTOR] must be in range [0, 0x20000000]" % (option))
-                            quit() 
-                            
-                        # TODO:    
+                        # TODO:
                         elif config['config'][option]['bitband'] < 0 or config['config'][option]['bitband'] > 1:    
                             print("ERROR: [config.%s.bitband] must be a boolean value (0 or 1)" % (option))
-                            quit() 
-                            
-                        # TODO:    
-                        elif config['config'][option]['idau'] < 0 or config['config'][option]['idau'] > 1:    
-                            print("ERROR: [config.%s.idau] must be a boolean value (0 or 1)" % (option))
-                            quit()                                                                                                                                                  
+                            quit()
+
                     
                     # TODO: Find more appropriate memory limits   
                     # TODO: Make sure memory doesn't overlap? Maybe overlapping is allowed in QEMU ... not sure.  
@@ -494,7 +489,7 @@ def del_quotes(config):
 
     # IMPORTANT: Add to this list anytime you want to keep quotations on a particular line.    
     # Keep quotations on lines these keys appear on
-    keep_quotes = ["reg", "cpu_model"]
+    keep_quotes = ["reg", "cpu_model", "irq"]
     
     # Re-write line by line
     for line in config.splitlines():

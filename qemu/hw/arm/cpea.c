@@ -1,5 +1,8 @@
 /*
+ *
  * CPEA's Configurable Board 
+ * Written by Austin Parkes
+ * 
  */
 
 #include <stdio.h>
@@ -17,13 +20,12 @@
 #include "qom/object.h"
 
 
-
-/* SYSCLK frequency: Chose a value that works.
-   TODO: Make configurable? Don't see a need yet. Just care about FW execution. 
+/* 
+    SYSCLK frequency: Chose a value that works.
 */
 #define SYSCLK_FRQ 120000000ULL
 
-static MMIO_handle *findMod(uint64_t, MMIO_handle**);  // Find peripheral module accessed in callback. 
+static CpeaMMIO *findMod(uint64_t, CpeaMMIO**);  // Find peripheral module accessed in callback. 
 
 // Callback for writes to mmio region
 // TODO: Log data that is written to registers.
@@ -34,16 +36,18 @@ static void mmio_write(void *opaque, hwaddr addr,
 }   
 
 // Callback for reads from mmio region
-/* TODO: Could only issue callbacks for the registers defined in TOML file to optimize performance. 
-         mmio_ops might let you restrict register addresses.
+/* TODO: 1) Could only issue callbacks for the registers defined in TOML file to optimize performance. 
+            mmio_ops might let you restrict register addresses.
+            
+         2) Could also only init memory regions based on registers defined in TOML.
 
+         
 */
 static uint64_t mmio_read(void *opaque, hwaddr addr,
                       unsigned size)
 {
     ARMv7MState *armv7m;            // Holds CPU state
     uint32_t PC;                    // program counter
-	//uint32_t SR_temp;               // Temporary SR holding register
 	int SR_bit;                     // SR bit location to write to (0-31)
 	int SR_val;                     // Hold SR bit value (1 or 0)
 	int addr_i;                     // Index registers' addresses
@@ -54,7 +58,7 @@ static uint64_t mmio_read(void *opaque, hwaddr addr,
     // Compute absolute addr from offset
     hwaddr reg_addr = 0x40000000 + addr;
     
-    MMIO_handle *periphx = NULL;	// Points to the peripheral mmio accessed. 
+    CpeaMMIO *periphx = NULL;	// Points to the peripheral mmio accessed. 
     
     // Determine if we are accessing a peripheral we mapped.  
     periphx = findMod(reg_addr, &periphx);
@@ -68,7 +72,7 @@ static uint64_t mmio_read(void *opaque, hwaddr addr,
     }
     */
     
-    // Find register being accessed and handle according to type (DR or SR)
+    // Find register being accessed and handle according to type (DR, CR or SR)
     for (addr_i=0; addr_i < MAX_SR; addr_i++){
     
         // Search DRs for match
@@ -79,6 +83,7 @@ static uint64_t mmio_read(void *opaque, hwaddr addr,
         }
         
         // Search SRs for match
+        // TODO: Turn into a function for portability.
         if (reg_addr == periphx->SR_ADDR[addr_i]){
             
             // SR instance doesn't exist. Return register value
@@ -86,7 +91,6 @@ static uint64_t mmio_read(void *opaque, hwaddr addr,
                 return periphx->SR[addr_i];
             }
     
-            // TODO: Need to read PC with QEMU API
             // SR instance exists
 	        else {	
 	            /* 
@@ -100,7 +104,7 @@ static uint64_t mmio_read(void *opaque, hwaddr addr,
 	            */
 	            PC = armv7m->cpu->env.regs[15];     // Get program counter	
 		        //uc_reg_read(uc, UC_ARM_REG_PC, &PC);
-		        printf("PC_inst: 0x%x\n", PC);	  
+		        //printf("PC_inst: 0x%x\n", PC);	  
 	            // Loop SR instances & look for match
 	            for (index = 0; index < inst_i; index++){
 	                
@@ -116,7 +120,7 @@ static uint64_t mmio_read(void *opaque, hwaddr addr,
 	                        CLEAR_BIT(periphx->SR[addr_i], SR_bit);
 	                        //CLEAR_BIT(SR_temp, SR_bit);
 	                        
-	                    printf("SR_inst: 0x%x\n", periphx->SR[addr_i]);    
+	                    //printf("SR_inst: 0x%x\n", periphx->SR[addr_i]);    
 	                    //printf("SR_inst: 0x%x\n", SR_temp);
 	                    
 	                    return periphx->SR[addr_i];
@@ -125,10 +129,10 @@ static uint64_t mmio_read(void *opaque, hwaddr addr,
 	            }
 	            
 	            // No instance at accessed address, so return register value.
-	            printf("SR_no_inst: 0x%x\n", periphx->SR[addr_i]);
+	            //printf("SR_no_inst: 0x%x\n", periphx->SR[addr_i]);
 	            return periphx->SR[addr_i];   
             }      
-        }
+        }   // Would be end of functionS
     }
 
     // Return 0 for unregistered MMIO  
@@ -144,6 +148,21 @@ static const MemoryRegionOps mmio_ops = {
     .impl.max_access_size = 4,
 };
 
+static void cpea_irq_driver_init(Object *obj)
+{
+    DeviceState *dev = DEVICE(obj);
+
+
+}
+
+static void cpea_mmio_init(Object *obj)
+{    
+    DeviceState *dev = DEVICE(obj);
+    
+    //  
+    
+    printf("MMIO Device Init!\n");
+}
 
 static void cpea_init(MachineState *machine)
 {
@@ -151,8 +170,8 @@ static void cpea_init(MachineState *machine)
     DeviceState *cpu_dev;   
     ARMv7MState *armv7m;          
          
-    cpu_dev = qdev_new(TYPE_ARMV7M);      // Create ARMv7m cpu device
-    armv7m = ARMV7M(cpu_dev);             // Get armv7m State: To pass CPU state to callback     
+    cpu_dev = qdev_new(TYPE_ARMV7M);
+    armv7m = ARMV7M(cpu_dev);              
     
     MemoryRegion *flash = g_new(MemoryRegion, 1);
     MemoryRegion *sram = g_new(MemoryRegion, 1);
@@ -164,13 +183,13 @@ static void cpea_init(MachineState *machine)
     // Default Core 
     strcpy(cms->cpu_model, "cortex-m4");
     cms->has_bitband = true;
-    cms->num_irq = 57;
+    cms->num_irq = 480;             // Max out IRQ lines. Reducing this has performance benefit when iterating through IRQs.
     
     // Default Memory
     cms->flash_base = 0x0;
     cms->flash_size = 32768000;
     cms->sram_base = 0x1fff0000;
-    cms->sram_size = 256000;
+    cms->sram_size = 0x02000000;    // Max out SRAM. Any larger and we dip into potential bitband region. Was 256000
     cms->sram_base2 = 0;
     cms->sram_size2 = 0;
     cms->sram_base3 = 0;
@@ -205,7 +224,7 @@ static void cpea_init(MachineState *machine)
                                                
         memory_region_add_subregion(system_memory, cms->sram_base3, sram3);
     }
-    
+  
     memory_region_init_io(mmio, NULL, &mmio_ops, (void *)armv7m, "mmio", 
                           0x20000000);
     
@@ -214,26 +233,14 @@ static void cpea_init(MachineState *machine)
     // For systick_reset. Required in ARMv7m
     system_clock_scale = NANOSECONDS_PER_SECOND / SYSCLK_FRQ;
     
-    // Create ARMv7m "armv7m" CPU of model cortex-m4
-    // object_initialize_child(OBJECT(), "armv7m", &cps->armv7m, TYPE_ARMV7M);    
-    // cpu_dev = DEVICE(&cps->armv7m);         // Get device from armv7m. Replaces line below.       
-     
-    /* TODO: Need to set the number of IRQs. (Can I max this out? Think not ...) Not sure what happens when we set IRQs in qemu.
-       e.g: qdev_prop_set_uint32(cpu-dev, "num-irq", 96);
-       Guess is we need to set number of IRQs that the MCU supports. Usually this isn't hard to analyze in a binary. 
-       Can add a configuration for this in the toml file.   
-    */
-    
+    /* Configure CPU */
     strcpy(arm_cpu_model, cms->cpu_model);
     strcat(arm_cpu_model, "-arm-cpu");              // Replaces ARM_CPU_TYPE_NAME(name) macro. 
     
     qdev_prop_set_string(cpu_dev, "cpu-type", arm_cpu_model);    
-    qdev_prop_set_bit(cpu_dev, "enable-bitband", cms->has_bitband);
-    
-    // Can we always just max this out? (num-irq here should just include external IRQs. However, NVICState::num_irq counts ALL exceptions. 480 max for # external intr. in armv7m)
+    qdev_prop_set_bit(cpu_dev, "enable-bitband", cms->has_bitband);   
     qdev_prop_set_uint32(cpu_dev, "num-irq", cms->num_irq);
-    
-    // Write system memory to device's memory through it's "memory" property
+       
     object_property_set_link(OBJECT(cpu_dev), "memory",
                              OBJECT(get_system_memory()), &error_abort);
                              
@@ -246,16 +253,15 @@ static void cpea_init(MachineState *machine)
 }
 
 /* 
-    Search for a peripheral module that has a register address which
-    matches the accessed address.
+    Search for the accessed peripheral module
     
     Returns NULL if none found. 
 
 */
-static MMIO_handle *findMod(uint64_t address, MMIO_handle** periph){
+static CpeaMMIO *findMod(uint64_t address, CpeaMMIO** periph){
 
 	int mod_i;		// Index for peripheral module
-	MMIO_handle *periphx = *periph;
+	CpeaMMIO *periphx = *periph;
 	
     // Determine which MMIO module the accessed address belongs to.     
     for (mod_i=0; mod_i < mod_count; mod_i++){
@@ -276,18 +282,47 @@ static MMIO_handle *findMod(uint64_t address, MMIO_handle** periph){
 
 }  
 
-// NOTE: Don't think you can get a State from a Class.    
+// IRQ Firing Device
+static void cpea_irq_driver_class_init(ObjectClass *klass, void *data)
+{
+    DeviceClass *dc = DEVICE_CLASS(klass);
+    // Anything need to go here?
+}
+
+static const TypeInfo cpea_irq_driver_info = {
+    .name = TYPE_CPEA_IRQ_DRIVER,
+    .parent = TYPE_SYS_BUS_DEVICE,
+    .instance_size = sizeof(CpeaIRQDriverState),
+    .instance_init = cpea_irq_driver_init,
+    .class_init    = cpea_irq_driver_class_init,
+};
+
+// mmio Device
+static void cpea_mmio_class_init(ObjectClass *klass, void *data)
+{
+    DeviceClass *dc = DEVICE_CLASS(klass);
+    // Anything need to go here?    
+}
+
+static const TypeInfo cpea_mmio_info = {
+    .name = TYPE_CPEA_MMIO,
+    .parent = TYPE_SYS_BUS_DEVICE,
+    .instance_size = sizeof(CpeaMMIOState),
+    .instance_init = cpea_mmio_init,
+    .class_init    = cpea_mmio_class_init,
+};
+
+
+// CPEA Device   
 static void cpea_class_init(ObjectClass *oc, void *data)
 {
     MachineClass *mc = MACHINE_CLASS(oc);
     
     mc->desc = "CPEA Generic Machine";
     mc->is_default = true;                  
-    mc->init = cpea_init; 
-          
+    mc->init = cpea_init;          
 }  
 
-// TODO: Need instance and class sizes of our CpeaMachineState and CpeaMachineClass
 static const TypeInfo cpea_info = {
     .name       = TYPE_CPEA_MACHINE,
     .parent     = TYPE_MACHINE,
@@ -297,5 +332,7 @@ static const TypeInfo cpea_info = {
 
 static void cpea_machine_init(void){
     type_register_static(&cpea_info);
+    type_register_static(&cpea_mmio_info);
+    type_register_static(&cpea_irq_driver_info);
 }  
 type_init(cpea_machine_init);

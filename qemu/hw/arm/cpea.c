@@ -264,7 +264,7 @@ static CpeaMMIO *findMod(uint64_t address, CpeaMMIO** periph){
 	CpeaMMIO *periphx = *periph;
 	
     // Determine which MMIO module the accessed address belongs to.     
-    for (mod_i=0; mod_i < mod_count; mod_i++){
+    for (mod_i=0; mod_i < mmio_total; mod_i++){
     
     	if (!MMIO[mod_i]){
     		printf("Error accessing MMIO%d in mmio_read callback", mod_i);	

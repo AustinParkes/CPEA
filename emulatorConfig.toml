@@ -1,6 +1,6 @@
 # TODO:
 # 1) Find better way to ignore keys than '0xFFFF' when user doesn't want to use the key.
-# 2) Add a way to change the flag count. e.g. Generic_Flag1 -> Generic_Flagx
+# 2) Add a way to change the flag count under 'flags' table. (e.g. Flag1 - Flagx)
 # 3) Can make an inline table for memory map to add additional 'alias' option to memory regions.
 # 4) Configuration registers could return to make certain flags configurable for interrupts.
 # 5) Give option to provide an address for an IRQ rather than IRQn. Can compute irqn from address. 
@@ -36,7 +36,7 @@ generic_count = 1
     [mmio.generic.0.config]
     SR_count = 1
     DR_count = 0
-    irq = {enabled = 0, irqn = "null"}           # Does this peripheral have an IRQ? If yes, what is it's irqn?
+    irq = {enabled = 0, irqn = "null"}
 
     [mmio.generic.0.addr]
     base_addr = 0x40064000

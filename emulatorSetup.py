@@ -252,8 +252,13 @@ def generate_periph(config_file):
 def generate_module(config, periph, p_flags, i):
 
     mod_i = str(i)
+    
     # Generate config table
     config['mmio'][periph].update({mod_i: {'config': {'SR_count': 2, 'DR_count': 2}}})
+    config['mmio'][periph][mod_i]['config'].add('irq', inline_table())
+    config['mmio'][periph][mod_i]['config']['irq'].append('enabled', 0)
+    config['mmio'][periph][mod_i]['config']['irq'].append('irqn', "null")
+    
     # TODO: Move the indentations to the end of this.
 						
     config['mmio'][periph][mod_i].indent(4)
@@ -321,7 +326,9 @@ def check_existance(config, periph):
             config['mmio'].remove(periph)                
                 
                     
-
+"""
+Updates register counts in toml
+"""
 def update_regs(config, periph, count):
 	
     SR_count = 0	# Number of SR that we want to generate

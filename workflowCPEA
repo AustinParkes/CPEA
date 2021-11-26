@@ -818,5 +818,5 @@ To Print Opcode
 To Convert to Raw Binary
     - 'xxd -r -p input.opcode output.bin' to get raw binary
 	  - Read this into Unicorn and store in char array. :)
-	 
+
 

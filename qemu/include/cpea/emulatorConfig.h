@@ -27,8 +27,7 @@ void fire_intr();       // Fires interrupt every 1,000 basic blocks (bbls)
 */
 
 // Max array sizes
-#define MAX_MMIO 16				// TODO: Find an appropriate max number (16?)
-#define MAX_SR 20               // TODO: Find an appropriate max number
+
 #define MAX_INST 1000           // TODO: Find better max number for saved SR instances?
 
 // Set kth bit in a register
@@ -50,7 +49,7 @@ extern int m_cnt;              // Points to a bit in ISERn to fire interrupts
 /*******************/
 /*** MMIO Config ***/
 /*******************/
-extern int mod_count;              // Total number of peripheral modules	
+extern int mmio_total;             // Total number of peripherals 
 extern int SR_count;               // Number of SR for a module
 extern int DR_count;               // Number of DR for a module
 
@@ -64,37 +63,7 @@ enum periphID {uartID, gpioID, genericID};
 
 // To index correct SR or DR
 enum Status_Register {SR1, SR2, SR3, SR4, SR5, SR6, SR7, SR8};
-enum Data_Register {DR1, DR2};
-
-// MMIO Structure for all peripherals. 
-typedef struct MMIO{
-    // Metadata
-    int periphID;                           // ID of which peripheral this struct is for. e.g. uart, gpio, etc.
-    int modID;                              // ID for which module this is. e.g. 0, 1, 2, etc
-    int modCount;                           // Number of total modules for this peripheral
-    
-    // FIXME: Currently not finding min/max for modules. 
-    int minAddr;                            // Lowest register address for this module 
-    int maxAddr;                            // Highest register address for this module
-
-    uint32_t BASE_ADDR;
-	
-    uint32_t SR_ADDR[MAX_SR];                   // TODO: Find a reasonable number for possible # of SR addresses
-    uint32_t DR_ADDR[2];					
-		
-    // Reset values to init memory with		
-    uint32_t SR_RESET[MAX_SR];                  // TODO: Same as above
-    uint32_t DR_RESET[2];
-
-    // regs to temporarily hold values	
-    uint32_t SR[MAX_SR];                        // TODO: Same as above above
-    uint32_t DR[2];
-	
-	// Instance flag to see if instance exists for this module. 
-	int SR_INST;
-	
-} CpeaMMIO;
-extern CpeaMMIO *MMIO[MAX_MMIO];      // Holds pointers to different instances of peripherals		
+enum Data_Register {DR1, DR2};		
 
 
 // Saves SR instances for particular SR accesses.

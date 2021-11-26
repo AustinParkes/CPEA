@@ -20,7 +20,7 @@ INST_handle *SR_INSTANCE[MAX_INST];
 uint32_t minPeriphaddr = 0xffffffff;
 uint32_t maxPeriphaddr = 0x0;
 
-int mod_count;
+int mmio_total;
 int SR_count;
 int DR_count;
 
@@ -217,7 +217,7 @@ int mmioConfig(toml_table_t* mmio){
 	int mod_i;					// Peripheral Module Index
 	int tab_i;					// Index to iterate through modules. e.g. config, addr, reset, flags
 	int init_i;                 // Index to initialize MMIO struct.
-	
+	           
 	char p_str[20];				// String of a peripheral
 	int pid;					// Iterable Peripheral Index
 	int p_total;				// Total number of possible peripherals
@@ -231,7 +231,8 @@ int mmioConfig(toml_table_t* mmio){
  	if (!mmio){
  		error("missing [mmio.count]", "", "", "");
  	}
- 	 
+ 	
+ 	mmio_total=0;
  	// Index [mmio.count] and allocate memory for each peripheral. Init MMIO struct.
  	for (periph_i=0; ;periph_i++){
  	
@@ -251,14 +252,15 @@ int mmioConfig(toml_table_t* mmio){
     	if ((int)num_mods.u.i <= 0)
 			continue;
 		else if ((int)num_mods.u.i > MAX_MMIO - 1 ){
-			printf("WARNING: MMIO count set to %d, but cannot exceed %d. ", (int)num_mods.u.i, MAX_MMIO - 1);
-			printf("Setting to 15.");	
+			printf("WARNING: MMIO count set to %d, but cannot exceed %d.\n", (int)num_mods.u.i, MAX_MMIO - 1);
+			printf("Setting to 15.\n");	
 			num_mods.u.i = 15;	
 		}
     	
-    	mod_count = mod_count + (int)num_mods.u.i;	// Get total number of peripheral modules for this periph
+    	mmio_total = mmio_total + (int)num_mods.u.i;	// Get total number of peripheral modules for this periph
 		
  		// Get peripheral ID for struct.
+ 		// FIXME: Currently have no use for this.
  		for (pid=0; pid<=p_total; pid++){
  			if (pid == p_total)
  				error("No peripheral match in mmio.count", "", "", "");
@@ -279,14 +281,15 @@ int mmioConfig(toml_table_t* mmio){
  		}
  		
  		// Allocate space for modules. Init MMIO metadata, addresses, resets, and flags		
- 		for (mod_i=0; struct_i<mod_count; struct_i++, mod_i++){
+ 		for (mod_i=0; struct_i<mmio_total; struct_i++, mod_i++){
+ 		    // TODO: Can probably allocate this all in 1 go, rather than each loop cycle. 
     		MMIO[struct_i] = (CpeaMMIO *)malloc(sizeof(CpeaMMIO));
     		if (MMIO[struct_i] == NULL){
-    			// TODO: Update message
+    			// TODO: Update message since module # is hard for a user to track
     			printf("Periph struct memory not allocated for module%d\n", struct_i);
     		}
     		
-    		// Add metadata to MMIO struct 
+    		// Update MMIO metadata          
     		MMIO[struct_i]->periphID = pid;
     		MMIO[struct_i]->modID = mod_i;
     		MMIO[struct_i]->modCount = (int)num_mods.u.i;	
@@ -340,11 +343,7 @@ int mmioConfig(toml_table_t* mmio){
     	}
 	
  	}
-
-   	// SANITY CHECK. Check if the min and max addresses for UART match.
-   	//printf("minUARTaddr: 0x%x\nmaxUARTaddr: 0x%x\n", minUARTaddr, maxUARTaddr);
-   	
-		
+   			
    	return 0;	  		
 }
 
@@ -367,9 +366,7 @@ void parseKeys(char* periph_str, const char* module_str, toml_table_t* table_ptr
  		
  	uint32_t base_addr;     // Need base address to check if user entered and offset or absolute address.
  	uint32_t data;			// Key Data to store.
- 	
- 	
- 	
+ 		
  	// Parse SR/DR counts & irq info 
  	if (!strcmp(table_str, "config")){
  		// Get SR_count string
@@ -398,6 +395,7 @@ void parseKeys(char* periph_str, const char* module_str, toml_table_t* table_ptr
     		error("Cannot read key data", "", "", "");
 		data = (uint32_t)key_data.u.i;
 		
+		// FIXME: This should be between 1 and 3???
 		// DR count must be between 0 and 17 
 		if (data <= 0)
 			DR_count = 1;			
@@ -413,11 +411,13 @@ void parseKeys(char* periph_str, const char* module_str, toml_table_t* table_ptr
             exit(1);	
     	}	    	
     	irq_ptr = toml_table_in(table_ptr, key_str);
-    	
-    	
-    	// Parse 'true' key
-    	irq_true = toml_int_in(irq_ptr, "enabled");
-    	
+    	   	
+    	// Default irq info   	
+    	MMIO[mod_i]->irq_enabled = 0;
+    	MMIO[mod_i]->irqn = 0xffff;
+    	    
+    	// Parse 'true' key 
+    	irq_true = toml_int_in(irq_ptr, "enabled");    	    	
         // User didn't enter integer
     	if (!irq_true.ok){    	    
   	        irq_true = toml_string_in(irq_ptr, "enabled"); 	         
@@ -458,7 +458,10 @@ void parseKeys(char* periph_str, const char* module_str, toml_table_t* table_ptr
         	    fprintf(stderr, "ERROR: [mmio.%s.%s.%s.irq] must have irqn in range [0, 480]\n", periph_str, module_str, table_str);
                 exit(1);              
             }
-            // Need to store irqn and enabled bit in mmio struct
+            
+            // Update irq info for this module
+            MMIO[mod_i]->irq_enabled = 1;
+            MMIO[mod_i]->irqn = irqn;
         }    	
 			
 	}	
@@ -504,15 +507,29 @@ void parseKeys(char* periph_str, const char* module_str, toml_table_t* table_ptr
 				if (data < base_addr)
 					data = data + base_addr;
 
-				// Store addr data	
+				// Store addr data. SRs are looped first.	
 				if (SR_i < SR_count){
 					MMIO[mod_i]->SR_ADDR[SR_i] = data;
+					/*
+					    0) Make a hash table that holds data of type 'MMIOkey'
+					    1) Compute Hash for the addr (data)
+					       - Can do bitwise
+					    2) Add struct to hash table based on computed index.
+					       - Making sure there is no collision.
+					    Have
+					    1) AddrKey: data
+					    2) MMIOIndex: mod_i
+					    3) regType: SR
+					    4) regIndex: SR_i
+					*/ 
 					SR_i++;	
 				}
 				else{
 					MMIO[mod_i]->DR_ADDR[DR_i] = data;
+					// 
 					DR_i++;
 				} 
+				
 				
  
 				// Keep track of lowest and highest addr.
@@ -526,6 +543,8 @@ void parseKeys(char* periph_str, const char* module_str, toml_table_t* table_ptr
 					maxPeriphaddr = data;					
 	
 			}
+			
+			
 				
  		}
  		

@@ -47,6 +47,7 @@ static uint64_t mmio_read(void *opaque, hwaddr addr,
                       unsigned size)
 {
     ARMv7MState *armv7m;            // Holds CPU state
+    MMIOkey MMIOReg;               // MMIO register accessed
     uint32_t PC;                    // program counter
 	int SR_bit;                     // SR bit location to write to (0-31)
 	int SR_val;                     // Hold SR bit value (1 or 0)
@@ -58,6 +59,28 @@ static uint64_t mmio_read(void *opaque, hwaddr addr,
     // Compute absolute addr from offset
     hwaddr reg_addr = 0x40000000 + addr;
     
+    // Get the MMIO register data associated with this IO address
+    /*
+        TODO: This hangs forever on IO addresses the user never configured
+              because it loops the hash table until it finds a match. 
+              We NEED to be able to quickly ignore IO addresses that 
+              aren't in the hash table. 
+              Might be able to init IO regions ONLY for IO addresses the user
+              configured. That way, we'd always find a match. 
+    */
+    /*
+    MMIOReg = LookupHashAddr((uint32_t)reg_addr);
+    if (!MMIOReg.AddrKey){
+        printf("ERROR\n");
+        fprintf(stderr, "ERROR: Failed to look up IO address in Hash Table\n");
+        exit(1);    
+    }
+    
+    printf("AddrKey:%d\n", MMIOReg.AddrKey);
+    printf("MMIOIndex%d\n", MMIOReg.MMIOIndex);
+    printf("RegType:%d\n", MMIOReg.RegType);
+    printf("RegIndex%d\n", MMIOReg.RegIndex);
+    */
     CpeaMMIO *periphx = NULL;	// Points to the peripheral mmio accessed. 
     
     // Determine if we are accessing a peripheral we mapped.  
@@ -150,14 +173,14 @@ static const MemoryRegionOps mmio_ops = {
 
 static void cpea_irq_driver_init(Object *obj)
 {
-    DeviceState *dev = DEVICE(obj);
+    //DeviceState *dev = DEVICE(obj);
 
 
 }
 
 static void cpea_mmio_init(Object *obj)
 {    
-    DeviceState *dev = DEVICE(obj);
+    //DeviceState *dev = DEVICE(obj);
     
     //  
     
@@ -168,10 +191,7 @@ static void cpea_init(MachineState *machine)
 {
     CpeaMachineState *cms = CPEA_MACHINE(machine);
     DeviceState *cpu_dev;   
-    ARMv7MState *armv7m;          
-         
-    cpu_dev = qdev_new(TYPE_ARMV7M);
-    armv7m = ARMV7M(cpu_dev);              
+    ARMv7MState *armv7m;                           
     
     MemoryRegion *flash = g_new(MemoryRegion, 1);
     MemoryRegion *sram = g_new(MemoryRegion, 1);
@@ -195,8 +215,11 @@ static void cpea_init(MachineState *machine)
     cms->sram_base3 = 0;
     cms->sram_size3 = 0;    
          
-    // Handle all TOML configurations, possibly modifing default configs.                   
+    // Parse user configurations                  
     cms = emuConfig(cms);
+    
+    cpu_dev = qdev_new(TYPE_ARMV7M);
+    armv7m = ARMV7M(cpu_dev); 
     
     // Init mem regions, and add them to system memory      
     memory_region_init_rom(flash, NULL, "flash", cms->flash_size,
@@ -224,11 +247,13 @@ static void cpea_init(MachineState *machine)
                                                
         memory_region_add_subregion(system_memory, cms->sram_base3, sram3);
     }
-  
+    // TODO: Should just init the regions for which the user configures. 
     memory_region_init_io(mmio, NULL, &mmio_ops, (void *)armv7m, "mmio", 
                           0x20000000);
     
     memory_region_add_subregion(system_memory, 0x40000000, mmio);                        
+    
+    
         
     // For systick_reset. Required in ARMv7m
     system_clock_scale = NANOSECONDS_PER_SECOND / SYSCLK_FRQ;
@@ -282,10 +307,89 @@ static CpeaMMIO *findMod(uint64_t address, CpeaMMIO** periph){
 
 }  
 
+// Compute Index from an IO address
+int HashAddr(uint32_t IOaddr)
+{
+    int index;
+    uint16_t pair1, pair2, pair3, pair4; 
+    printf("IO addr: %u\n", IOaddr);
+    // Folding method
+    pair1 = IOaddr >> (6*4);
+    pair2 = IOaddr >> (4*4);
+    pair2 = pair2 & (0xff);
+    pair3 = IOaddr >> (2*4);
+    pair3 = pair3 & (0xff);
+    pair4 = IOaddr & (0xff);
+
+    index = (pair1 + pair2 + pair3 + pair4)%HASH_SIZE;
+    printf("Hashed Index: %x\n", index);
+
+    return index;
+}
+
+// Fill hash table with key-data pair.
+void FillHashTable(uint32_t key, int mod_i, int reg_type, int reg_i)
+{
+    int HashIndex;          // Index from hashed IO address
+    
+    // Get hash table index
+    HashIndex = HashAddr(key);
+					
+    // Index available. Place data.
+    if (!MMIOHashTable[HashIndex].AddrKey){
+	    MMIOHashTable[HashIndex].AddrKey = key;
+		MMIOHashTable[HashIndex].MMIOIndex = mod_i;  
+		MMIOHashTable[HashIndex].RegType = reg_type;
+		MMIOHashTable[HashIndex].RegIndex = reg_i;  
+	}
+    // Index unavailable. Find a new one using open addressing. (load factor assumed to be very low)
+    else{
+					
+	    // Search for open spot
+	    while(MMIOHashTable[HashIndex].AddrKey){
+		    HashIndex += 3;
+			HashIndex = HashIndex % HASH_SIZE;	
+		    if (!MMIOHashTable[HashIndex].AddrKey){
+			    MMIOHashTable[HashIndex].AddrKey = key;
+			    MMIOHashTable[HashIndex].MMIOIndex = mod_i;  
+			    MMIOHashTable[HashIndex].RegType = reg_type;
+			    MMIOHashTable[HashIndex].RegIndex = reg_i;  
+			}				    
+		}
+	}
+}
+
+MMIOkey LookupHashAddr(uint32_t addr)
+{
+    int HashIndex;
+    int AddrKey;
+    HashIndex = HashAddr(addr);
+    
+    AddrKey = MMIOHashTable[HashIndex].AddrKey;
+    // Match found. Return MMIO data.
+    if (addr == AddrKey)
+        return MMIOHashTable[HashIndex];
+
+    // No match, search for a match.
+    else{
+        while(addr != AddrKey){
+            HashIndex += 3;
+            HashIndex = HashIndex % HASH_SIZE;
+            AddrKey = MMIOHashTable[HashIndex].AddrKey;
+            if (addr == AddrKey)
+                return MMIOHashTable[HashIndex];   
+        }
+    }    
+ 
+    // Failure
+    MMIOHashTable[HashIndex].AddrKey = 0;
+    return MMIOHashTable[HashIndex];   
+}
+
 // IRQ Firing Device
 static void cpea_irq_driver_class_init(ObjectClass *klass, void *data)
 {
-    DeviceClass *dc = DEVICE_CLASS(klass);
+    //DeviceClass *dc = DEVICE_CLASS(klass);
     // Anything need to go here?
 }
 
@@ -300,7 +404,7 @@ static const TypeInfo cpea_irq_driver_info = {
 // mmio Device
 static void cpea_mmio_class_init(ObjectClass *klass, void *data)
 {
-    DeviceClass *dc = DEVICE_CLASS(klass);
+    //DeviceClass *dc = DEVICE_CLASS(klass);
     // Anything need to go here?    
 }
 

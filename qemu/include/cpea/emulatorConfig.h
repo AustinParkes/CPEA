@@ -5,6 +5,7 @@
 #include "cpea/toml.h"
 #include "hw/arm/cpea.h"
 
+// TODO: Will likely place these at the bottom of cpea.h with explanations. 
 void error(const char *, const char *, const char *, const char *);           
 toml_table_t *parseConfig(toml_table_t *, CpeaMachineState **);	
 CpeaMachineState *emuConfig(CpeaMachineState *);

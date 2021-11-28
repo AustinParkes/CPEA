@@ -11,7 +11,9 @@
 #include "hw/sysbus.h"
 
 #define MAX_MMIO 100			// TODO: Find an appropriate max number
+#define MAX_MODS 16             // TODO: Find an appropriate max number
 #define MAX_SR 20               // TODO: Find an appropriate max number
+#define HASH_SIZE 10007         // Suitably large Hash Table Size. Prime number by default.
 
 #define TYPE_CPEA_MACHINE MACHINE_TYPE_NAME("cpea")
 OBJECT_DECLARE_SIMPLE_TYPE(CpeaMachineState, CPEA_MACHINE)
@@ -46,19 +48,20 @@ struct CpeaMachineState {
 
 };
 
+enum regType {CR_type, SR_type, DR_type};
+
 // MMIO callback address and its paired with 'MMIO' data
 typedef struct MMIOkey {
     int AddrKey;
     int MMIOIndex;
-    int regType;        // CR, SR, DR
+    int RegType;        // CR, SR, DR
     int RegIndex;
 } MMIOkey;
-extern MMIOkey MMIOHashTable[10000];
+extern MMIOkey *MMIOHashTable;
 
 // MMIO Structure for all peripherals. 
 typedef struct MMIO{
     // Metadata
-    
     int periphID;                           // ID of which peripheral this struct is for. e.g. uart, gpio, etc.
     int modID;                              // ID for which module this is. e.g. 0, 1, 2, etc
     int modCount;                           // Number of total modules for this peripheral
@@ -88,9 +91,7 @@ typedef struct MMIO{
 extern CpeaMMIO *MMIO[MAX_MMIO];
 
 struct CpeaMMIOState {
-    SysBusDevice parent_obj;
-
-    CpeaMMIO *CpeaPeriph;   
+    SysBusDevice parent_obj; 
 
     qemu_irq irq;      
 };
@@ -100,5 +101,44 @@ struct CpeaIRQDriverState {
     
     qemu_irq irq;
 };
+
+/**
+ * HashAddr: Compute Index from an IO address
+ * @IOaddr: Address of an mmio register
+ * 
+ * Uses folding method to compute an index.   
+ *
+ * Returns index to place data at in hash table.  
+ */
+int HashAddr(uint32_t IOaddr);
+
+/**
+ * FillHashTable: Fill hash table with key-data pair.
+ * @key: Data to compute table index. Most likely an IO register address
+ * @mod_i: Particular 'MMIO' peripheral index this address belong to.
+ * @reg_type: Type of register this IO address is for: CR, SR, or DR
+ * @reg_i: The index of the particular register this address belongs to.
+ *
+ * These arguments assist for quick access of this IO register's information.
+ *
+ * Uses open addressing to find an available index. We assume the load factor will be low
+ * since the hash table size is relatively large compared to the number of registers we expect
+ * a user to configure. 
+ *
+ *
+ */
+void FillHashTable(uint32_t key, int mod_i, int reg_type, int reg_i);
+
+/**
+ * LookupHashAddr: Find MMIO data given its corresponding IO register address.
+ * @addr: IO addr accessed.
+ *
+ * Uses same hash algorithm as HashAddr().
+ *
+ * Returns information about the IO register accessed.
+ 
+ */
+MMIOkey LookupHashAddr(uint32_t addr);
+
 
 #endif /* CPEA_H_ */

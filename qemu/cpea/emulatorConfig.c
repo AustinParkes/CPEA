@@ -1,6 +1,33 @@
-/* Parse emulatorConfig.toml and extract values important for the emulator 
+/* 
+ * Parse emulatorConfig.toml and store MMIO/firmware user configurations for QEMU. 
+ * Created by Austin Parkes
+ * 
+ * TODO: 1) Hash Table: MMIOHashTable is used to store IO addresses paired with their relevant MMIO info (peripheral, reg type, etc).
+ *                      We also use the MMIO struct to store some of the same information which causes redundancy. It should be possible
+ *                      to use the hash table only, but would require a significant restructure of the parsing algorithm. Would need to parse IO addresses
+ *                      first in order to throw them into hash function right away. There shouldn't be  a significant performance drop with these two data 
+ *                      structures coinciding, but there is a slight waste in memory. 
  *
+ * TODO: 2) Take load factor into consideration with hash table. Allocate more space to hash table if a certain threshold reached.
  *
+ * TODO: 3) Need to revisit error/warning messages and improve the information they provide. Should also probably just use fprintf(stderr, ...)
+ *          and ditch the fancy error() function. If line numbers can be provided with TOML API, that would also be an improvement on the error system.
+ *           
+ * TODO: 4) Need to provide better boundary conditions for much of the error checking. For example, we are arbitrarily using 100 as the max number of MMIOs.
+            Just a matter of re-visiting all the boundary checks. Some of them are incorrect too and could lead to bugs manifesting. 
+ *
+ * TODO: 5) Can get rid of min/max addresses once hash table is implemented.
+ *
+ * TODO: 6) Currently require a user to choose a peripheral that belongs in peripheral table. Figure out a better way to do this.
+ *          Does the emulator really need to be aware of what 'UART' is? or 'GPIO'? It may just need to be aware of more specific things
+ *          like how interrupts are handled with serial data like UART.  
+ *
+ * TODO: 7) 'mod_i' and 'struct_i' are used interchangeably which is confusing. They are technically different. Want to change this naming.
+ *          Keeping for now because some of the code these names depend on could change anyway.
+ *          Modules represent subsets of a peripheral: uart0, uart1, etc.
+ *          Structures represent the peripherals as a whole: uart
+ *
+ *                             
 */
 
 #include <stdio.h>
@@ -14,6 +41,7 @@
 #include "cpea/toml.h"
 #include "hw/arm/cpea.h"
 
+MMIOkey *MMIOHashTable;
 CpeaMMIO *MMIO[MAX_MMIO];
 INST_handle *SR_INSTANCE[MAX_INST];
 
@@ -232,6 +260,13 @@ int mmioConfig(toml_table_t* mmio){
  		error("missing [mmio.count]", "", "", "");
  	}
  	
+ 	// Init Hash Table for MMIO data.
+ 	MMIOHashTable = (MMIOkey *)malloc(HASH_SIZE * sizeof(MMIOkey));
+ 	if (!MMIOHashTable){
+ 	    fprintf(stderr, "ERROR: Failed to allocate memory for hash table\n");
+ 	}
+ 	memset(MMIOHashTable, 0, HASH_SIZE * sizeof(MMIOkey));
+ 	
  	mmio_total=0;
  	// Index [mmio.count] and allocate memory for each peripheral. Init MMIO struct.
  	for (periph_i=0; ;periph_i++){
@@ -248,10 +283,10 @@ int mmioConfig(toml_table_t* mmio){
     	}
     	
     	// Check for invalid module count
-    	// TODO: Get an appropriate MAX_MMIO count. Also use another variable instead of the typecasted struct.union combo
+    	// TODO: Get an appropriate MAX_MODS count. Also use another variable instead of the typecasted struct.union combo
     	if ((int)num_mods.u.i <= 0)
 			continue;
-		else if ((int)num_mods.u.i > MAX_MMIO - 1 ){
+		else if ((int)num_mods.u.i > MAX_MODS - 1 ){
 			printf("WARNING: MMIO count set to %d, but cannot exceed %d.\n", (int)num_mods.u.i, MAX_MMIO - 1);
 			printf("Setting to 15.\n");	
 			num_mods.u.i = 15;	
@@ -284,7 +319,7 @@ int mmioConfig(toml_table_t* mmio){
  		for (mod_i=0; struct_i<mmio_total; struct_i++, mod_i++){
  		    // TODO: Can probably allocate this all in 1 go, rather than each loop cycle. 
     		MMIO[struct_i] = (CpeaMMIO *)malloc(sizeof(CpeaMMIO));
-    		if (MMIO[struct_i] == NULL){
+    		if (!MMIO[struct_i]){
     			// TODO: Update message since module # is hard for a user to track
     			printf("Periph struct memory not allocated for module%d\n", struct_i);
     		}
@@ -509,24 +544,13 @@ void parseKeys(char* periph_str, const char* module_str, toml_table_t* table_ptr
 
 				// Store addr data. SRs are looped first.	
 				if (SR_i < SR_count){
-					MMIO[mod_i]->SR_ADDR[SR_i] = data;
-					/*
-					    0) Make a hash table that holds data of type 'MMIOkey'
-					    1) Compute Hash for the addr (data)
-					       - Can do bitwise
-					    2) Add struct to hash table based on computed index.
-					       - Making sure there is no collision.
-					    Have
-					    1) AddrKey: data
-					    2) MMIOIndex: mod_i
-					    3) regType: SR
-					    4) regIndex: SR_i
-					*/ 
+					MMIO[mod_i]->SR_ADDR[SR_i] = data;					
+					FillHashTable(data, mod_i, SR_type, SR_i);					
 					SR_i++;	
 				}
 				else{
 					MMIO[mod_i]->DR_ADDR[DR_i] = data;
-					// 
+					FillHashTable(data, mod_i, DR_type, SR_i);
 					DR_i++;
 				} 
 				

@@ -91,7 +91,8 @@ typedef struct MMIO{
 extern CpeaMMIO *MMIO[MAX_MMIO];
 
 struct CpeaMMIOState {
-    SysBusDevice parent_obj; 
+    SysBusDevice parent_obj;
+     
 
     qemu_irq irq;      
 };

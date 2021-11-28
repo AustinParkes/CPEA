@@ -190,7 +190,8 @@ static void cpea_mmio_init(Object *obj)
 static void cpea_init(MachineState *machine)
 {
     CpeaMachineState *cms = CPEA_MACHINE(machine);
-    DeviceState *cpu_dev;   
+    DeviceState *cpu_dev;
+    DeviceState *dev;   
     ARMv7MState *armv7m;                           
     
     MemoryRegion *flash = g_new(MemoryRegion, 1);
@@ -247,6 +248,8 @@ static void cpea_init(MachineState *machine)
                                                
         memory_region_add_subregion(system_memory, cms->sram_base3, sram3);
     }
+    
+    
     // TODO: Should just init the regions for which the user configures. 
     memory_region_init_io(mmio, NULL, &mmio_ops, (void *)armv7m, "mmio", 
                           0x20000000);
@@ -271,6 +274,9 @@ static void cpea_init(MachineState *machine)
                              
     /* This will exit with an error if bad cpu_type */   
     sysbus_realize_and_unref(SYS_BUS_DEVICE(cpu_dev), &error_fatal);
+    
+    // Can do Device init here.
+    //dev = qdev_new(TYPE_CPEA_MMIO);
      
     armv7m_load_kernel(ARM_CPU(first_cpu), machine->kernel_filename,
                        cms->flash_size);

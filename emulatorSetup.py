@@ -25,7 +25,7 @@ from elftools.elf.elffile import SymbolTableSection
 
 def generate_periph(config_file):
 
-	# TODO: Let someone configure number of flags they want.   
+	# TODO: Let someone configure number of flags they want .. rather than hardcoding in 6.   
     p_flags = {'f1': "Flag1", 'f2': "Flag2", 'f3': "Flag3",
                'f4': "Flag4", 'f5': "Flag5", 'f6': "Flag6"}
                            
@@ -521,6 +521,7 @@ def del_quotes(config):
 # TODO: Can use arm-none-eabi-objcopy -O binary <elf> <bin> instead for ARM ELFs.
 #       However, keeping this incase it's needed for other architectures
 #       or has other benefits.
+#       Can also just call the above command from this function given an architecture.
 def extract_elf(elf):
 	# Get emulator and firmware configuration details
     """
@@ -677,6 +678,15 @@ def extract_elf(elf):
     #with open('emulatorConfig.toml', 'w') as f:
     #	f.write(parsed_config)
 
+def list_types(x):
+
+    # TODO: Alphabetize in future
+    valid_periphs = ["uart", "gpio", "generic"]
+    
+    for valid in valid_periphs:
+        print(valid)
+    
+
 def list_arch(x):
 
     # Dict of supported architectures and cpus
@@ -707,21 +717,27 @@ if __name__ == "__main__":
                         help='Extract FW and emulator info from elf',
                         metavar='ELF_File',
                         dest='extract_elf')
+
+    parser.add_argument('-t', '--periph-types',
+                        help='Show valid peripheral names',
+                        action='store_true',                            # Hack to provide a default argument
+                        dest='list_types')   
                         
     parser.add_argument('-s', '--support',
                         help='Show supported architectures and CPUs',
-                        action='store_true',                            # Hack to provide an argument
+                        action='store_true',                            # Hack to provide a default argument
                         dest='list_arch')                    
 																	
     args = parser.parse_args();
-
-    #print(args)
 
     if args.gen_periph:
         generate_periph(args.gen_periph)
 		
     elif args.extract_elf:
         extract_elf(args.extract_elf)
+    
+    elif args.list_types:
+        list_types(args.list_types)
         
     elif args.list_arch:
         list_arch(args.list_arch)    

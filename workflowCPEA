@@ -323,7 +323,7 @@ Testing Emulator with Real Firmware
                         - Note: This property is ONLY defined and used for Cortex-A cpus
                         @ "~/school/thesis/CPEA/qemu/hw/intc/arm_gic_common.c": 349       
 
-             0.8) Where to find certain interrupt APIs: Qdev & SysBus APIs contain most of the IRQ code. Some of it is repeated here.  
+             0.8) Where to find certain interrupt APIs: Qdev & SysBus APIs (See Above) contain most of the IRQ code. Some of it is repeated here.  
              
                  ARM GIC: Some implementaton for ARMv7-M Nested Vectored Interrupt Controller. Not the default file.
                         @ "~/school/thesis/CPEA/qemu/hw/intc/arm_gic.c"
@@ -337,7 +337,7 @@ Testing Emulator with Real Firmware
                  GICState: Don't see anything too helpful here
                         @ "~/school/thesis/CPEA/qemu/include/hw/intc/arm_gic_common.h": 65
                  
-                 Low Level IRQ functions: Qdev uses these. Need them to raise IRQs, lower, etc.S
+                 Low Level IRQ functions: Qdev uses these. Need them to raise IRQs, lower, etc.
                         @ "~/school/thesis/CPEA/qemu/hw/core/irq.c"
                         @ "~/school/thesis/CPEA/qemu/include/hw/irq.h"
                               
@@ -347,6 +347,41 @@ Testing Emulator with Real Firmware
                  IRQ Creation: Qdev API     
                         @ "~/school/thesis/CPEA/qemu/include/hw/qdev-core.h"
                         @ "~/school/thesis/CPEA/qemu/hw/core/qdev.c"
+               
+             0.9) Where to find plugin API to instrument QEMU code execution
+                     
+                TB/INSN Callbacks: Issue callbacks during translation, instruction, and other events. 
+                        @ "~/school/thesis/CPEA/qemu/include/qemu/qemu-plugin.h" 
+                        @ "~/school/thesis/CPEA/qemu/plugins/api.c"                  
+                                                        
+             0.10) Where to find timer and clocking API
+             
+                QEMU Timers: There are a multitude of different clock types for different applications.
+                        @ "~/school/thesis/CPEA/qemu/include/qemu/timer.h"
+                        
+                CPU Clock: File below contains a note on CPU freq. Not sure if this is how we modify the freq or not.
+                        @ "~/school/thesis/CPEA/qemu/include/hw/timer/armv7m_systick.h"        
+                        
+             0.11) Where to find Chardev API
+                
+                Front End: API used in the guest rather then a user or external device.
+                        @ "~/school/thesis/CPEA/qemu/include/chardev/char-fe.h"
+                        @ "~/school/thesis/CPEA/qemu/chardev/char-fe.c"
+                
+                Back End: API more related to user or external device but still has connections to front end.
+                        @ "~/school/thesis/CPEA/qemu/include/chardev/char.h"
+                        
+                Chardev: Struct for Chardev backend 
+                        @ "~/school/thesis/CPEA/qemu/include/chardev/char.h": 59   
+                           
+                QEMUChrEvent: Enumerations for Char events
+                        @ "~/school/thesis/CPEA/qemu/include/chardev/char.h": 20          
+                        
+                Character Devices: Directory which contains code for all the character devices. (e.g. serial, socket, stdio, etc)       
+                        @ "~/school/thesis/CPEA/qemu/chardev/"
+                        
+             0.12) QEMU Logging           
+                           
                                                         
         5) Following code execution to find how it fails
            1) Code fails somewhere in cpu_create()
@@ -398,14 +433,21 @@ Testing Emulator with Real Firmware
               (Going in execution order of our Unicorn version)
       
               1) [x] TOML parsing in emulatorConfig.c: "emuConfig()" 
-                     -> Placed 'emuConfig()' after cpea.c: "armv7m_load_kernel()"
+                     -> Placed 'emuConfig()' in cpea.c
                      
               2) [x] Ensure added files from 5.1) are built alongside QEMU. 
                      See "4.2.1)" to see how to add files to a machine. 
                      -> Added "subdir('cpea')" at "qemu/meson.build": 1870 to include "qemu/cpea" directory
                      -> Added Kconfig in "qemu/cpea" to build cpea files
-                     -> Added "meson.build" file to "qemu/cpea" which adds cpea source files to "softmmu_ss"
-                        Currently using "softmmu_ss" because qemu already defines instructions for how to compile code in 
+                     -> Added "meson.build" file to "qemu/cpea" which adds cpea source files to "softmmu_ss" and "arm_ss"
+                        - Can add files to "softmmu_ss" when they don't include code that belongs to arm_ss. 
+                          We add toml.c to softmmu_ss because of this. 
+                           
+                        - We add files to "arm_ss" when it includes code that is meant to be compiled in the "arm_ss"
+                          We include emulatorConfig.c in "arm_ss" because we include "armv7m.h" which is already apart of "arm_ss"
+                          In other words, we can't include a source/header file across both source sets.
+                        
+                        Currently using "softmmu_ss" for toml.c because qemu already defines instructions for how to compile code in 
                         the sourceset. (in "qemu/meson.build") Could make our own sourceset, but would have to define instructions for compiling.
                  
                         1) [p] Would like to add a variable for CPEA to set Y/N that decides if cpea directory is built or not 
@@ -441,7 +483,7 @@ Testing Emulator with Real Firmware
                                          (Lots of work to access correct variable in callbacks. However, not too difficult)
                                          Problem: No post_read for MMIO, only pre_read. (Does this matter?)
                                                                
-              4) [x] Get MMIO callbacks working.
+              4) [p] Get MMIO callbacks working.
                  [p] Add on to callbacks.
                      1) mmioRead(): 
                         - Created armv7m object to read ARM core (R0-R15) at runtime. 
@@ -453,7 +495,25 @@ Testing Emulator with Real Firmware
                         - Nothing really done yet. 
                         1) [] Recording ascii writes in a log for their respective mmio address AND program address.   
 
-              5) [p] Get Interrupts working:
+                     3) [p] Find the most efficient way to get MMIO data in callbacks for accessed IO addresses.
+                           [p] Implemented a hash table which registers IO addresses the user configures.
+                              - Good for when a user has a lot of register to configure. Expected to be a lot in some cases, especially
+                                if CRs have interrupt functionality tied to them.
+                                
+                           Problems
+                           [p] In MMIO callbacks: Most of the time, we are accessing an IO address that ISNT in the hash table
+                                                            
+                              1) [ ] (Don't do this) We could also use linear probing, but we'd be searching the hash table for IO addresses that don't exist
+                                     so often that it would void the point of using a hash table in the first place.
+                              2) [ ] We could use chaining, and quickly search the chain to ensure it's an IO address we can ignore.
+                              3) [x] We could implement MemoryRegions ONLY for IO registers the user configures. This way,
+                                    IO addresses in callbacks also exist in the hash table and we don't issue callbacks for IO addresses we ignore.
+                                      - We'd have to implement a MemoryRegion for each IO address. Can't for the peripheral as a whole because it might contain
+                                        IO addresses we are ignoring. Brings us back to the main problem above. 
+                                        - This itself presents a small problem. We need the size of each IO address so we can init it correctly. (e.g. byte, word, etc.) 
+                                          This can be configured in TOML. Default to 4 bytes. Would be nice to find another fix to avoid more configurations.
+                                                
+              5) [p] Get Interrupts working: (We are using API already available in QEMU and making no modifications to existing QEMU)
                      - NVIC aligns with ARM General Interrupt Controller (GIC) specification, defined for use with 
                        other ARMv7 profiles and other architectures.
                        
@@ -466,8 +526,7 @@ Testing Emulator with Real Firmware
                         @ "~/school/thesis/p2im-master/qemu/src/qemu.git/hw/arm/pm_interrupt.c"  
                         
                      0) [p] Learn how QEMU registers IRQs for MMIO and how it fires interrupts for these IRQs.                              
-                            [p] General flow of creating IRQs in QEMU
-                                // XXX: May want to revisit this. Understanding of IRQs has developed.
+                            [p] General flow of creating IRQs in QEMU based on "Stellaris.c"
                                 0) - Each peripheral is it's own Device.
                                    - Some steps could be in different orders depending on where the code is written
                                 1) Initialize your IRQ(s) to your main SysBus device (e.g.  'sysbus_init_irq(sbd, &s->irq[n])'   ) 
@@ -500,69 +559,27 @@ Testing Emulator with Real Firmware
                                 "(MachineInit)"
                                 4) sys_bus_create_varargs(): Wrapper function to connect GPIO lines and map peripheral.
                                    4.1) sysbus_mmio_map(): Attaches the ADC IO addr to system memory.
-                                   4.2) sysbus_connect_irq(): Connects 4 of NVIC's (CPU) input GPIO lines to the 4 of ADC's output GPIO lines. 
-                            
-                            [p] Making IRQs with a controller: // XXX: I think controller creation actually should come first. CPU (NVIC) <-> controller <-> peripherals. 
-                                    @ "https://github.com/airbus-seclab/qemu_blog/blob/main/devices.md"
-                                    @ "https://github.com/airbus-seclab/qemu_blog/blob/main/interrupts.md"
-                                    
-                                CPU (NVIC)[i] <- [o]Peripherals[i] <- [o]INTR Firing    
-                                    
-                                0) CPU Device: IRQs should already be set by QEMU. They just need to be connected.
-                                               Correct IRQn is signaled by incoming interrupts from controller so FW knows where to execute.                                               
-                                
-                                1) Making your controller: Controller will 1) Rx peripheral interrupts, 2) issue a callback for it, 3) orchestrate which peripheral 
-                                                           the IRQ belongs to, 4) Handle that peripheral's specifics, and 5) hand the IRQ off to the CPU
-                                
-                                1.1) Controller Init Function: 
-                                     1) qdev_init_gpio_in(): Create input IRQs that will Rx from your peripheral device. These input IRQs have a callback that will
-                                                             be issued when they are signaled by the peripheral.                                                         
-                                     2) sysbus_init_irq(): Create output IRQs that will signal to CPU (NVIC) to execute IRQ
-                                
-                                    
-                                    
-                                2) Make your peripheral device: Typically, people make a device PER peripheral. We will likely make a device that represents
-                                                                EVERY peripheral.
-                                   - Includes declaring the "qemu_irq"s and the "MemoryRegion"s for the device.
-                                  
-                                2.1) Device Init Function:
-                                     1) Init memory region for your peripheral. We could 1) initialize the entire peripheral range for our device or 2) initialize per configured peripheral
-                                     2) sysbut_init_mmio(): Let sysbus know about the MemRegions that have interrupts.
-                                     3) sysbus_init_irq(): Create IRQs for your device (output GPIO lines) that can raise interrupts.
-                                
-                                2.2) Machine Init Function: Ties together devices
-                                     1) sysbus_create_varargs(): Add an IO region to system region and connect IRQ lines between devices
-                                        1.1) sysbus_mmio_map(): Map your device IO region init'd earlier so that it's a subregion of system memory.
-                                        1.2) sysbus_connect_irq():
-                                             1) Connect your Controller's output IRQs to your CPUs input IRQs.
-                                              
-                                             2) Connect your peripheral device's output IRQs to controller's input IRQs.
-                                                                   Now, your peripheral can raise interrupts that issue callbacks in the controller device.
-                                                                   Peripheral can raise interrupts w/ qemu_set_irq(irq, 1) (output irq of peripheral signals input irq.)   
-                                                                                                                                       
-                               
-                            [x] How does QEMU's callback system allow us to raise these IRQs?
-                                - This is the jist. Could perhaps add more detail when we learn more. 
-                                0) There are input GPIOs and output GPIOs which connect to each other.
-                                1) Output GPIOs raise IRQs by signaling input GPIOs
-                                2) Input GPIOs issue a callback when they are signaled by output GPIO
+                                   4.2) sysbus_connect_irq(): Connects 4 of NVIC's (CPU) input GPIO lines to the 4 of ADC's output GPIO lines.                             
                      
                                                                  
-                     1) [p] Making interrupt firing working
-                            0) [p] Creating the structure
-                                   1) [p] Create a Device that represents ALL peripherals
-                                          - Device "CPEA_MMIO" created
-                                          [] Need to parse & count the peripherals with IRQs:
-                                             This is in order to know how many "qemu_irq" we need to allocate and initialize.
-                                             
-                                             
-                                   2) [p] Create a Device that raises IRQs
-                                          - Device "CPEA_IRQ_DRIVER" created       
-                                          []
+                     1) [p] Create the QEMU Interrupt Structure                                                                                        
+                            1) [x] Create a Device that's capable of raising IRQs
+                                   [x] Device "CPEA_IRQ_DRIVER" created       
+                                   [x] Allocate and Init output 'qemu_irq's for "CpeaIRQDriverState"
+                                   [x] Create copies of these 'qemu_irq's in each peripheral that has an IRQ enabled
+                                   [x] Maintain a list of all enabled IRQn
+                                   [x] Connect the 'qemu_irq' of the irq_Driver to the CPU's input IRQn lines
+                                       by looping the IRQn list
+                            2) [x] Test by firing IRQ
+                                   [x] Raise UART IRQ Handler once at specific point in FW. Example in "cpea.c" mmio callback   
+                                          
+                            3) Need interrupt conditions, but I think we need a peripheral model in place to get some of the conditions.
+                               (e.g. FIFO not empty and raises an interrupt)
+                                       
 
-                           
-                                                                 
-                     1) [ ] Need to monitor writes to QEMU's NVIC or tap into their internal ISER/ICER.
+
+                     // Keeping these two in case there is use later                                            
+                     x) [ ] Need to monitor writes to QEMU's NVIC or tap into their internal ISER/ICER.
                             - Enabled/Disabled interrupts are exposed through NVICState.
                             [ ] Enabling interrupts in ISER:
                                 - Writes to ISER: @ "~/school/thesis/CPEA/qemu/hw/intc/arm_gic.c": 1225
@@ -572,9 +589,10 @@ Testing Emulator with Real Firmware
                             [ ] Disabling interrupts in ICER:
                                 - Writes to ICER: @ "~/school/thesis/CPEA/qemu/hw/intc/arm_gic.c": 1261        
                                 [ ] 1) Maintain my own list of disabled interrupts when an interrupt is disabled OR
-                                    2) Tap into QEMU's list of disabled interrupts: NVICState->vectors    
+                                    2) Tap into QEMU's list of disabled interrupts: NVICState->vectors
+                                        
                                     
-                     2) [ ] Interrupt Firing                              
+                     x) [ ] Interrupt Firing                              
                             For now: Looks like SCS and NVIC reads are in these two files:
                                      (Confused as to why they split reads between the files)
                                      @ "~/school/thesis/CPEA/qemu/hw/intc/armv7m_nvic.c"
@@ -583,9 +601,35 @@ Testing Emulator with Real Firmware
                                      @ "~/school/thesis/p2im-master/qemu/src/qemu.git/hw/intc/cortexm-nvic.c"
                               
 
+6) [p] Create peripheral models
+    0.0) [p] In Python and C, Need to maintain list of acceptable peripheral names
+             Instead, might have an interface option for any given peripheral. (serial, socket, etc)
+             Should figure out a good way to configure communication to guest devices as we go.
+             
+    0.1) [p] In C, Keep peripheral IDs that match the peripheral names. Assign to peripherals
+    
+    1.0) [p] Start with UART or serial 
+    1.1) [x] Need chardev API to connect guest frontend to host backend
+             - Got front end handlers to work via "qemu_chr_fe_init()" & "qemu_chr_fe_set_handlers()"   
+                           
+    1.1) [p] Need peripheral model for UART/serial: 
+             - Hardcode some of it at first. Find what needs configured as we go.
+             "Things to do"
+             RDR reads
+             
+             "Hardcoded"
+             FIFO: 16 Bytes
+                          
+             "Configurable"
+             FIFO Enable: CR bit that enables/disables FIFO.
+             
+             
+             
+               
+
 
 /* Making ARM Machine more generic/configurable for any firmware */      
-6) [] Make ARM Cortex-M machine more configurable and automated. 
+7) [p] Make ARM Cortex-M machine more configurable and automated. 
       Probably should read up on Cortex-m features to be comprehensive.
       Ref:
       Our struct in 0.0)
@@ -754,6 +798,46 @@ Testing Emulator with Real Firmware
              [x] Can add peripherals, edit number of DR/SRs, apply addresses registers, and 
                  set/unset SR bits at particular addresses to pass SR checks.    
 
+
+Scratch Area
+[] Follow in order, the steps involved with stellaris.c UART creation and how a user might interact with it.
+   These are steps for setting up a serial port to interact with UART.
+   
+    NOTE: Can use "find -iname <file>" to search for files mentioned.
+    
+    Stellaris uart initialization
+    0) "pl011.c" is where uart is emulated.
+    1) "stellaris.c": 1377 Call "pl011_luminary_create()" device creation function passing "Chardev *serial_hd(i)"
+    2) "pl011.h": 80 Call "qdev_new()" to create the uart device and go through it's device init function.
+                     The device init function in "pl011.c": 369 initializes mmio region, clock, and uart registers
+    3) "pl011.h": 82 Call "qdev_prop_set_chr()" to set PL011State's "chardev" property with "Chardev *serial_hd(i)"
+                     Confusing part is that PL011State only has a variable "CharBackend chr" which is not type "Chardev *"
+                     "pl011.c": 364 shows "CharBackend chr"'s property definition. 
+    3.1) "sysemu.h": 72 "Chardev *serial_hd(int i)" is a function that returns the Chardev for serial port i.
+                         Also likely sets up the connect to the serial port.
+                         Keep in mind, Chardev connects to a backend that a user/external device would connect to.                                                  
+    3.2) NOW, that PL011State->CharBackend has its Chardev, will likely be used in "pl011.c" during its emulation.                 
+    4) "pl011.h": 84-85 Places uart hwaddr in SysBus and then connects uart's output IRQ to CPU's input IRQ.
+    
+    x) UART initialization in "stellaris.c" is complete. UART was connected to a serial port. See "pl011.c" for its use.
+       Going to go over the uart device initialization now.
+    
+    Character Device Setup for uart
+    5) "pl011.c": 395 Call "qemu_chr_fe_set_handlers()" to set the front end char handlers. (sets callbacks)
+                      "pl011_can_receive" returns amount of char data frontend may receive. Not sure when it's called.
+                      "pl011_receive" callback to receive data from external char device. Places received data in a FIFO.
+                      "pl011_event" event callback issued when a particular "QEMUChrEvent" occurs.
+                       
+    Character Device Emulation (Not in any particular order because any of this can happen at any time during emulation)
+    6) "pl011.c": 107 Call "qemu_chr_fe_accept_input(&s->chr)" during uart DR read to notify the front end is ready to Rx data.
+                      I'd like to see the source code for this function to see what it's doing. The API explanation doesn't tell me.
+                      
+    7) "pl011.c": 207 Call "qemu_chr_fe_write_all()" during uart DR write to write data from frontend to backend. Will block if the 
+                      backend cannot consume all the data. Function is thread-safe. (block == Blocks entire thread)
+    8) "pl011_receive": In 5), this callback "fd_read" is issued when external device writes (I think). The callback places data into a FIFO that is used
+                        for uart DR reads/writes and interrupts. 
+
+    
 
 /* Getting executable binary from a proper ELF */  
 arm-none-eabi-objcopy -O binary <elf> <bin>

@@ -432,4 +432,4 @@ static void pl011_register_types(void)
     type_register_static(&pl011_luminary_info);
 }
 
-type_init(pl011_register_types)
+type_init(pl011_register_types);

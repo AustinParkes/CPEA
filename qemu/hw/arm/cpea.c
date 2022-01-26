@@ -9,23 +9,71 @@
 #include "qemu/osdep.h"
 #include "qapi/error.h"
 #include "qemu/units.h"
-#include "hw/arm/armv7m.h"
-#include "hw/boards.h"
 #include "hw/qdev-properties.h"
 #include "hw/arm/boot.h"
 #include "exec/address-spaces.h"
 #include "exec/memory.h"
-#include "cpea/emulatorConfig.h"
 #include "hw/arm/cpea.h"
-#include "qom/object.h"
 
 
 /* 
     SYSCLK frequency: Chose a value that works.
+    This would preferably be a configurable option since this would influence the systick timer's
+    ability to trigger interrupts.I also believe this is the CPU's clocking freq.
 */
 #define SYSCLK_FRQ 120000000ULL
 
-static CpeaMMIO *findMod(uint64_t, CpeaMMIO**);  // Find peripheral module accessed in callback. 
+static void put_fifo(void *opaque, uint8_t value)
+{
+
+    CpeaMMIO *MMIO = (CpeaMMIO *)opaque;
+    int tail;
+    
+    // Tail is where we place data. Head is where we read data.
+    tail = MMIO->head + MMIO->queue_count;
+    
+    //tail = tail % 16;
+    if (tail >= 16)
+        tail -= 16;
+
+    printf("tail: %d\n", tail);    
+    MMIO->rx_fifo[tail] = value;
+    MMIO->queue_count++;
+      
+                      
+}
+
+// Determines if FIFO can Rx anymore data.
+static int cpea_can_receive(void *opaque)
+{
+    printf("Check if we can Rx data\n");
+    CpeaMMIO *MMIO = (CpeaMMIO *)opaque;
+    int rx_flag;
+    /* TODO: Need to discern if we are in FIFO mode or not, then see if our 
+             queue length is too long to Rx anymore data in FIFO.
+             If too long, queue length will naturally decrease when data is read from FIFO.
+             Also, can't increase more if we don't Rx more data.
+    */
+    
+    rx_flag = MMIO->queue_count < 16;
+    if (!rx_flag)
+        printf("Can't RX data: Queue full\n");
+        
+    return rx_flag;
+}
+static void cpea_receive(void *opaque, const uint8_t *buf, int size)
+{   
+    printf("Woohoo!!!\n");
+    CpeaMMIO *MMIO = (CpeaMMIO *)opaque;
+    
+    // Place Rx data into FIFO
+    put_fifo(MMIO, *buf);
+}
+static void cpea_event(void *opaque, QEMUChrEvent event)
+{
+    if (event == CHR_EVENT_BREAK)
+        printf("What the heck is this event?\n");
+}
 
 // Callback for writes to mmio region
 // TODO: Log data that is written to registers.
@@ -35,52 +83,23 @@ static void mmio_write(void *opaque, hwaddr addr,
     return;
 }   
 
-// Callback for reads from mmio region
-/* TODO: 1) Could only issue callbacks for the registers defined in TOML file to optimize performance. 
-            mmio_ops might let you restrict register addresses.
-            
-         2) Could also only init memory regions based on registers defined in TOML.
-
-         
-*/
 static uint64_t mmio_read(void *opaque, hwaddr addr,
                       unsigned size)
 {
+    CpeaMachineState *cms;          // CPEA Machine State
     ARMv7MState *armv7m;            // Holds CPU state
-    MMIOkey MMIOReg;               // MMIO register accessed
     uint32_t PC;                    // program counter
 	int SR_bit;                     // SR bit location to write to (0-31)
 	int SR_val;                     // Hold SR bit value (1 or 0)
 	int addr_i;                     // Index registers' addresses
 	int index;                      // Index for SR instances
  
-    armv7m = (ARMv7MState *)opaque;     // Obtain ARMv7M state
-	
+    cms = (CpeaMachineState *)opaque;
+    armv7m = cms->armv7m;
+
     // Compute absolute addr from offset
     hwaddr reg_addr = 0x40000000 + addr;
     
-    // Get the MMIO register data associated with this IO address
-    /*
-        TODO: This hangs forever on IO addresses the user never configured
-              because it loops the hash table until it finds a match. 
-              We NEED to be able to quickly ignore IO addresses that 
-              aren't in the hash table. 
-              Might be able to init IO regions ONLY for IO addresses the user
-              configured. That way, we'd always find a match. 
-    */
-    /*
-    MMIOReg = LookupHashAddr((uint32_t)reg_addr);
-    if (!MMIOReg.AddrKey){
-        printf("ERROR\n");
-        fprintf(stderr, "ERROR: Failed to look up IO address in Hash Table\n");
-        exit(1);    
-    }
-    
-    printf("AddrKey:%d\n", MMIOReg.AddrKey);
-    printf("MMIOIndex%d\n", MMIOReg.MMIOIndex);
-    printf("RegType:%d\n", MMIOReg.RegType);
-    printf("RegIndex%d\n", MMIOReg.RegIndex);
-    */
     CpeaMMIO *periphx = NULL;	// Points to the peripheral mmio accessed. 
     
     // Determine if we are accessing a peripheral we mapped.  
@@ -88,28 +107,21 @@ static uint64_t mmio_read(void *opaque, hwaddr addr,
     if (periphx == NULL)
         return -1;
         
-    /*
-    // Print the current state of the ARM core. (R15 is the most recent PC, not the current.)    
-    for (int i=0; i < 16; i++){
-        printf("Reg%d: 0x%x\n", i, armv7m->cpu->env.regs[i]);
-    }
-    */
-    
     // Find register being accessed and handle according to type (DR, CR or SR)
     for (addr_i=0; addr_i < MAX_SR; addr_i++){
     
-        // Search DRs for match
+        // DR accessed
         if (addr_i < 2){
             if (reg_addr == periphx->DR_ADDR[addr_i]){
-                return 0;   // TODO: Ideally would provide some sort of fuzz data here that depends on the peripheral.
+                
+                return 0;
             } 
         }
         
-        // Search SRs for match
-        // TODO: Turn into a function for portability.
+        // SR accessed
         if (reg_addr == periphx->SR_ADDR[addr_i]){
             
-            // SR instance doesn't exist. Return register value
+            // SR instance doesn't exist.
             if (!periphx->SR_INST){
                 return periphx->SR[addr_i];
             }
@@ -117,48 +129,62 @@ static uint64_t mmio_read(void *opaque, hwaddr addr,
             // SR instance exists
 	        else {	
 	            /* 
-	                NOTE: 
 	                This environment (env) contains the LAST executed address and the results from that.
 	                So, R15 is not up to date with the current PC, but R0-R14 are up to date.
-	                Specifically, the env contains the last PC, not the current. It also contains the register results from the last PC execution.
 	                
-	                Problem:
-	                We need the current PC. One way to remedy is to check if we are within a byte of the desired PC.	            
+	                We need the current PC. One way to remedy is to check if we are within a byte of the desired PC.
+	                NOTE: PC is a instruction ahead when stepping through in GDB (e.g. would be 0x19f2 instead of 0x19f0 at that point)
+	                TODO  Need to take this into account for someone using GDB       
 	            */
-	            PC = armv7m->cpu->env.regs[15];     // Get program counter	
-		        //uc_reg_read(uc, UC_ARM_REG_PC, &PC);
-		        //printf("PC_inst: 0x%x\n", PC);	  
+	            
+	            PC = armv7m->cpu->env.regs[15];     // Get program counter
+
+                /* 
+                    XXX: Pulse the UART IRQ Handler in the FW to test that IRQ firing works.
+                         Works Fine when pulsing. :) Runs the handler once then leaves.  
+                           
+	            if (PC == 0x19f0 || PC == 0x19f2){
+	                printf("PC: 0x19f2\n");
+
+	                // Locate IRQn 31 and set it's associatated qemu_irq
+	                for (int n=0; n < IRQtotal; n++){
+	                    printf("n: %d and IRQn: %d\n", n, cms->irq_state->IRQn_list[n]);
+	                    if (cms->irq_state->IRQn_list[n] == 31){
+	                        printf("Set IRQ!\n");
+	                        
+	                        // Pulse IRQ. If set and never unset, stays in handler forever. 
+	                        qemu_irq_pulse(cms->irq_state->irq[n]);
+	                        
+	                        // NOTE: These are equivalent to pulsing
+	                        //qemu_set_irq(cms->irq_state->irq[n], 1);
+	                        //qemu_set_irq(cms->irq_state->irq[n], 0);  
+	                    }    
+	                }                    	
+	            }
+	            */ 
+	  
 	            // Loop SR instances & look for match
 	            for (index = 0; index < inst_i; index++){
 	                
 	                // HACK: We only have access to the previous PC. Check if SR instance is within a byte of PC. 
 	                if (SR_INSTANCE[index]->INST_ADDR >= PC && SR_INSTANCE[index]->INST_ADDR <= PC + 4){ 
-	                    //SR_temp = periphx->SR[addr_i];
 	                    SR_bit = SR_INSTANCE[index]->BIT;
 	                    SR_val = SR_INSTANCE[index]->VAL;
 	                    if (SR_val == 1)
 	                        SET_BIT(periphx->SR[addr_i], SR_bit);
-	                        //SET_BIT(SR_temp, SR_bit);
 	                    else
 	                        CLEAR_BIT(periphx->SR[addr_i], SR_bit);
-	                        //CLEAR_BIT(SR_temp, SR_bit);
-	                        
-	                    //printf("SR_inst: 0x%x\n", periphx->SR[addr_i]);    
-	                    //printf("SR_inst: 0x%x\n", SR_temp);
 	                    
-	                    return periphx->SR[addr_i];
-	                    //return SR_temp;    
+	                    return periphx->SR[addr_i]; 
 	                } 
 	            }
 	            
 	            // No instance at accessed address, so return register value.
-	            //printf("SR_no_inst: 0x%x\n", periphx->SR[addr_i]);
 	            return periphx->SR[addr_i];   
             }      
-        }   // Would be end of functionS
+        }
     }
 
-    // Return 0 for unregistered MMIO  
     return 0;
 }                   
 
@@ -173,54 +199,132 @@ static const MemoryRegionOps mmio_ops = {
 
 static void cpea_irq_driver_init(Object *obj)
 {
-    //DeviceState *dev = DEVICE(obj);
+    CpeaIRQDriverState *s = CPEA_IRQ_DRIVER(obj);
+    
+    int n;
+    int mod_i;
+    
+    if (IRQtotal){     
+        // Allocate space for output 'qemu_irq's
+        s->irq = g_new(qemu_irq, IRQtotal);
+        
+        // Allocate list to store multiple IRQn
+        s->IRQn_list = (int *)malloc(sizeof(int) * IRQtotal);       
+    }
+    
+    // Init output IRQs 
+    mod_i=0;
+    for (n = 0; n < IRQtotal; n++) {
+        
+        // Create output IRQ line that can raise an interrupt
+        qdev_init_gpio_out(DEVICE(s), &s->irq[n], 1);
+        
+        // Assign IRQs to peripherals to set IRQs easily later  
+        while (mod_i < mmio_total){
+    	    if (!MMIO[mod_i]){
+    		    printf("Error accessing MMIO%d", mod_i);	
+    		    exit(1);
+    	    } 
+    	 	
+    	    if (MMIO[mod_i]->irq_enabled){
+    	        MMIO[mod_i]->irq = &s->irq[n];
+    	        
+    	        // Also, maintain a list of all IRQn 
+    	        s->IRQn_list[n] = MMIO[mod_i]->irqn;
+    	        mod_i++;  	
+    	        break;   
+    	    }
+    	    mod_i++;        		
+        }                
+    }
+        
+    printf("IRQ Driver Device Init!\n");
+}
 
+static void mmio_trigger(void *opaque, int irq, int level){
 
+    printf("Trigger: %d\n", irq);    
+    
 }
 
 static void cpea_mmio_init(Object *obj)
 {    
-    //DeviceState *dev = DEVICE(obj);
+    /*
+    DeviceState *dev = DEVICE(obj);
+    CpeaMMIOState *s = CPEA_MMIO(obj);
+    SysBusDevice *sbd = SYS_BUS_DEVICE(obj);
     
-    //  
+    int n;  
     
+    if (IRQtotal) 
+        s->irq = g_new(qemu_irq, IRQtotal);
+   
+    // Init output IRQs.
+    for (n = 0; n < IRQtotal; n++) {
+        sysbus_init_irq(sbd, &s->irq[n]);
+    }
+    
+    // Each IRQ should have its own input 'qemu_irq'
+    if (IRQtotal)
+        qdev_init_gpio_in(dev, mmio_trigger, IRQtotal);
+    
+    
+    
+    //sysbus_init_irq(sbd, &s->irqn);
+    
+    qdev_init_gpio_in(dev, mmio_trigger, 1);
+                           
     printf("MMIO Device Init!\n");
+    */
 }
 
 static void cpea_init(MachineState *machine)
 {
     CpeaMachineState *cms = CPEA_MACHINE(machine);
-    DeviceState *cpu_dev;
-    DeviceState *dev;   
-    ARMv7MState *armv7m;                           
+    //CpeaIRQDriverState *irq_state;
+    //ARMv7MState *armv7m;
+    DeviceState *cpu_dev;                            
+    DeviceState *irq_driver;
     
     MemoryRegion *flash = g_new(MemoryRegion, 1);
     MemoryRegion *sram = g_new(MemoryRegion, 1);
     MemoryRegion *mmio = g_new(MemoryRegion, 1);
     MemoryRegion *system_memory = get_system_memory();
     
+    // Currently being used to init char front end
+    Error *err;
+    
     char arm_cpu_model[30];
+    int n;
     
     // Default Core 
     strcpy(cms->cpu_model, "cortex-m4");
     cms->has_bitband = true;
-    cms->num_irq = 480;             // Max out IRQ lines. Reducing this has performance benefit when iterating through IRQs.
+    cms->num_irq = 480;             // Max out IRQ lines.
     
     // Default Memory
     cms->flash_base = 0x0;
     cms->flash_size = 32768000;
     cms->sram_base = 0x1fff0000;
-    cms->sram_size = 0x02000000;    // Max out SRAM. Any larger and we dip into potential bitband region. Was 256000
+    cms->sram_size = 0x02000000;    // Max out SRAM. Any larger and we dip into potential bitband region.
     cms->sram_base2 = 0;
     cms->sram_size2 = 0;
     cms->sram_base3 = 0;
     cms->sram_size3 = 0;    
-         
+    
     // Parse user configurations                  
     cms = emuConfig(cms);
     
+    
+    // Init cpu device
     cpu_dev = qdev_new(TYPE_ARMV7M);
-    armv7m = ARMV7M(cpu_dev); 
+    cms->armv7m = ARMV7M(cpu_dev);
+    
+    // init irq device
+    irq_driver = qdev_new(TYPE_CPEA_IRQ_DRIVER); 
+    cms->irq_state = CPEA_IRQ_DRIVER(irq_driver);
+        
+    //armv7m = ARMV7M(cpu_dev); 
     
     // Init mem regions, and add them to system memory      
     memory_region_init_rom(flash, NULL, "flash", cms->flash_size,
@@ -248,22 +352,19 @@ static void cpea_init(MachineState *machine)
                                                
         memory_region_add_subregion(system_memory, cms->sram_base3, sram3);
     }
-    
-    
+        
     // TODO: Should just init the regions for which the user configures. 
-    memory_region_init_io(mmio, NULL, &mmio_ops, (void *)armv7m, "mmio", 
+    memory_region_init_io(mmio, NULL, &mmio_ops, cms, "mmio", 
                           0x20000000);
     
     memory_region_add_subregion(system_memory, 0x40000000, mmio);                        
-    
-    
-        
+       
     // For systick_reset. Required in ARMv7m
     system_clock_scale = NANOSECONDS_PER_SECOND / SYSCLK_FRQ;
     
     /* Configure CPU */
     strcpy(arm_cpu_model, cms->cpu_model);
-    strcat(arm_cpu_model, "-arm-cpu");              // Replaces ARM_CPU_TYPE_NAME(name) macro. 
+    strcat(arm_cpu_model, "-arm-cpu");
     
     qdev_prop_set_string(cpu_dev, "cpu-type", arm_cpu_model);    
     qdev_prop_set_bit(cpu_dev, "enable-bitband", cms->has_bitband);   
@@ -274,14 +375,70 @@ static void cpea_init(MachineState *machine)
                              
     /* This will exit with an error if bad cpu_type */   
     sysbus_realize_and_unref(SYS_BUS_DEVICE(cpu_dev), &error_fatal);
+
+
     
-    // Can do Device init here.
-    //dev = qdev_new(TYPE_CPEA_MMIO);
-     
+    // Connect output IRQ lines to CPU's IRQn lines
+    for (n = 0; n < IRQtotal; n++){               
+        qdev_connect_gpio_out(DEVICE(irq_driver), 
+                              n, 
+                              qdev_get_gpio_in(cpu_dev, cms->irq_state->IRQn_list[n]));  
+    }
+    
+    // Peripheral model configurations XXX: Need to findout if any of this could be apart of a device... Especially peripheral model stuff.
+    /*
+        1) Need to setup serial chardevs and assign them to Charbackend of peripheral
+           NOTE: This would likely happen in emuConfig when automated
+        2) Set up the front end handlers TODO: Just get callbacks to be issued. Can learn them later.  
+           NOTE: This would also likely happen in emuConfig when automated.
+    */
+    
+    // 1) Set up serial Chardevs
+    Chardev *chrdev[4];
+    for (n=0; n<4; n++){
+        chrdev[n] = serial_hd(n);
+        if (serial_hd(n))
+            printf("serial %d\n", n);
+    }
+
+    // 1) Search mmio for uart and assign a serial Chardev to UART's Charbackend
+    
+    int mod_i=0;
+    while (mod_i < mmio_total){
+        if (!MMIO[mod_i]){
+    	    printf("Error accessing MMIO%d", mod_i);	
+    	    exit(1);
+    	} 
+    	
+    	// If UART, assign the 2nd serial Chardev to it. 	
+    	if (MMIO[mod_i]->periphID == uartID){
+    	    	
+    	    // 1) Assign host's serial chardev to guest's backend
+            if (!qemu_chr_fe_init(&MMIO[mod_i]->chrbe, chrdev[0], &err)){
+                printf("Failed to init Serial Chardev\n");
+                exit(1);
+            } 
+
+            // XXX: This didn't work for some reason. Using the function above instead.
+            //MMIO[0]->chrbe.chr = chrdev[0];
+                
+            // 2) Set handlers for front-end 
+            qemu_chr_fe_set_handlers(&MMIO[mod_i]->chrbe, cpea_can_receive, cpea_receive,
+                                    cpea_event, NULL, MMIO[mod_i], NULL, true);   	                                    
+    	    break;   
+    	}
+    	mod_i++;      		
+    }        
+    
+	// XXX: This does write to the monitor backend ONLY when backend/frontend is specified on command line
+    unsigned char ch[] = "Hello World\n";
+    qemu_chr_fe_write_all(&MMIO[0]->chrbe, ch, 13);
+
     armv7m_load_kernel(ARM_CPU(first_cpu), machine->kernel_filename,
                        cms->flash_size);
                                        
 }
+
 
 /* 
     Search for the accessed peripheral module
@@ -289,7 +446,7 @@ static void cpea_init(MachineState *machine)
     Returns NULL if none found. 
 
 */
-static CpeaMMIO *findMod(uint64_t address, CpeaMMIO** periph){
+CpeaMMIO *findMod(uint64_t address, CpeaMMIO** periph){
 
 	int mod_i;		// Index for peripheral module
 	CpeaMMIO *periphx = *periph;
@@ -312,85 +469,6 @@ static CpeaMMIO *findMod(uint64_t address, CpeaMMIO** periph){
 	return periphx;
 
 }  
-
-// Compute Index from an IO address
-int HashAddr(uint32_t IOaddr)
-{
-    int index;
-    uint16_t pair1, pair2, pair3, pair4; 
-    printf("IO addr: %u\n", IOaddr);
-    // Folding method
-    pair1 = IOaddr >> (6*4);
-    pair2 = IOaddr >> (4*4);
-    pair2 = pair2 & (0xff);
-    pair3 = IOaddr >> (2*4);
-    pair3 = pair3 & (0xff);
-    pair4 = IOaddr & (0xff);
-
-    index = (pair1 + pair2 + pair3 + pair4)%HASH_SIZE;
-    printf("Hashed Index: %x\n", index);
-
-    return index;
-}
-
-// Fill hash table with key-data pair.
-void FillHashTable(uint32_t key, int mod_i, int reg_type, int reg_i)
-{
-    int HashIndex;          // Index from hashed IO address
-    
-    // Get hash table index
-    HashIndex = HashAddr(key);
-					
-    // Index available. Place data.
-    if (!MMIOHashTable[HashIndex].AddrKey){
-	    MMIOHashTable[HashIndex].AddrKey = key;
-		MMIOHashTable[HashIndex].MMIOIndex = mod_i;  
-		MMIOHashTable[HashIndex].RegType = reg_type;
-		MMIOHashTable[HashIndex].RegIndex = reg_i;  
-	}
-    // Index unavailable. Find a new one using open addressing. (load factor assumed to be very low)
-    else{
-					
-	    // Search for open spot
-	    while(MMIOHashTable[HashIndex].AddrKey){
-		    HashIndex += 3;
-			HashIndex = HashIndex % HASH_SIZE;	
-		    if (!MMIOHashTable[HashIndex].AddrKey){
-			    MMIOHashTable[HashIndex].AddrKey = key;
-			    MMIOHashTable[HashIndex].MMIOIndex = mod_i;  
-			    MMIOHashTable[HashIndex].RegType = reg_type;
-			    MMIOHashTable[HashIndex].RegIndex = reg_i;  
-			}				    
-		}
-	}
-}
-
-MMIOkey LookupHashAddr(uint32_t addr)
-{
-    int HashIndex;
-    int AddrKey;
-    HashIndex = HashAddr(addr);
-    
-    AddrKey = MMIOHashTable[HashIndex].AddrKey;
-    // Match found. Return MMIO data.
-    if (addr == AddrKey)
-        return MMIOHashTable[HashIndex];
-
-    // No match, search for a match.
-    else{
-        while(addr != AddrKey){
-            HashIndex += 3;
-            HashIndex = HashIndex % HASH_SIZE;
-            AddrKey = MMIOHashTable[HashIndex].AddrKey;
-            if (addr == AddrKey)
-                return MMIOHashTable[HashIndex];   
-        }
-    }    
- 
-    // Failure
-    MMIOHashTable[HashIndex].AddrKey = 0;
-    return MMIOHashTable[HashIndex];   
-}
 
 // IRQ Firing Device
 static void cpea_irq_driver_class_init(ObjectClass *klass, void *data)

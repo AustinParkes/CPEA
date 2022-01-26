@@ -35,20 +35,18 @@
 #include <errno.h>
 #include <stdlib.h>
 #include "qemu/osdep.h"
-#include "hw/core/cpu.h"
-#include "exec/cpu-common.h"
-#include "cpea/emulatorConfig.h"
-#include "cpea/toml.h"
 #include "hw/arm/cpea.h"
 
-MMIOkey *MMIOHashTable;
+
 CpeaMMIO *MMIO[MAX_MMIO];
 INST_handle *SR_INSTANCE[MAX_INST];
 
 uint32_t minPeriphaddr = 0xffffffff;
 uint32_t maxPeriphaddr = 0x0;
 
-int mmio_total;
+int IRQtotal=0;
+int mmio_total=0;
+int IOregTotal=0;          
 int SR_count;
 int DR_count;
 
@@ -250,24 +248,15 @@ int mmioConfig(toml_table_t* mmio){
 	int pid;					// Iterable Peripheral Index
 	int p_total;				// Total number of possible peripherals
 	
-    // TODO: No longer maintaining list of acceptable peripherals in TOML. Need to 
-    //       get rid of the list here as well. 
-	const char periph_str[3][10] = {"uart", "gpio", "generic"};
-	p_total = sizeof(periph_str)/sizeof(periph_str[0]);
+
+	const char valid_str[3][10] = {"uart", "gpio", "generic"};
+	p_total = sizeof(valid_str)/sizeof(valid_str[0]);
 
     toml_table_t* mmio_count = toml_table_in(mmio, "count");
  	if (!mmio){
  		error("missing [mmio.count]", "", "", "");
  	}
  	
- 	// Init Hash Table for MMIO data.
- 	MMIOHashTable = (MMIOkey *)malloc(HASH_SIZE * sizeof(MMIOkey));
- 	if (!MMIOHashTable){
- 	    fprintf(stderr, "ERROR: Failed to allocate memory for hash table\n");
- 	}
- 	memset(MMIOHashTable, 0, HASH_SIZE * sizeof(MMIOkey));
- 	
- 	mmio_total=0;
  	// Index [mmio.count] and allocate memory for each peripheral. Init MMIO struct.
  	for (periph_i=0; ;periph_i++){
  	
@@ -294,20 +283,21 @@ int mmioConfig(toml_table_t* mmio){
     	
     	mmio_total = mmio_total + (int)num_mods.u.i;	// Get total number of peripheral modules for this periph
 		
- 		// Get peripheral ID for struct.
- 		// FIXME: Currently have no use for this.
+ 		// Get peripheral ID to initialize later
  		for (pid=0; pid<=p_total; pid++){
  			if (pid == p_total)
- 				error("No peripheral match in mmio.count", "", "", "");
+ 				error("No peripheral match in [mmio.count]", "", "", "");
 
- 			strcpy(p_str, periph_str[pid]);
+ 			strcpy(p_str, valid_str[pid]);
 			strcat(p_str, "_count");
+			
+			//
 			if (!strcmp(p_str, periph_count))
 				break;
 	
  		} 		
  		// Get current peripheral string name based on periphal ID above.
-    	strcpy(p_str, periph_str[pid]);
+    	strcpy(p_str, valid_str[pid]);
     		
     	// Get current peripheral ptr
     	periph = toml_table_in(mmio, p_str);
@@ -341,7 +331,9 @@ int mmioConfig(toml_table_t* mmio){
     		    MMIO[struct_i]->SR_RESET[init_i] = 0;
     		    MMIO[struct_i]->SR[init_i] = 0;   		    
     		}    		
-    		MMIO[struct_i]->SR_INST = 0;   	
+    		MMIO[struct_i]->SR_INST = 0;   
+    		MMIO[struct_i]->irq_enabled = 0;
+    		MMIO[struct_i]->irqn = 0;			
 			
 			/*
 			    Parse config, addr, reset, & flags tables
@@ -382,7 +374,7 @@ int mmioConfig(toml_table_t* mmio){
    	return 0;	  		
 }
 
-void parseKeys(char* periph_str, const char* module_str, toml_table_t* table_ptr, const char* table_str, int mod_i){
+void parseKeys(char* valid_str, const char* module_str, toml_table_t* table_ptr, const char* table_str, int mod_i){
 
  	int SR_i=0;				// Status Register Index
  	int DR_i=0;				// Data Register Index
@@ -415,11 +407,12 @@ void parseKeys(char* periph_str, const char* module_str, toml_table_t* table_ptr
 		
 		// SR count must be between 0 and 17 
 		if (data <= 0)
-			SR_count = 1;
+			SR_count = 0;
 		else if (data > 0 && data <= 16)
 			SR_count = data;		
 		else
 			SR_count = 16;
+		
 		
 		// Get DR_count string
 		key_str = toml_key_in(table_ptr, 1);
@@ -433,16 +426,18 @@ void parseKeys(char* periph_str, const char* module_str, toml_table_t* table_ptr
 		// FIXME: This should be between 1 and 3???
 		// DR count must be between 0 and 17 
 		if (data <= 0)
-			DR_count = 1;			
+			DR_count = 0;			
 		else if (data > 0 && data <= 16)
 			DR_count = data;		
 		else	
 			DR_count = data;
-			
+		
+		IOregTotal = IOregTotal + DR_count + SR_count;
+		
 		// Parse IRQ info
 		key_str = toml_key_in(table_ptr, 2);
 		if (!key_str){
-            fprintf(stderr, "ERROR: Missing irq table in [mmio].[%s].[%s].[%s]\n", periph_str, module_str, table_str);
+            fprintf(stderr, "ERROR: Missing irq table in [mmio].[%s].[%s].[%s]\n", valid_str, module_str, table_str);
             exit(1);	
     	}	    	
     	irq_ptr = toml_table_in(table_ptr, key_str);
@@ -457,7 +452,7 @@ void parseKeys(char* periph_str, const char* module_str, toml_table_t* table_ptr
     	if (!irq_true.ok){    	    
   	        irq_true = toml_string_in(irq_ptr, "enabled"); 	         
   	        if(!irq_true.ok){
-  	            fprintf(stderr, "ERROR: Bad data for \"true\" in [mmio.%s.%s.%s.irq]\n", periph_str, module_str, table_str);
+  	            fprintf(stderr, "ERROR: Bad data for \"true\" in [mmio.%s.%s.%s.irq]\n", valid_str, module_str, table_str);
                 exit(1);  
   	        }   	        
   	        has_irq_s = irq_true.u.s;
@@ -466,7 +461,7 @@ void parseKeys(char* periph_str, const char* module_str, toml_table_t* table_ptr
   	        else if (!strcmp(has_irq_s, "true"))
   	            has_irq = 1;
   	        else{
-  	            fprintf(stderr, "ERROR: Must use boolean for \"true\" in [mmio.%s.%s.%s.irq]\n", periph_str, module_str, table_str);
+  	            fprintf(stderr, "ERROR: Must use boolean for \"true\" in [mmio.%s.%s.%s.irq]\n", valid_str, module_str, table_str);
                 exit(1);    	        
   	        }
   	        free(irq_true.u.s);       
@@ -476,21 +471,24 @@ void parseKeys(char* periph_str, const char* module_str, toml_table_t* table_ptr
     	else{
             has_irq = irq_true.u.i;
             if (has_irq < 0 || has_irq > 1){
-  	            fprintf(stderr, "ERROR: Must use boolean for \"true\" in [mmio.%s.%s.%s.irq]\n", periph_str, module_str, table_str);
+  	            fprintf(stderr, "ERROR: Must use boolean for \"true\" in [mmio.%s.%s.%s.irq]\n", valid_str, module_str, table_str);
                 exit(1);                 
             }
     	}
     
         // Parse 'irqn' key
         if (has_irq){
+        
+            IRQtotal = IRQtotal + 1;    // Global counter
+        
             irqn_key = toml_int_in(irq_ptr, "irqn");
             if (!irqn_key.ok){
-        	    fprintf(stderr, "ERROR: [mmio.%s.%s.%s.irq] has an irq enabled, but no IRQn\n", periph_str, module_str, table_str);
+        	    fprintf(stderr, "ERROR: [mmio.%s.%s.%s.irq] has an irq enabled, but no IRQn\n", valid_str, module_str, table_str);
                 exit(1);           
             }                
             irqn = irqn_key.u.i;
             if (irqn < 0 || irqn > 480){
-        	    fprintf(stderr, "ERROR: [mmio.%s.%s.%s.irq] must have irqn in range [0, 480]\n", periph_str, module_str, table_str);
+        	    fprintf(stderr, "ERROR: [mmio.%s.%s.%s.irq] must have irqn in range [0, 480]\n", valid_str, module_str, table_str);
                 exit(1);              
             }
             
@@ -528,11 +526,7 @@ void parseKeys(char* periph_str, const char* module_str, toml_table_t* table_ptr
 
  			// Get base addr
 			if (key_i == 0){
-    			base_addr = data;
-    			if (base_addr < 0x40000000 || base_addr > 0x5fffffff){
-    				fprintf(stderr, "ERROR: Base Address for %s%s out of bounds. [0x40000000 - 0x5fffffff]\n", periph_str, module_str);
-					exit(1);	
-    			}				
+    			base_addr = data;			
     			MMIO[mod_i]->BASE_ADDR = base_addr;				 
     		}
     		
@@ -544,19 +538,15 @@ void parseKeys(char* periph_str, const char* module_str, toml_table_t* table_ptr
 
 				// Store addr data. SRs are looped first.	
 				if (SR_i < SR_count){
-					MMIO[mod_i]->SR_ADDR[SR_i] = data;					
-					FillHashTable(data, mod_i, SR_type, SR_i);					
+					MMIO[mod_i]->SR_ADDR[SR_i] = data;									
 					SR_i++;	
 				}
 				else{
 					MMIO[mod_i]->DR_ADDR[DR_i] = data;
-					FillHashTable(data, mod_i, DR_type, SR_i);
 					DR_i++;
 				} 
-				
-				
- 
-				// Keep track of lowest and highest addr.
+
+				// Keep track of lowest and highest addr for this peripheral
 				if (data < minPeriphaddr){
 					minPeriphaddr = data;
 					// Max addr can't be less than Min addr
@@ -571,7 +561,9 @@ void parseKeys(char* periph_str, const char* module_str, toml_table_t* table_ptr
 			
 				
  		}
- 		
+ 		// Compute addr range for this peripheral 		
+ 		MMIO[mod_i]->mmioSize = maxPeriphaddr - minPeriphaddr;
+ 		printf("min: %x\nmax: %x\ndiff: %x\n",minPeriphaddr, maxPeriphaddr, MMIO[mod_i]->mmioSize);
  	}
  	
  	// Get the register resets	

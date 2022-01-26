@@ -302,7 +302,7 @@ compat_props_add(GPtrArray *arr,
     }
 }
 
-/*** Board API.  This should go away once we have a machine config file.  ***/
+/*** Board API. This should go away once we have a machine config file. ***/
 
 /**
  * qdev_new: Create a device on the heap

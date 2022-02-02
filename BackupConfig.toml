@@ -27,25 +27,24 @@ mem_map = 1
     
 [mmio]
 [mmio.count]
+mcg_count = 1       # Multi-purpose clock generator	
 uart_count = 1
-gpio_count = 0
-generic_count = 1					
-
-    [mmio.generic]
-    [mmio.generic.0]
-    [mmio.generic.0.config]
+				
+    [mmio.mcg]
+    [mmio.mcg.0]
+    [mmio.mcg.0.config]
     SR_count = 1
     DR_count = 0
-    irq = {enabled = 1, irqn = 56}
+    irq = {enabled = 0, irqn = 56}
 
-    [mmio.generic.0.addr]
+    [mmio.mcg.0.addr]
     base_addr = 0x40064000
     SR1_addr = 0x40064006
 
-    [mmio.generic.0.reset]
+    [mmio.mcg.0.reset]
     SR1_reset = 0x0
 
-    [mmio.generic.0.flags]
+    [mmio.mcg.0.flags]
     Flag1 = {reg = "SR1", bit = 4, val = 1, addr = "optional"}
     Flag2 = {reg = "SR1", bit = 3, val = 1, addr = 0x19f2}
     Flag3 = {reg = "SR1", bit = 5, val = 0, addr = "optional"}
@@ -53,26 +52,36 @@ generic_count = 1
     Flag5 = {reg = "SR1", bit = 2, val = 1, addr = 0x1aec}
     Flag6 = {reg = "SR1", bit = 3, val = 1, addr = 0x1a86}
     Flag7 = {reg = "SR1", bit = 5, val = 1, addr = 0x1a9c}
-       
+    Flag8 = {reg = "SR1", bit = 3, val = 1, addr = 0xf34}      
+    Flag9 = {reg = "SR1", bit = 5, val = 1, addr = 0xfb4}
+    Flag10 = {reg = "SR1", bit = 3, val = 1, addr = 0xf7c}
+    Flag11 = {reg = "SR1", bit = 2, val = 1, addr = 0xf7c}
+    Flag12 = {reg = "SR1", bit = 3, val = 0, addr = 0x104c}
+    Flag13 = {reg = "SR1", bit = 2, val = 0, addr = 0x104c}
+    Flag14 = {reg = "SR1", bit = 5, val = 0, addr = 0x102c}
 
     [mmio.uart]
     [mmio.uart.0]
     [mmio.uart.0.config]
     irq = {enabled = 1, irqn = 31}
     SR_count = 1
-    DR_count = 0
+    DR_count = 1
 
     [mmio.uart.0.addr]
-    base_addr = 0x0
-    SR1_addr = 0x0
+    base_addr = 0x4006A000
+    SR1_addr = 0x4006A004
+    DR1_addr = 0x7
 
     [mmio.uart.0.reset]
     SR1_reset = 0x0
+    DR1_reset = 0x0
 
     [mmio.uart.0.flags]
-    Flag1 = {reg = "reg", bit = 0, val = 1, addr = "optional"}
+    Flag1 = {reg = "SR1", bit = 7, val = 1, addr = 0xdca}
     Flag2 = {reg = "reg", bit = 0, val = 1, addr = "optional"}
     Flag3 = {reg = "reg", bit = 0, val = 1, addr = "optional"}
     Flag4 = {reg = "reg", bit = 0, val = 1, addr = "optional"}
     Flag5 = {reg = "reg", bit = 0, val = 1, addr = "optional"}
     Flag6 = {reg = "reg", bit = 0, val = 1, addr = "optional"}
+
+

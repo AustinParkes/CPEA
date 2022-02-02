@@ -23,8 +23,10 @@
 
 #define MAX_MMIO 100			// TODO: Find an appropriate max number
 #define MAX_MODS 16             // TODO: Find an appropriate max number
+#define MAX_CR 20               // TODO: Find an appropriate max number
 #define MAX_SR 20               // TODO: Find an appropriate max number
 #define MAX_DR 2
+#define MAX_INTR 10             // TODO: Find an appropriate max number
 #define MAX_INST 1000           // TODO: Find better max number for saved SR instances?
 
 #define TYPE_CPEA_MACHINE MACHINE_TYPE_NAME("cpea")
@@ -63,63 +65,6 @@ struct CpeaMachineState {
 
 };
 
-extern int IRQtotal;
-extern int mmio_total;            
-extern int IOregTotal;
-extern int SR_count;
-extern int DR_count;
-extern uint32_t minPeriphaddr;
-extern uint32_t maxPeriphaddr;
-
-enum regType {CR_type, SR_type, DR_type};
-enum periphID {uartID, gpioID, genericID};
-enum Status_Register {SR1, SR2, SR3, SR4, SR5, SR6, SR7, SR8};
-enum Data_Register {DR1, DR2};
-
-		
-// MMIO Structure for all peripherals. 
-typedef struct MMIO{
-    // Metadata
-    int periphID;                           // ID of which peripheral this struct is for. e.g. uart, gpio, etc.
-    int modID;                              // ID for which module this is. e.g. 0, 1, 2, etc
-    int modCount;                           // Number of total modules for this peripheral
-    int minAddr;                            // Lowest register address for this module 
-    int maxAddr;                            // Highest register address for this module
-    int mmioSize;                           // Number of addresses this peripheral takes up 
-
-    // Registers
-    uint32_t BASE_ADDR;
-	
-	// TODO: Find reasonable number of SR/DR maxes
-    uint32_t SR_ADDR[MAX_SR];                  
-    uint32_t DR_ADDR[MAX_DR];					
-			
-    uint32_t SR_RESET[MAX_SR];                  
-    uint32_t DR_RESET[MAX_DR];
-
-    uint32_t SR[MAX_SR];                        
-    uint32_t DR[MAX_DR];
-	
-	// SR instance
-	int SR_INST;
-	
-	// Interrupts
-	int irq_enabled;
-	int irqn;
-	qemu_irq *irq;
-	
-	// Peripheral Interaction
-	CharBackend chrbe;
-	
-	// Peripheral Models XXX: Stuff like FIFOs should go here.
-	uint8_t rx_fifo[16];    // TODO: Using default size of 16 for now. Would likely make this configurable.
-	int head;
-	int queue_count;
-    
-
-} CpeaMMIO;
-extern CpeaMMIO *MMIO[MAX_MMIO];
-
 // Don't think we need this anymore. XXX: If we must, could turn this into a "peripheral model" Device
 struct CpeaMMIOState {
     SysBusDevice parent_obj;
@@ -136,8 +81,109 @@ struct CpeaIRQDriverState {
     int *IRQn_list;  
 };
 
-// Saves SR instances for particular SR accesses.
+extern int IRQtotal;
+extern int mmio_total;            
+extern int CR_count;
+extern int SR_count;
+extern int DR_count;
+extern uint32_t minPeriphaddr;
+extern uint32_t maxPeriphaddr;
 extern int inst_i;
+
+enum regType {CR_type, SR_type, DR_type};
+enum periphID {null, uartID, gpioID, genericID};
+enum Status_Register {SR1, SR2, SR3, SR4, SR5, SR6, SR7, SR8};
+enum Data_Register {DR1, DR2};
+
+// Interrupt types 
+enum uart_intr {RXFF};
+
+
+/* XXX: Any MMIO struct that has interrupts enabled should have
+        its own interrupt structure
+        
+      - It should be possible for a peripheral to have multiple 
+        interrupts enabled at the same time.
+        Could make an array out of each of the variables in the struct,
+        and have the interrupt type be an index in the array for fast indexing.
+        e.g. interrupt.type[RXFF] and interrupt.type[TXComplete]
+*/
+typedef struct interrupt {
+
+    // XXX: 'type' might be redundant, since we index by type ...
+    int type[5];
+        
+    // Flag table to say which interrupts are emulated by user
+    int enabled;
+    
+    // Flag table that indicates partial emulation
+    int partial;
+    
+    // CR that enables the interrupt type
+    uint32_t CR_enable[5];
+    uint32_t CR_addr[5];
+    uint32_t CR_i[5];
+    
+    // SR that is set upon a condition to generate the interrupt type
+    uint32_t SR_generate[5];
+    uint32_t SR_addr[5];
+    uint32_t SR_i[5];
+    
+    // UART specific    
+    uint32_t RXWATER_val[5];
+    uint32_t RXWATER_addr[5];      
+
+} interrupt;
+		
+// MMIO Structure for all peripherals. 
+typedef struct MMIO{
+
+    // Metadata
+    int periphID;                           // ID of which peripheral this struct is for. e.g. uart, gpio, etc.
+    int modID;                              // ID for which module this is. e.g. 0, 1, 2, etc
+    int modCount;                           // Number of total modules for this peripheral
+    int minAddr;                            // Lowest register address for this module 
+    int maxAddr;                            // Highest register address for this module
+    int mmioSize;                           // Number of addresses this peripheral takes up 
+
+    // Registers
+    uint32_t BASE_ADDR;
+	
+	uint32_t CR_ADDR[MAX_CR];
+    uint32_t SR_ADDR[MAX_SR];                  
+    uint32_t DR_ADDR[MAX_DR];					
+	
+	// XXX: What is the point of these? Reset values should go into actual registers ...
+	uint32_t CR_RESET[MAX_CR];		
+    uint32_t SR_RESET[MAX_SR];                  
+    uint32_t DR_RESET[MAX_DR];
+
+    uint32_t CR[MAX_CR];
+    uint32_t SR[MAX_SR];                        
+    uint32_t DR[MAX_DR];
+	
+	// SR instance flag
+	int SR_INST;
+	
+	// Interrupts
+	int irq_enabled;
+	int irqn;
+	qemu_irq irq;
+	interrupt *interrupt;	
+	
+	// Peripheral Interaction
+	CharBackend chrbe;
+	
+	// Peripheral Models XXX: Stuff like FIFOs should go here.
+	uint8_t rx_fifo[16];    // TODO: Using default size of 16 for now. Would likely make this configurable.
+	int head;
+	int queue_count;        // Number of datawords in rx_fifo
+
+	
+} CpeaMMIO;
+extern CpeaMMIO *MMIO[MAX_MMIO];
+
+// Saves SR instances for particular SR accesses.
 typedef struct SR_INSTANCE{
 
     uint32_t INST_ADDR;                   // Program address SR is accessed at.
@@ -147,11 +193,20 @@ typedef struct SR_INSTANCE{
 } INST_handle;
 extern INST_handle *SR_INSTANCE[MAX_INST];
 
+
 /**
- * error: 
+ * genericIntrConfig: Interrupt Configuration for generic peripherals
  *
  */
-void error(const char *, const char *, const char *, const char *); 
+void genericIntrConfig(toml_table_t* mmio, char* p_name, const char* module_str, 
+                toml_table_t* table_ptr, const char* table_str, int struct_i);
+
+/**
+ * uartIntrConfig: UART Interrupt Configuration
+ *
+ */
+void uartIntrConfig(toml_table_t* mmio, char* p_name, const char* module_str, 
+                toml_table_t* table_ptr, const char* table_str, int struct_i);
 
 /**
  * parseConfig: 
@@ -181,12 +236,18 @@ int setFlags(toml_table_t *, int);
  * parseKeys: 
  *
  */				   
-void parseKeys(char *, const char *, toml_table_t *, const char *, int);
+void parseKeys(toml_table_t*, char *, const char *, toml_table_t *, const char *, int);
 
 /**
  * findMod: Find peripheral module accessed in callback.
  *
  */	
 CpeaMMIO *findMod(uint64_t, CpeaMMIO**);
+
+/**
+ * error: 
+ *
+ */
+void error(const char *, const char *, const char *, const char *); 
 
 #endif /* CPEA_H_ */

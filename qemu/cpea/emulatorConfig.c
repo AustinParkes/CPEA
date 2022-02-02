@@ -2,13 +2,9 @@
  * Parse emulatorConfig.toml and store MMIO/firmware user configurations for QEMU. 
  * Created by Austin Parkes
  * 
- * TODO: 1) Hash Table: MMIOHashTable is used to store IO addresses paired with their relevant MMIO info (peripheral, reg type, etc).
- *                      We also use the MMIO struct to store some of the same information which causes redundancy. It should be possible
- *                      to use the hash table only, but would require a significant restructure of the parsing algorithm. Would need to parse IO addresses
- *                      first in order to throw them into hash function right away. There shouldn't be  a significant performance drop with these two data 
- *                      structures coinciding, but there is a slight waste in memory. 
+ * TODO: 1) Use Calloc instead of Malloc so everything in structs is init to 0 automatically
  *
- * TODO: 2) Take load factor into consideration with hash table. Allocate more space to hash table if a certain threshold reached.
+ * TODO: 2) Force user to enter SR in all caps for 'flags' table. Keeps naming conventions consistent.
  *
  * TODO: 3) Need to revisit error/warning messages and improve the information they provide. Should also probably just use fprintf(stderr, ...)
  *          and ditch the fancy error() function. If line numbers can be provided with TOML API, that would also be an improvement on the error system.
@@ -16,13 +12,12 @@
  * TODO: 4) Need to provide better boundary conditions for much of the error checking. For example, we are arbitrarily using 100 as the max number of MMIOs.
             Just a matter of re-visiting all the boundary checks. Some of them are incorrect too and could lead to bugs manifesting. 
  *
- * TODO: 5) Can get rid of min/max addresses once hash table is implemented.
  *
  * TODO: 6) Currently require a user to choose a peripheral that belongs in peripheral table. Figure out a better way to do this.
  *          Does the emulator really need to be aware of what 'UART' is? or 'GPIO'? It may just need to be aware of more specific things
  *          like how interrupts are handled with serial data like UART.  
  *
- * TODO: 7) 'mod_i' and 'struct_i' are used interchangeably which is confusing. They are technically different. Want to change this naming.
+ * TODO: 7) XXX: I think I fixed this: 'mod_i' and 'struct_i' are used interchangeably which is confusing. They are technically different. Want to change this naming.
  *          Keeping for now because some of the code these names depend on could change anyway.
  *          Modules represent subsets of a peripheral: uart0, uart1, etc.
  *          Structures represent the peripherals as a whole: uart
@@ -45,8 +40,8 @@ uint32_t minPeriphaddr = 0xffffffff;
 uint32_t maxPeriphaddr = 0x0;
 
 int IRQtotal=0;
-int mmio_total=0;
-int IOregTotal=0;          
+int mmio_total=0; 
+int CR_count;       
 int SR_count;
 int DR_count;
 
@@ -87,7 +82,7 @@ CpeaMachineState *emuConfig(CpeaMachineState *config){
     /*** Free Memory for config file ***/
     toml_free(root_table); 
       
-    printf("   - Complete\n\n"); 
+    printf("***Complete***\n\n"); 
     
     return config;        
 }
@@ -242,15 +237,14 @@ int mmioConfig(toml_table_t* mmio){
 	int periph_i;				// Peripheral Index for peripheral tables and peripheral counts
 	int mod_i;					// Peripheral Module Index
 	int tab_i;					// Index to iterate through modules. e.g. config, addr, reset, flags
-	int init_i;                 // Index to initialize MMIO struct.
-	           
-	char p_str[20];				// String of a peripheral
-	int pid;					// Iterable Peripheral Index
-	int p_total;				// Total number of possible peripherals
+	//int init_i;                 // Index to initialize MMIO struct.	           
+	char p_name[20];			// Peripheral Name
+	int pid;					// Peripheral ID
+	int p_total;				// Total number of peripherals
 	
-
-	const char valid_str[3][10] = {"uart", "gpio", "generic"};
-	p_total = sizeof(valid_str)/sizeof(valid_str[0]);
+    //"null", 
+	const char valid_id[3][10] = {"generic", "uart", "gpio"};
+	p_total = sizeof(valid_id)/sizeof(valid_id[0]);
 
     toml_table_t* mmio_count = toml_table_in(mmio, "count");
  	if (!mmio){
@@ -260,11 +254,17 @@ int mmioConfig(toml_table_t* mmio){
  	// Index [mmio.count] and allocate memory for each peripheral. Init MMIO struct.
  	for (periph_i=0; ;periph_i++){
  	
- 		// Get current peripheral & count. Leave if none.
+ 		// Get current peripheral name. Leave if none.
  		const char* periph_count = toml_key_in(mmio_count, periph_i);
  		if (!periph_count)
  			break;
- 			
+ 		
+ 		// Reset peripheral name to re-use it.
+ 		memset(p_name, '\0', strlen(p_name));
+ 		
+        // Chop off "_count" and we have our peripheral's name
+ 		strncpy(p_name, periph_count, strlen(periph_count) - 6);
+
  		// Get number of Peripheral modules
     	toml_datum_t num_mods = toml_int_in(mmio_count, periph_count);
     	if (!num_mods.ok){
@@ -283,32 +283,38 @@ int mmioConfig(toml_table_t* mmio){
     	
     	mmio_total = mmio_total + (int)num_mods.u.i;	// Get total number of peripheral modules for this periph
 		
- 		// Get peripheral ID to initialize later
- 		for (pid=0; pid<=p_total; pid++){
- 			if (pid == p_total)
- 				error("No peripheral match in [mmio.count]", "", "", "");
-
- 			strcpy(p_str, valid_str[pid]);
-			strcat(p_str, "_count");
-			
-			//
-			if (!strcmp(p_str, periph_count))
+ 		// Get peripheral ID, if it exists. 
+ 		/* TODO: Want a better way to give peripheral IDs. Currently,
+ 		         user needs to name their peripheral so it matches a name
+ 		         in our peripheral list. 
+ 		         
+ 		         Turn into function as well, so there is description of this
+ 		         in API.		
+ 		*/
+ 		for (pid=1; pid<=p_total; pid++){
+ 		
+ 		    // No match so no PID
+ 			if (pid == p_total){
+ 				pid = 0;
+ 				break;				
+            }
+            		
+			// Peripheral Match. Will use PID later.
+			if (!strcmp(p_name, valid_id[pid])){		
 				break;
-	
+	        }
  		} 		
- 		// Get current peripheral string name based on periphal ID above.
-    	strcpy(p_str, valid_str[pid]);
-    		
+ 		
     	// Get current peripheral ptr
-    	periph = toml_table_in(mmio, p_str);
+    	periph = toml_table_in(mmio, p_name);
  		if (!periph){
- 			error("missing [mmio.]", p_str, "", "");
+ 			error("missing [mmio.]", p_name, "", "");
  		}
  		
  		// Allocate space for modules. Init MMIO metadata, addresses, resets, and flags		
  		for (mod_i=0; struct_i<mmio_total; struct_i++, mod_i++){
- 		    // TODO: Can probably allocate this all in 1 go, rather than each loop cycle. 
-    		MMIO[struct_i] = (CpeaMMIO *)malloc(sizeof(CpeaMMIO));
+ 		
+    		MMIO[struct_i] = (CpeaMMIO *)calloc(1, sizeof(CpeaMMIO));
     		if (!MMIO[struct_i]){
     			// TODO: Update message since module # is hard for a user to track
     			printf("Periph struct memory not allocated for module%d\n", struct_i);
@@ -320,13 +326,19 @@ int mmioConfig(toml_table_t* mmio){
     		MMIO[struct_i]->modCount = (int)num_mods.u.i;	
     		   		
     		// Initialize MMIO struct to 0s. 
+    		/*
+    		XXX: Calloc should have done this for us
     		for (init_i=0; init_i<20; init_i++){
     		    if (init_i < 2){
     		        MMIO[struct_i]->DR_ADDR[init_i] = 0;
     		        MMIO[struct_i]->DR_RESET[init_i] = 0;
     		        MMIO[struct_i]->DR[init_i] = 0;      
     		    }
-    		        
+    		    
+    		    MMIO[struct_i]->CR_ADDR[init_i] = 0;
+    		    MMIO[struct_i]->CR_RESET[init_i] = 0;
+    		    MMIO[struct_i]->CR[init_i] = 0; 
+    		        		        
     		    MMIO[struct_i]->SR_ADDR[init_i] = 0;
     		    MMIO[struct_i]->SR_RESET[init_i] = 0;
     		    MMIO[struct_i]->SR[init_i] = 0;   		    
@@ -334,7 +346,7 @@ int mmioConfig(toml_table_t* mmio){
     		MMIO[struct_i]->SR_INST = 0;   
     		MMIO[struct_i]->irq_enabled = 0;
     		MMIO[struct_i]->irqn = 0;			
-			
+			*/
 			/*
 			    Parse config, addr, reset, & flags tables
 			*/  
@@ -360,108 +372,139 @@ int mmioConfig(toml_table_t* mmio){
  		 	
  		 		// Not on "flags" table
  		 		if (strcmp(table_str, "flags"))
-					parseKeys(p_str, module_str, table_ptr, table_str, struct_i);
+					parseKeys(mmio, p_name, module_str, table_ptr, table_str, struct_i);
 				
 				// ON "flags" table	
 				else
-					setFlags(table_ptr, struct_i);
+					setFlags(table_ptr, struct_i);		
  			}			
  						
     	}
 	
  	}
-   			
+		
    	return 0;	  		
 }
 
-void parseKeys(char* valid_str, const char* module_str, toml_table_t* table_ptr, const char* table_str, int mod_i){
 
- 	int SR_i=0;				// Status Register Index
- 	int DR_i=0;				// Data Register Index
- 	int key_i=0;			// Key Index
- 	int has_irq;            // Store if irq exists or not
- 	int irqn;               // Store irqn
- 	const char *has_irq_s;  // Store boolean string for irq
+void parseKeys(toml_table_t* mmio, char* p_name, const char* module_str, 
+               toml_table_t* table_ptr, const char* table_str, int struct_i)
+{
+
+    int CR_i=0;             // Control Register Index
+    int SR_i=0;				// Status Register Index
+    int DR_i=0;				// Data Register Index
+    int key_i=0;			// Key Index
+    int has_irq;            // Store if irq exists or not
+    int irqn;               // Store irqn
+    
+    char reg_type[4];       // Helps determine register type
+    const char *has_irq_s;  // Store boolean string for irq     	
+    const char* key_str;	// Store name of any key 	  
  	
- 	const char* key_str;	// Store name of any key 	  
+    toml_table_t* irq_ptr;	// ptr to irq inline table
+    toml_datum_t irq_true;  // irq enabled for peripheral
+    toml_datum_t irqn_key;  // Defines IRQn  
+    toml_datum_t key_data;	// Store data from any key
+ 			
+    uint32_t base_addr;     // Need base address to check if user entered and offset or absolute address.
+    uint32_t data;			// Key Data to store.
  	
- 	toml_table_t* irq_ptr;	// ptr to irq inline table
- 	toml_datum_t irq_true;  // irq enabled for peripheral
- 	toml_datum_t irqn_key;  // Defines IRQn  
- 	toml_datum_t key_data;	// Store data from any key
+ 	// Interrupt Configuration Functions
+ 	void (*MMIOIntrConfig[2])(toml_table_t*, char*, const char*, 
+ 	                          toml_table_t*, const char*, int) = {
+ 	    genericIntrConfig,
+ 	    uartIntrConfig    
+ 	};
  	
- 		
- 	uint32_t base_addr;     // Need base address to check if user entered and offset or absolute address.
- 	uint32_t data;			// Key Data to store.
- 		
- 	// Parse SR/DR counts & irq info 
- 	if (!strcmp(table_str, "config")){
+    // Parse CR/SR/DR counts & irq info 
+    if (!strcmp(table_str, "config")){
+        
+        // Get CR_count string
+        key_str = toml_key_in(table_ptr, 0);
+ 
+ 	    // Get CR_count number
+		key_data = toml_int_in(table_ptr, key_str);
+		if (!key_data.ok)
+    		error("Cannot read CR_count number", "", "", "");
+		data = (uint32_t)key_data.u.i;
+		
+		// CR count must be between 0 and 20 
+		if (data <= 0)
+			CR_count = 0;
+		else if (data > 0 && data <= 20)
+			CR_count = data;		
+		else
+			CR_count = 20;		 	    
+ 	    
  		// Get SR_count string
-		key_str = toml_key_in(table_ptr, 0);
+		key_str = toml_key_in(table_ptr, 1);
 		
 		// Get SR_count number
 		key_data = toml_int_in(table_ptr, key_str);
 		if (!key_data.ok)
-    		error("Cannot read key data", "", "", "");
-		data = key_data.u.i;
+    		error("Cannot read SR_count number", "", "", "");
+		data = (uint32_t)key_data.u.i;
 		
-		// SR count must be between 0 and 17 
+		// SR count must be between 0 and 20 
 		if (data <= 0)
 			SR_count = 0;
-		else if (data > 0 && data <= 16)
+		else if (data > 0 && data <= 20)
 			SR_count = data;		
 		else
-			SR_count = 16;
-		
+			SR_count = 20;		
 		
 		// Get DR_count string
-		key_str = toml_key_in(table_ptr, 1);
+		key_str = toml_key_in(table_ptr, 2);
 		
 		// Get DR_count number
 		key_data = toml_int_in(table_ptr, key_str);
 		if (!key_data.ok)
-    		error("Cannot read key data", "", "", "");
+    		error("Cannot read DR_count number", "", "", "");
 		data = (uint32_t)key_data.u.i;
 		
-		// FIXME: This should be between 1 and 3???
-		// DR count must be between 0 and 17 
+		// DR count must be between 0 and 3 
 		if (data <= 0)
 			DR_count = 0;			
-		else if (data > 0 && data <= 16)
+		else if (data > 0 && data <= 2)
 			DR_count = data;		
 		else	
-			DR_count = data;
+			DR_count = 2;
 		
-		IOregTotal = IOregTotal + DR_count + SR_count;
 		
-		// Parse IRQ info
-		key_str = toml_key_in(table_ptr, 2);
+		/* Skip parsing flag count (table_ptr, 3) Don't need it here. */
+		
+		
+		/* Parse IRQ Info */
+		key_str = toml_key_in(table_ptr, 4);
 		if (!key_str){
-            fprintf(stderr, "ERROR: Missing irq table in [mmio].[%s].[%s].[%s]\n", valid_str, module_str, table_str);
+            fprintf(stderr, "ERROR: Missing irq table in [mmio].[%s].[%s].[%s]\n", p_name, module_str, table_str);
             exit(1);	
     	}	    	
     	irq_ptr = toml_table_in(table_ptr, key_str);
     	   	
     	// Default irq info   	
-    	MMIO[mod_i]->irq_enabled = 0;
-    	MMIO[mod_i]->irqn = 0xffff;
-    	    
+    	MMIO[struct_i]->irq_enabled = 0;
+    	MMIO[struct_i]->irqn = 0xffff; 
     	// Parse 'true' key 
-    	irq_true = toml_int_in(irq_ptr, "enabled");    	    	
+    	irq_true = toml_int_in(irq_ptr, "enabled");
+  	    	
         // User didn't enter integer
     	if (!irq_true.ok){    	    
   	        irq_true = toml_string_in(irq_ptr, "enabled"); 	         
   	        if(!irq_true.ok){
-  	            fprintf(stderr, "ERROR: Bad data for \"true\" in [mmio.%s.%s.%s.irq]\n", valid_str, module_str, table_str);
+  	            fprintf(stderr, "ERROR: Bad data for \"true\" in [mmio.%s.%s.%s.irq]\n", p_name, module_str, table_str);
                 exit(1);  
-  	        }   	        
+  	        }
+  	        
+  	        // String entered   	        
   	        has_irq_s = irq_true.u.s;
   	        if (!strcmp(has_irq_s, "false"))
   	            has_irq = 0;
   	        else if (!strcmp(has_irq_s, "true"))
   	            has_irq = 1;
   	        else{
-  	            fprintf(stderr, "ERROR: Must use boolean for \"true\" in [mmio.%s.%s.%s.irq]\n", valid_str, module_str, table_str);
+  	            fprintf(stderr, "ERROR: Must use boolean for \"true\" in [mmio.%s.%s.%s.irq]\n", p_name, module_str, table_str);
                 exit(1);    	        
   	        }
   	        free(irq_true.u.s);       
@@ -471,11 +514,11 @@ void parseKeys(char* valid_str, const char* module_str, toml_table_t* table_ptr,
     	else{
             has_irq = irq_true.u.i;
             if (has_irq < 0 || has_irq > 1){
-  	            fprintf(stderr, "ERROR: Must use boolean for \"true\" in [mmio.%s.%s.%s.irq]\n", valid_str, module_str, table_str);
+  	            fprintf(stderr, "ERROR: Must use boolean for \"true\" in [mmio.%s.%s.%s.irq]\n", p_name, module_str, table_str);
                 exit(1);                 
             }
     	}
-    
+        
         // Parse 'irqn' key
         if (has_irq){
         
@@ -483,24 +526,26 @@ void parseKeys(char* valid_str, const char* module_str, toml_table_t* table_ptr,
         
             irqn_key = toml_int_in(irq_ptr, "irqn");
             if (!irqn_key.ok){
-        	    fprintf(stderr, "ERROR: [mmio.%s.%s.%s.irq] has an irq enabled, but no IRQn\n", valid_str, module_str, table_str);
+        	    fprintf(stderr, "ERROR: [mmio.%s.%s.%s.irq] has an irq enabled, but no IRQn\n", p_name, module_str, table_str);
                 exit(1);           
             }                
             irqn = irqn_key.u.i;
             if (irqn < 0 || irqn > 480){
-        	    fprintf(stderr, "ERROR: [mmio.%s.%s.%s.irq] must have irqn in range [0, 480]\n", valid_str, module_str, table_str);
+        	    fprintf(stderr, "ERROR: [mmio.%s.%s.%s.irq] must have irqn in range [0, 480]\n", p_name, module_str, table_str);
                 exit(1);              
             }
             
             // Update irq info for this module
-            MMIO[mod_i]->irq_enabled = 1;
-            MMIO[mod_i]->irqn = irqn;
+            MMIO[struct_i]->irq_enabled = 1;
+            MMIO[struct_i]->irqn = irqn;
         }    	
 			
 	}	
-		
+	
+	// TODO TODO TODO: Make sure CRs / SRs/ DRs are looped correctly	
 	// Get the register addresses	
  	else if(!strcmp(table_str, "addr")){
+	    
  		// Index the addr keys
  		for (key_i=0; ; key_i++){
  		
@@ -508,7 +553,10 @@ void parseKeys(char* valid_str, const char* module_str, toml_table_t* table_ptr,
  			key_str = toml_key_in(table_ptr, key_i);
  			if (!key_str)
  				break;
- 				
+ 			
+ 			// Get register type CR, SR, or DR
+ 			strncpy(reg_type, key_str, 2);
+ 			
   			// Get data from the current key
     		toml_datum_t key_data = toml_int_in(table_ptr, key_str);
     		if (!key_data.ok)
@@ -516,18 +564,23 @@ void parseKeys(char* valid_str, const char* module_str, toml_table_t* table_ptr,
     		data = (uint32_t)key_data.u.i;			
  			
  			// Skip Storing data if 0xFFFF
+ 			/*
+ 			TODO: Do we need this really?
     		if (data == 0xFFFF){
-    			if (SR_i < SR_count)
+    		    if (CR_i < CR_count)
+    		        CR_i++;
+    			else if (SR_i < SR_count)
     				SR_i++;
     			else
     				DR_i++;  				
     			continue;
     		}
-
+            */
+            
  			// Get base addr
 			if (key_i == 0){
     			base_addr = data;			
-    			MMIO[mod_i]->BASE_ADDR = base_addr;				 
+    			MMIO[struct_i]->BASE_ADDR = base_addr;				 
     		}
     		
     		else{
@@ -536,13 +589,17 @@ void parseKeys(char* valid_str, const char* module_str, toml_table_t* table_ptr,
 				if (data < base_addr)
 					data = data + base_addr;
 
-				// Store addr data. SRs are looped first.	
-				if (SR_i < SR_count){
-					MMIO[mod_i]->SR_ADDR[SR_i] = data;									
+				// Store addr data for correct register
+				if (!strcmp(reg_type, "CR")){
+				    MMIO[struct_i]->CR_ADDR[CR_i] = data;
+				    CR_i++;
+				}	
+				else if (!strcmp(reg_type, "SR")){
+					MMIO[struct_i]->SR_ADDR[SR_i] = data;									
 					SR_i++;	
 				}
-				else{
-					MMIO[mod_i]->DR_ADDR[DR_i] = data;
+				else if (!strcmp(reg_type, "DR")){
+					MMIO[struct_i]->DR_ADDR[DR_i] = data;
 					DR_i++;
 				} 
 
@@ -562,8 +619,7 @@ void parseKeys(char* valid_str, const char* module_str, toml_table_t* table_ptr,
 				
  		}
  		// Compute addr range for this peripheral 		
- 		MMIO[mod_i]->mmioSize = maxPeriphaddr - minPeriphaddr;
- 		printf("min: %x\nmax: %x\ndiff: %x\n",minPeriphaddr, maxPeriphaddr, MMIO[mod_i]->mmioSize);
+ 		MMIO[struct_i]->mmioSize = maxPeriphaddr - minPeriphaddr;
  	}
  	
  	// Get the register resets	
@@ -571,11 +627,14 @@ void parseKeys(char* valid_str, const char* module_str, toml_table_t* table_ptr,
  		// Index the reset keys
  		for (key_i=0; ; key_i++){
  		
- 			// Get reset key string
+ 			// Get key from reset table (string)
  			key_str = toml_key_in(table_ptr, key_i);
  			if (!key_str)
  				break;
- 				
+ 				 				
+ 			// Get register type (CR, SR, or DR)
+ 			strncpy(reg_type, key_str, 2);	
+ 			
   			// Get data from the current key
     		toml_datum_t key_data = toml_int_in(table_ptr, key_str);
     		if (!key_data.ok)
@@ -583,6 +642,8 @@ void parseKeys(char* valid_str, const char* module_str, toml_table_t* table_ptr,
     		data = (uint32_t)key_data.u.i;			
  			
  			// Skip Storing data if 0xFFFF
+ 			/*
+ 			TODO: Do we need this?
     		if (data == 0xFFFF){
     			if (SR_i < SR_count)
     				SR_i++;
@@ -590,35 +651,56 @@ void parseKeys(char* valid_str, const char* module_str, toml_table_t* table_ptr,
     				DR_i++;  				
     			continue;
     		}
+            */
 
+            if (!strcmp(reg_type, "CR")){
+				MMIO[struct_i]->CR[CR_i] = data;
+				CR_i++;	            
+            }
 			// Store reset data	
-			if (SR_i < SR_count){
-				MMIO[mod_i]->SR_RESET[SR_i] = data;
+			else if (!strcmp(reg_type, "SR")){
+				MMIO[struct_i]->SR[SR_i] = data;
 				SR_i++;	
 			}
-			else{
-				MMIO[mod_i]->DR_RESET[DR_i] = data;
+			else if (!strcmp(reg_type, "DR")){
+				MMIO[struct_i]->DR[DR_i] = data;
 				DR_i++;
 			} 
 			
  		}
  		
- 	}
- 		
+ 	}		
+ 	
+ 	
+ 	/*
+ 	    -   Need to check if this peripheral has a type, then we can autogenerate 
+ 	        interrupt types for it in python script.
+ 	        (e.g. 'uart' will have different interrupt types from 'gpio')
+ 	        
+ 	*/ 
+ 	else if(!strcmp(table_str, "interrupts")){
+
+ 	    // Configure interrupts for this peripheral type
+ 	    MMIOIntrConfig[MMIO[struct_i]->periphID](mmio, p_name, module_str,
+ 	                                        table_ptr, table_str, struct_i);
+ 	                                             	     	                                             	    
+ 	} 
  	 	
  	else if (!strcmp(table_str, "flags"))
  		;
- 	else
-    	error("Trying to access a module table that doesn't exist.", "", "", "");  	
- 	
+ 	else{
+        fprintf(stderr, "ERROR: Module table shouldn't exist: [%s.%s.%s]\n", 
+            p_name, module_str, table_str);
+        exit(1);  
+ 	}
  
  	// Get address range for this module
- 	MMIO[mod_i]->minAddr = minPeriphaddr;
- 	MMIO[mod_i]->maxAddr = maxPeriphaddr;
+ 	MMIO[struct_i]->minAddr = minPeriphaddr;
+ 	MMIO[struct_i]->maxAddr = maxPeriphaddr;
  	
 }
 
-int setFlags(toml_table_t* flag_tab, int mod_i){
+int setFlags(toml_table_t* flag_tab, int struct_i){
 	int flag_i;					// SR Flag Index
 	int SR_i;					// String Index for Status Registers
 	int flag_bit;				// Bit location that flag belongs to
@@ -626,30 +708,34 @@ int setFlags(toml_table_t* flag_tab, int mod_i){
 	uint32_t flag_addr;         // Address location of SR access (optional)
 	const char* flag_name;		// Name of current flag
 	const char* flag_reg;		// Name of register flag belongs to
-	//const uint8_t* bytes;       // ptr to SR value for 8 bit r/w
 	toml_table_t* flag_ptr;		// ptr to flag table
 	toml_datum_t reg_str;		// Holds register string from flag table
 	toml_datum_t flag_int;		// Holds an int value from flag table
 	toml_datum_t addr_str;      // Holds "optional" string from address value.
 	
-
-	
 	// Access upper/lower case SR string
 	enum letter_case {up_case, low_case};
 	
-	// TODO: Only doing up to 8 str for now. Find better number in future	
-	char reg_name[2][8][4] = {
-	{{"SR1"},{"SR2"},{"SR3"},{"SR4"},{"SR5"},{"SR6"},{"SR7"},{"SR8"}},
-	{{"sr1"},{"sr2"},{"sr3"},{"sr4"},{"sr5"},{"sr6"},{"sr7"},{"sr8"}}
+	// TODO: Only allowing up to 32 str for now. Find better number in future	
+	char reg_name[2][32][5] = {
+	{{"SR1"},{"SR2"},{"SR3"},{"SR4"},{"SR5"},{"SR6"},{"SR7"},{"SR8"},
+	 {"SR9"},{"SR10"},{"SR11"},{"SR12"},{"SR13"},{"SR14"},{"SR15"},{"SR16"},
+	 {"SR17"},{"SR19"},{"SR19"},{"SR20"},{"SR21"},{"SR22"},{"SR23"},{"SR24"},
+	 {"SR25"},{"SR26"},{"SR27"},{"SR28"},{"SR29"},{"SR30"},{"SR31"},{"SR32"}},
+	 	 
+	{{"sr1"},{"sr2"},{"sr3"},{"sr4"},{"sr5"},{"sr6"},{"sr7"},{"sr8"},
+	 {"sr9"},{"sr10"},{"sr11"},{"sr12"},{"sr13"},{"sr14"},{"sr15"},{"sr16"},
+	 {"sr17"},{"sr18"},{"sr19"},{"sr20"},{"sr21"},{"sr22"},{"sr23"},{"sr24"},
+	 {"sr25"},{"sr26"},{"sr27"},{"sr28"},{"sr29"},{"sr30"},{"sr31"},{"sr32"}}	 
 	};
 	
 	// Loop the "flags" table for current peripheral
 	for (flag_i = 0; ; flag_i++){
+
  		// Check if table exists and leave when we finish.    
     	flag_name = toml_key_in(flag_tab, flag_i);
-    	if (!flag_name) 
+    	if (!flag_name)
     		break;
-			
 		// Get the current Flag table ptr from its name
     	flag_ptr = toml_table_in(flag_tab, flag_name);
     	if (!flag_ptr)
@@ -661,7 +747,7 @@ int setFlags(toml_table_t* flag_tab, int mod_i){
     		error("Failed to get flag register from: %s", flag_name, "", "");
     	flag_reg = reg_str.u.s;
         		
-		// Skip flag and exit.    		 
+		// Skip flag and go to start of loop    		 
     	if (!strcmp(flag_reg, "reg")){
             // Need to free string associated with toml_datum_t structure.
 			free(reg_str.u.s);
@@ -691,7 +777,7 @@ int setFlags(toml_table_t* flag_tab, int mod_i){
     	}    	 	
    	    
     	// Find correct index to store SR to
-    	for (SR_i=0; SR_i<8; SR_i++){	
+    	for (SR_i=0; SR_i<32; SR_i++){	
     		if (!strcmp(flag_reg, reg_name[up_case][SR_i]) || !strcmp(flag_reg, reg_name[low_case][SR_i])){
     		   
     		   	// Check if user wants to save a SR instance. 
@@ -706,11 +792,11 @@ int setFlags(toml_table_t* flag_tab, int mod_i){
                         
      			        // Set/Clear SR bit. 
     			        if (flag_val == 1)				
-    			            SET_BIT(MMIO[mod_i]->SR[SR_i], flag_bit);
+    			            SET_BIT(MMIO[struct_i]->SR[SR_i], flag_bit);
     			    
     			        // Explicitly clear incase reset value is '1' for this bit.    
     			        else
-    			            CLEAR_BIT(MMIO[mod_i]->SR[SR_i], flag_bit);    
+    			            CLEAR_BIT(MMIO[struct_i]->SR[SR_i], flag_bit);    
 
 				        
 				        // Free for TOML. 
@@ -722,7 +808,7 @@ int setFlags(toml_table_t* flag_tab, int mod_i){
     	        else{
     	        
     	            // Allocate space for SR instance.
-    	            SR_INSTANCE[inst_i] = (INST_handle *)malloc(sizeof(INST_handle));
+    	            SR_INSTANCE[inst_i] = (INST_handle *)calloc(1, sizeof(INST_handle));
     		        if (SR_INSTANCE[inst_i] == NULL){
     		            // TODO: update message to say which periph&module.
     			        printf("Failed to allocate SR instance for %s", flag_name);
@@ -730,7 +816,7 @@ int setFlags(toml_table_t* flag_tab, int mod_i){
     		        }
     		        
     		        // There is a SR instance for this module. 
-    		        MMIO[mod_i]->SR_INST = 1;
+    		        MMIO[struct_i]->SR_INST = 1;
     		        
     		        // Save SR instance		
     	            flag_addr = flag_int.u.i;
@@ -748,17 +834,219 @@ int setFlags(toml_table_t* flag_tab, int mod_i){
     		
     		// Incorrect register naming format	
     		else{  		
-    			if (SR_i == 7){
-    			    free(reg_str.u.s);
-    				error("Please give \"reg\" name in formats SR(1-8) or sr(1-8). You gave: ", flag_reg, "", "");
+    			if (SR_i == 32-1){
+    				error("Please give \"reg\" name in formats SR[1-32] or sr[1-32]. You gave: ", flag_reg, "", "");
+    				free(reg_str.u.s);
     			}
     		}	
     	}
 
 	}	
-
 	return 0;
 
+}
+
+// Filler. Does nothing right now.
+void genericIntrConfig(toml_table_t* mmio, char* p_name, const char* module_str, 
+            toml_table_t* table_ptr, const char* table_str, int struct_i)
+{
+    ;
+}
+
+/*
+    XXX: 1) Need to cycle through the interrupt table.
+         2) Determine which interrupts are "enabled"
+            2.1) If ANY are "enabled," need to allocate an interrupt struct
+                 and assign it to MMIO->interrupt ptr
+         3) Parse them and place them in MMIO.interrupt according to their type
+         
+       - We probably want the 'addr' table of the current peripheral loaded in
+         since we will need it for checking and other things  
+         
+*/
+void uartIntrConfig(toml_table_t* mmio, char* p_name, const char* module_str, 
+            toml_table_t* table_ptr, const char* table_str, int struct_i)
+{
+
+    toml_table_t* uart_tab; // uart table
+    toml_table_t* mod_tab;  // uart module table
+    toml_table_t* addr_tab; // addr table
+    
+    char CR_str[10];        // Store CR strings for TOML
+    const char* key_str;	// Store name of any key 
+    toml_table_t* intr;	    // interrupt inline table
+    toml_datum_t CR_en;     // interrupt enable register
+    toml_datum_t CR_bit;    // interrupt enable bit    
+    toml_datum_t CR_addr;   // Control Register address  
+  
+    char SR_str[10];        // Store SR strings for TOML 
+    toml_datum_t SR_gen;    // interrupt gen register
+    toml_datum_t SR_bit;    // interrupt gen bit    
+    toml_datum_t SR_addr;   // Status Register address     
+    
+    // Retrieve 'addr' table for this peripheral
+    uart_tab = toml_table_in(mmio, p_name);
+    mod_tab = toml_table_in(uart_tab, module_str);
+    addr_tab = toml_table_in(mod_tab, "addr");
+
+
+    /* TODO: Can likely turn this a lot of this stuff into a function.
+             Otherwise, the amount of code re-writing will be too much.
+             
+             Might be best to try and store all the values from inline table FIRST...
+             then do all this crazy integrity checking.
+             
+             Want to get RXFIFO_Full interrupt working first, look at other interrupts, then determine
+             how to parse interrupts from there.
+             
+             1) YES: Can make a function that returns if a string or integer was entered
+             2) MAYBE: Can make a function to handle CR portion
+             3) MAYBE: Can make a function to handle SR portion
+             
+            - Need to check if peripheral even has an interrupt enabled before doing ANY of this 
+             
+    */  
+          
+    // Parse RXFIFO_Full CR information
+    key_str = toml_key_in(table_ptr, RXFF);
+    intr = toml_table_in(table_ptr, key_str);          
+    CR_en = toml_string_in(intr, "CR_enable");
+    CR_bit = toml_int_in(intr, "CRbit");
+    
+    // String not entered
+    if (!CR_en.ok){
+        CR_en = toml_int_in(intr, "CR_enable");
+        if (!CR_en.ok){
+  	        fprintf(stderr, "ERROR: Bad data for \"CR_enable\" in [mmio.%s.%s.%s.RXFIFO_Full]\n", p_name, module_str, table_str);
+            exit(1);              
+        }        
+        // Integer entered TODO: Need to handle this
+        else{
+            ;
+        }    
+    }
+    
+    // String entered
+    else{
+   
+        // Nothing entered. Do nothing.
+        if (!strcmp(CR_en.u.s, "reg"))
+            return;
+            
+        // Control register entered   
+        else if (!strncmp(CR_en.u.s, "CR", 2)){
+        
+            // Check if CR entered matches an existing CR in address table
+            strcpy(CR_str, CR_en.u.s);
+            strcat(CR_str, "_addr");
+            CR_addr = toml_int_in(addr_tab, CR_str); 
+            
+            // CR doesn't exist in 'addr' table           
+            if (!CR_addr.ok){
+                fprintf(stderr, "ERROR:\nRegister in [mmio.%s.%s.interrupts."
+                    "RXFIFO_Full.CR_enable]\ndoes not match an existing "
+                    "register in [mmio.%s.%s.addr]\nYou provided %s\n"
+                    "Please give register in format CR[n]\n",
+                    p_name, module_str, p_name, module_str, CR_en.u.s);
+                exit(1);
+            }
+            
+            // CR exists .. Configure interrupt! 
+            else{
+            
+                // XXX: Need calloc checks
+                MMIO[struct_i]->interrupt = (interrupt *)calloc(1, sizeof(interrupt));                                           
+                // XXX: Did no checks with this bit to see if it was valid.
+                SET_BIT(MMIO[struct_i]->interrupt->CR_enable[RXFF], CR_bit.u.i);
+                MMIO[struct_i]->interrupt->CR_addr[RXFF] = CR_addr.u.i; 
+                MMIO[struct_i]->interrupt->CR_i[RXFF] = (atoi(CR_en.u.s+2) - 1);
+                
+                // Enable emulation of RXFIFO_Full interrupt
+                SET_BIT(MMIO[struct_i]->interrupt->enabled, RXFF);       
+            }                      
+        }
+            
+        // Invalid register type. Complain.    
+        else{
+            fprintf(stderr, "ERROR:\nRegister in [mmio.%s.%s.interrupts."
+                    "RXFIFO_Full.CR_enable]\nmust be a control register.\n"
+                    "You provided %s\n"
+                    "Please give register in format CR[n]\n",
+                    p_name, module_str, CR_en.u.s);
+            exit(1);            
+        }             
+    }
+    
+    
+    // Parse RXFIFO_Full SR information         
+    SR_gen = toml_string_in(intr, "SR_generate");
+    SR_bit = toml_int_in(intr, "SRbit");
+    
+    // String not entered
+    if (!SR_gen.ok){
+        SR_gen = toml_int_in(intr, "SR_generate");
+        if (!SR_gen.ok){
+  	        fprintf(stderr, "ERROR: Bad data for \"SR_generate\" in [mmio.%s.%s.%s.RXFIFO_Full]\n", p_name, module_str, table_str);
+            exit(1);              
+        }        
+        // Integer entered TODO: Need to handle this
+        else{
+            ;
+        }    
+    }
+    
+    // String entered
+    else{
+   
+        // Nothing entered. Do nothing.
+        if (!strcmp(SR_gen.u.s, "reg"))
+            ;
+            
+        // Control register entered   
+        else if (!strncmp(SR_gen.u.s, "SR", 2)){
+        
+            // Check if SR entered matches an existing SR in address table
+            strcpy(SR_str, SR_gen.u.s);
+            strcat(SR_str, "_addr");
+            SR_addr = toml_int_in(addr_tab, SR_str); 
+            
+            // SR doesn't exist in 'addr' table           
+            if (!SR_addr.ok){
+                fprintf(stderr, "ERROR:\nRegister in [mmio.%s.%s.interrupts."
+                    "RXFIFO_Full.SR_generate]\ndoes not match an existing "
+                    "register in [mmio.%s.%s.addr]\nYou provided %s\n"
+                    "Please give register in format SR[n]\n",
+                    p_name, module_str, p_name, module_str, SR_gen.u.s);
+                exit(1);
+            }
+            
+            // SR exists .. Configure interrupt! 
+            else{
+                      
+                // XXX: Did no checks with this bit to see if it was valid.
+                SET_BIT(MMIO[struct_i]->interrupt->SR_generate[RXFF], SR_bit.u.i);
+                MMIO[struct_i]->interrupt->SR_addr[RXFF] = SR_addr.u.i; 
+                MMIO[struct_i]->interrupt->SR_i[RXFF] = (atoi(SR_gen.u.s+2) - 1);       
+            }                      
+        }
+            
+        // Invalid register type. Complain.    
+        else{
+            fprintf(stderr, "ERROR:\nRegister in [mmio.%s.%s.interrupts."
+                    "RXFIFO_Full.SR_generate]\nmust be a control register.\n"
+                    "You provided %s\n"
+                    "Please give register in format SR[n]\n",
+                    p_name, module_str, SR_gen.u.s);
+            exit(1);            
+        }             
+    }    
+
+    // Hardcoding RXWater
+    
+    // Ordinarily, would set initial value to the reset value. Hardcoding that here
+    MMIO[struct_i]->interrupt->RXWATER_val[RXFF] = 1;    
+    MMIO[struct_i]->interrupt->RXWATER_addr[RXFF] = 0x4006a015;    
+    
 }
 
 void error(const char *msg, const char *msg1, const char *msg2, const char *msg3)

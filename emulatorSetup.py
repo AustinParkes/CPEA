@@ -9,6 +9,13 @@ Things to add:
            Preferably without overwriting original, so original isn't accidently overwritten.
 
 """
+
+"""
+Queries
+    1) Does TOML let you insert keys into the middle of a table? 
+       Currently re-ordering keys to achieve this illusion.
+    
+"""
 import argparse
 import subprocess
 from tomlkit import parse
@@ -24,10 +31,6 @@ from elftools.elf.elffile import ELFFile
 from elftools.elf.elffile import SymbolTableSection
 
 def generate_periph(config_file):
-
-	# TODO: Let someone configure number of flags they want .. rather than hardcoding in 6.   
-    p_flags = {'f1': "Flag1", 'f2': "Flag2", 'f3': "Flag3",
-               'f4': "Flag4", 'f5': "Flag5", 'f6': "Flag6"}
                            
     count = 0           # Number of modules we want to generate	
     num_exist = 0       # Number of modules that currently exist in TOML
@@ -165,7 +168,6 @@ def generate_periph(config_file):
             if p_count.endswith("_count"):
                 periph = p_count[:-6]    
             
-            # Leave if peripheral naming convention wrong.
             else:
                 print("ERROR: Naming convention for [mmio.count] keys must be [periph]_count")
                 print("       You have: %s" % (p_count))
@@ -173,7 +175,6 @@ def generate_periph(config_file):
             
             count = config['mmio']['count'][p_count]
 
-            # SKIP peripheral if invalid number
             if count < 0:
                 continue
 
@@ -227,7 +228,7 @@ def generate_periph(config_file):
 					
                 # Generate as many modules as 'count' specifies
                 for i in range(num_exist, count):
-                    generate_module(config, periph, p_flags, i)
+                    generate_module(config, periph, i)
 							
                 # Check if we need to update register counts before we leave
                 update_regs(config, periph, count)
@@ -235,10 +236,6 @@ def generate_periph(config_file):
         # Check if any peripherals exist which are no longer under [mmio.count]
         check_existance(config, 0)
 						
-		
-    #print(config)
-    #print(dumps(config))
-	
     # Write to TOML
     config = dumps(config)
 	
@@ -249,12 +246,13 @@ def generate_periph(config_file):
     with open(config_file, 'w') as f:
         f.write(parsed_config)
 
-def generate_module(config, periph, p_flags, i):
+# Generates a default template for a peripheral module
+def generate_module(config, periph, i):
 
     mod_i = str(i)
     
     # Generate config table
-    config['mmio'][periph].update({mod_i: {'config': {'SR_count': 2, 'DR_count': 2}}})
+    config['mmio'][periph].update({mod_i: {'config': {'CR_count': 2, 'SR_count': 2, 'DR_count': 2, 'flag_count': 2}}})
     config['mmio'][periph][mod_i]['config'].add('irq', inline_table())
     config['mmio'][periph][mod_i]['config']['irq'].append('enabled', 0)
     config['mmio'][periph][mod_i]['config']['irq'].append('irqn', "null")
@@ -265,27 +263,39 @@ def generate_module(config, periph, p_flags, i):
     config['mmio'][periph][mod_i]['config'].indent(4)					
 					
     # Generate addr table
-    config['mmio'][periph][mod_i].update({'addr': {'base_addr': hex(0), 'SR1_addr': hex(0), 
-													'SR2_addr': hex(0), 'DR1_addr': hex(0), 'DR2_addr': hex(0)}})
+    config['mmio'][periph][mod_i].update({'addr': {'base_addr': hex(0), 'CR1_addr': hex(0), 'CR2_addr': hex(0),
+                                                                        'SR1_addr': hex(0), 'SR2_addr': hex(0),                                                                         
+                                                                        'DR1_addr': hex(0), 'DR2_addr': hex(0)}})
 					
     config['mmio'][periph][mod_i]['addr'].indent(4)					
 									
     # Generate reset table
-    config['mmio'][periph][mod_i].update({'reset': {'SR1_reset': hex(0), 'SR2_reset': hex(0), 
+    config['mmio'][periph][mod_i].update({'reset': {'CR1_reset': hex(0), 'CR2_reset': hex(0),
+                                                    'SR1_reset': hex(0), 'SR2_reset': hex(0), 
 													'DR1_reset': hex(0), 'DR2_reset': hex(0)}})
 					
     config['mmio'][periph][mod_i]['reset'].indent(4)						
+
+    # Generate interrupt table
+    config['mmio'][periph][mod_i].update({'interrupts': {}})
+    config['mmio'][periph][mod_i]['interrupts'].indent(4)
 					
     # Generate flag table											   
     config['mmio'][periph][mod_i].update({'flags': {}})
     config['mmio'][periph][mod_i]['flags'].indent(4)
 
-    for flag in p_flags.values():
-        config['mmio'][periph][mod_i]['flags'].add(flag, inline_table())
-        config['mmio'][periph][mod_i]['flags'][flag].append('reg', "reg")
-        config['mmio'][periph][mod_i]['flags'][flag].append('bit', 0)
-        config['mmio'][periph][mod_i]['flags'][flag].append('val', 1)
-        config['mmio'][periph][mod_i]['flags'][flag].append('addr', "optional")
+    # Add 2 default flag tables
+    config['mmio'][periph][mod_i]['flags'].add("Flag1", inline_table())
+    config['mmio'][periph][mod_i]['flags']["Flag1"].append('reg', "reg")
+    config['mmio'][periph][mod_i]['flags']["Flag1"].append('bit', 0)
+    config['mmio'][periph][mod_i]['flags']["Flag1"].append('val', 1)
+    config['mmio'][periph][mod_i]['flags']["Flag1"].append('addr', "optional")
+    
+    config['mmio'][periph][mod_i]['flags'].add("Flag2", inline_table())
+    config['mmio'][periph][mod_i]['flags']["Flag2"].append('reg', "reg")
+    config['mmio'][periph][mod_i]['flags']["Flag2"].append('bit', 0)
+    config['mmio'][periph][mod_i]['flags']["Flag2"].append('val', 1)
+    config['mmio'][periph][mod_i]['flags']["Flag2"].append('addr', "optional")    
 
 
 # Check if peripheral already exists in TOML and how many.
@@ -331,35 +341,60 @@ Updates register counts in toml
 """
 def update_regs(config, periph, count):
 	
+    CR_count = 0	# Number of CR that we want to generate
     SR_count = 0	# Number of SR that we want to generate
     DR_count = 0	# Number of DR that we want to generate
-	
+    flag_count = 0  # Numer of flags that we want to generate
+    
+    CR_exist = 0    # Number of CR that already exist in TOML
     SR_exist = 0	# Number of SR that already exist in TOML
     DR_exist = 0	# Number of DR that already exist in TOML
+    flag_exist = 0  # Number of flags that already exist in TOML
 	
     # Read peripheral configurations for each module	
     for i in range(count):
         mod_i = str(i)
 		
-        p_config = config['mmio'][periph][mod_i]['config']			
-        SR_count = p_config['SR_count']
-        DR_count = p_config['DR_count']
+        config_tab = config['mmio'][periph][mod_i]['config']	        
         addr_tab = config['mmio'][periph][mod_i]['addr']
         reset_tab = config['mmio'][periph][mod_i]['reset']	
-		
-        # Save the keys for re-ordering SR and DR.	
-        addr_keys = list(zip(addr_tab.keys(), addr_tab.values()))
-        reset_keys = list(zip(reset_tab.keys(), reset_tab.values()))
-		
+        flag_tab = config['mmio'][periph][mod_i]['flags']
+        
+        CR_count = config_tab['CR_count']		
+        SR_count = config_tab['SR_count']
+        DR_count = config_tab['DR_count']	
+        flag_count = config_tab['flag_count']
+        	
+        CR_exist = 0
         SR_exist = 0
         DR_exist = 0
-        # Cycle through register addresses, counting the SR and DR.
-        for addr_i in config['mmio'][periph][mod_i]['addr']:			
-            # Detect SR or DR
-            if "SR" in addr_i:
-                SR_exist = SR_exist + 1
+        flag_exist = 0
+        
+        # Cycle through register addresses, counting the CR, SR and DR.
+        for addr_i in addr_tab:			
+            if "CR" in addr_i:
+                CR_exist = CR_exist + 1
             elif "DR" in addr_i:
                 DR_exist = DR_exist + 1
+            elif "SR" in addr_i:
+                SR_exist = SR_exist + 1 
+        
+        # Cycle through flags, counting them
+        for flag_i in flag_tab:
+            flag_exist = flag_exist + 1              
+
+        # Nothing to update
+        if CR_count == CR_exist:
+            pass
+			
+        # Delete excess CR	
+        elif CR_count < CR_exist:
+            print("Deleting %0d %s.%s CRs" % (flag_exist-flag_count, periph, mod_i))
+            del_CR(config_tab, addr_tab, reset_tab, CR_count, CR_exist)
+		
+        # Add additional CR	
+        elif CR_count > CR_exist:
+            add_CR(config_tab, addr_tab, reset_tab, CR_count, CR_exist)
 		
         # Nothing to update
         if SR_count == SR_exist:
@@ -367,11 +402,12 @@ def update_regs(config, periph, count):
 			
         # Delete excess SR	
         elif SR_count < SR_exist:
-            del_SR(p_config, addr_tab, reset_tab, SR_count, SR_exist)
+            print("Deleting %0d %s.%s SRs" % (flag_exist-flag_count, periph, mod_i))
+            del_SR(config_tab, addr_tab, reset_tab, SR_count, SR_exist)
 		
         # Add additional SR	
         elif SR_count > SR_exist:
-            add_SR(p_config, addr_tab, reset_tab, addr_keys, reset_keys, SR_count, SR_exist)								
+            add_SR(config_tab, addr_tab, reset_tab, SR_count, SR_exist)								
 		
         # Nothing to update, 
         if DR_count == DR_exist:
@@ -379,31 +415,93 @@ def update_regs(config, periph, count):
 			
         # Delete excess DR	
         elif DR_count < DR_exist:
-            del_DR(p_config, addr_tab, reset_tab, DR_count, DR_exist)				
+            print("Deleting %0d %s.%s DRs" % (flag_exist-flag_count, periph, mod_i))
+            del_DR(config_tab, addr_tab, reset_tab, DR_count, DR_exist)				
 		
         # Add additional DR	
         elif DR_count > DR_exist:
-            add_DR(p_config, addr_tab, reset_tab, DR_count, DR_exist)		
+            add_DR(config_tab, addr_tab, reset_tab, DR_count, DR_exist)		
+
+        # Nothing to update
+        if flag_count == flag_exist:
+            pass
+        
+        # Delete excess flags    
+        elif flag_count < flag_exist: 
+            print("Deleting %0d %s.%s flags" % (flag_exist-flag_count, periph, mod_i))
+            del_flag(config_tab, flag_tab, flag_count, flag_exist)
+            
+        # Add additional flags
+        elif flag_count > flag_exist:
+            add_flag(config_tab, flag_tab, flag_count, flag_exist)       
 
     return
 
-def add_SR(p_config, addr_tab, reset_tab, addr_keys, reset_keys, SR_count, SR_exist):
+# Add additional CRs while preserving order of CRs, SRs, and DRs    
+def add_CR(config_tab, addr_tab, reset_tab, CR_count, CR_exist):
 
-    # Save config keys for imposing limits on SR/DR counts
-    p_config_keys = list(zip(p_config.keys(), p_config.values()))
-	
+    # Save keys order for re-ordering registers later
+    config_keys = list(zip(config_tab.keys(), config_tab.values()))
+    addr_keys = list(zip(addr_tab.keys(), addr_tab.values()))
+    reset_keys = list(zip(reset_tab.keys(), reset_tab.values()))
+
+    if CR_count > 20:
+        CR_count = 20       
+        config_tab['CR_count'] = CR_count
+        config_tab['CR_count'].indent(4)
+        print("CR count can't exceed 20")
+
+	                          	               
+    # Add CR(s) in addr and reset tables.
+    while CR_count > CR_exist:
+        CR_addr = "CR" + str(CR_exist+1) + "_addr"
+        CR_reset = "CR" + str(CR_exist+1) + "_reset"			
+        addr_tab.add(CR_addr, hex(0))
+        reset_tab.add(CR_reset, hex(0))
+        CR_exist = CR_exist + 1	
+        
+    # Remove the SR addr(s) and add back at correct position
+    for key in addr_keys:
+        if "SR" in key[0]:
+            addr_tab.remove(key[0])
+            addr_tab.add(key[0], hex(key[1]))
+           
+    # Remove the SR reset(s) and add back at correct position
+    for key in reset_keys:
+        if "SR" in key[0]:
+            reset_tab.remove(key[0])
+            reset_tab.add(key[0], hex(key[1]))
+            
+    # Remove the DR addr(s) and add back at correct position
+    for key in addr_keys:
+        if "DR" in key[0]:
+            addr_tab.remove(key[0])
+            addr_tab.add(key[0], hex(key[1]))
+         	
+    # Remove the DR reset(s) and add back at correct position
+    for key in reset_keys:
+        if "DR" in key[0]:
+            reset_tab.remove(key[0])
+            reset_tab.add(key[0], hex(key[1]))           	
+        
+    return
+
+# Add additional SRs while preserving order of CRs, SRs, and DRs     
+def add_SR(config_tab, addr_tab, reset_tab, SR_count, SR_exist):
+
+    # Save keys order for re-ordering registers later
+    config_keys = list(zip(config_tab.keys(), config_tab.values()))
+    addr_keys = list(zip(addr_tab.keys(), addr_tab.values()))
+    reset_keys = list(zip(reset_tab.keys(), reset_tab.values()))
+    
     # HACK. To change SR_count: Need to remove and add to prevent extra indentation. Also need to re-order DRs.
-    if SR_count >= 9:
-        SR_count = 8		
-        p_config.remove('SR_count')
-        p_config.add('SR_count', 8)
-        for key in p_config_keys:
-            if "DR" in key[0]:
-                p_config.remove(key[0])
-                p_config.add(key[0], int(key[1]))		
-        print("SR count can't exceed 8")
+    if SR_count > 20:
+        SR_count = 20		       
+        config_tab['SR_count'] = SR_count
+        config_tab['SR_count'].indent(4)
+        print("SR count can't exceed 20")
 	
-    # Add the SR(s)	
+    # Add the SR(s) in addr and reset tables	
     while SR_count > SR_exist:		
         SR_addr = "SR" + str(SR_exist+1) + "_addr"
         SR_reset = "SR" + str(SR_exist+1) + "_reset"			
@@ -411,55 +509,86 @@ def add_SR(p_config, addr_tab, reset_tab, addr_keys, reset_keys, SR_count, SR_ex
         reset_tab.add(SR_reset, hex(0))
         SR_exist = SR_exist + 1		
 	
-     # Remove the DR addr(s) and add back at correct position
+    # Remove the DR addr(s) and add back at correct position
     for key in addr_keys:
         if "DR" in key[0]:	
             addr_tab.remove(key[0])					
-            # HACK: key[1] (tomkit.items.Integer) causes indentation unless you convert it to int()
             addr_tab.add(key[0], hex(key[1]))
 			
     # Remove the DR reset(s) and add back at correct position		
     for key in reset_keys:
         if "DR" in key[0]:					
             reset_tab.remove(key[0])					
-            # HACK: key[1] (tomkit.items.Integer) causes indentation unless you convert it to int()
             reset_tab.add(key[0], hex(key[1]))
-    return		
-	
+            
+    return
 				
-def add_DR(p_config, addr_tab, reset_tab, DR_count, DR_exist):
-    if DR_count >= 3:
-        DR_count = 2
-        # HACK. Need to remove and add to prevent extra indentation.
-        p_config.remove('DR_count')
-        p_config.add('DR_count', 2)		
+def add_DR(config_tab, addr_tab, reset_tab, DR_count, DR_exist):
+
+    if DR_count > 2:
+        DR_count = 2   
+        config_tab['DR_count'] = DR_count
+        config_tab['DR_count'].indent(4)  		
         print("DR count must be 0, 1 or 2")
-		
+	
     # Add the DR(s)
     while DR_count > DR_exist:
         DR_addr = "DR" + str(DR_exist+1) + "_addr"
         DR_reset = "DR" + str(DR_exist+1) + "_reset"			
         addr_tab.add(DR_addr, hex(0))
         reset_tab.add(DR_reset, hex(0))
-        DR_exist = DR_exist + 1			
+        DR_exist = DR_exist + 1	
+        		
     return
 
-	
-def del_SR(p_config, addr_tab, reset_tab, SR_count, SR_exist):
+def add_flag(config_tab, flag_tab, flag_count, flag_exist):
 
-    # Save config keys for imposing limits on SR/DR counts
-    p_config_keys = list(zip(p_config.keys(), p_config.values()))
-    if SR_count <= 0:
-        SR_count = 1
-        # HACK. To change SR_count: Need to remove and add to prevent extra indentation. Also need to re-order DRs.
-        p_config.remove('SR_count')
-        p_config.add('SR_count', 1)
-        for key in p_config_keys:
-            if "DR" in key[0]:
-                p_config.remove(key[0])
-                p_config.add(key[0], int(key[1]))
-						
-        print("SR count can't go below 1")
+    if (flag_count > 32):
+        flag_count = 32
+        config_tab['flag_count'] = flag_count
+        config_tab['flag_count'].indent(4)
+        print("Flag count can't exceed 32")
+    
+    # Add the flag(s)
+    while flag_count > flag_exist:
+        flag = "Flag" + str(flag_exist+1)
+        flag_tab.add(flag, inline_table())
+        flag_tab[flag].append('reg', "reg")   
+        flag_tab[flag].append('bit', 0)  
+        flag_tab[flag].append('val', 1)  
+        flag_tab[flag].append('addr', "optional")  
+        flag_exist = flag_exist + 1
+        
+    return
+
+def del_CR(config_tab, addr_tab, reset_tab, CR_count, CR_exist):
+    
+    if CR_count < 0:
+        CR_count = 0      
+        config_tab['CR_count'] = CR_count
+        config_tab['CR_count'].indent(4)    
+        print("CR count can't go below 0")
+        
+    # Delete the CR(s)	
+    while CR_count < CR_exist:
+        CR_addr = "CR" + str(CR_exist) + "_addr"
+        CR_reset = "CR" + str(CR_exist) + "_reset"
+        addr_tab.remove(CR_addr)
+        reset_tab.remove(CR_reset)
+        CR_exist = CR_exist - 1        
+          
+    return
+	
+def del_SR(config_tab, addr_tab, reset_tab, SR_count, SR_exist):
+
+    # Save config key order for re-ordering later
+    config_keys = list(zip(config_tab.keys(), config_tab.values()))
+    
+    if SR_count < 0:
+        SR_count = 0
+        config_tab['SR_count'] = SR_count
+        config_tab['SR_count'].indent(4)		
+        print("SR count can't go below 0")
 	
     # Delete the SR(s)	
     while SR_count < SR_exist:
@@ -471,12 +600,11 @@ def del_SR(p_config, addr_tab, reset_tab, SR_count, SR_exist):
     return	
 
 		
-def del_DR(p_config, addr_tab, reset_tab, DR_count, DR_exist):
+def del_DR(config_tab, addr_tab, reset_tab, DR_count, DR_exist):
     if DR_count < 0:
-        DR_count = 0
-        # HACK. Need to remove and add to prevent extra indentation.
-        p_config.remove('DR_count')
-        p_config.add('DR_count', 0)	
+        DR_count = 0    
+        config_tab['DR_count'] = DR_count
+        config_tab['DR_count'].indent(4)                   
         print("DR count must be 0, 1 or 2")
 		
     # Delete the DR(s)	
@@ -487,6 +615,21 @@ def del_DR(p_config, addr_tab, reset_tab, DR_count, DR_exist):
         reset_tab.remove(DR_reset)
         DR_exist = DR_exist - 1
     return		
+
+def del_flag(config_tab, flag_tab, flag_count, flag_exist):
+    if flag_count < 0:
+        flag_count = 0
+        config_tab['flag_count'] = flag_count
+        config_tab['flag_count'].indent(4)
+        print("Flag count can't go below 0")
+        
+    # Delete the Flag(s)
+    while flag_count < flag_exist:
+        flag = "Flag" + str(flag_exist)
+        flag_tab.remove(flag)
+        flag_exist = flag_exist - 1    
+        
+    return
 
 # Remove unwanted quotations around hexadecimal values.
 def del_quotes(config):
@@ -678,6 +821,24 @@ def extract_elf(elf):
     #with open('emulatorConfig.toml', 'w') as f:
     #	f.write(parsed_config)
 
+# TODO: Work in progress. Just wanted to start it as a reminder.
+def document(keyword):
+    
+    #TODO: Could make this a dict with keyword:index pair where the index 
+    #      would lead us to a description of the keyword. 
+    #      Perhaps like a switch-case thing
+    # List of valid keywords
+    valid = ["base_addr"]
+    
+    if keyword in valid:
+        pass
+    else:
+        print("%s is not a valid keyword" % (keyword))    
+        
+    
+    return 
+
+
 def list_types(x):
 
     # TODO: Alphabetize in future
@@ -717,6 +878,11 @@ if __name__ == "__main__":
                         help='Extract FW and emulator info from elf',
                         metavar='ELF_File',
                         dest='extract_elf')
+                        
+    parser.add_argument('-d', '--documentation',
+                        help='Provide documentation for a TOML keyword',
+                        metavar='Keyword',
+                        dest='document')                        
 
     parser.add_argument('-t', '--periph-types',
                         help='Show valid peripheral names',
@@ -735,6 +901,9 @@ if __name__ == "__main__":
 		
     elif args.extract_elf:
         extract_elf(args.extract_elf)
+        
+    elif args.document:
+        document(args.document)     
     
     elif args.list_types:
         list_types(args.list_types)

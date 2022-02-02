@@ -19,9 +19,63 @@
 /* 
     SYSCLK frequency: Chose a value that works.
     This would preferably be a configurable option since this would influence the systick timer's
-    ability to trigger interrupts.I also believe this is the CPU's clocking freq.
+    ability to trigger interrupts. I also believe this is the CPU's clocking freq.
 */
 #define SYSCLK_FRQ 120000000ULL
+
+
+static void uart_update(CpeaMMIO *MMIO, int type)
+{
+
+    // User configured         
+    uint32_t enabled_config;
+    uint32_t level_config;
+    
+    // Emulated CR & SR
+    uint32_t intr_enabled;
+    uint32_t intr_level;
+      
+    enabled_config = MMIO->interrupt->CR_enable[type];
+    level_config = MMIO->interrupt->SR_generate[type];
+    
+    intr_enabled = MMIO->CR[MMIO->interrupt->CR_i[type]];
+    intr_level = MMIO->SR[MMIO->interrupt->SR_i[type]];
+    
+    /*
+    // Testing 
+    printf("user CR: 0x%x\n", enabled_config);
+    printf("user SR: 0x%x\n", level_config);
+    printf("emu  CR: 0x%x\n", intr_enabled);
+    printf("emu  SR: 0x%x\n", intr_level); 
+    */
+       
+    // Handle interrupt update according to type
+    switch (type){
+    
+        case RXFF:
+            
+            // RXFF is enabled AND RXFF is set
+            if (enabled_config & intr_enabled && level_config & intr_level){
+            
+                // Raise IRQ
+                qemu_set_irq(MMIO->irq, 1);
+                //printf("Raise RXFF INTR\n");                   
+            }
+            
+            // Don't meet conditions for interrupt
+            else{
+                           
+                // Lower IRQ
+                qemu_set_irq(MMIO->irq, 0);
+                //printf("Lower RXFF INTR\n");
+            }                
+            break;
+            
+        default:
+            break;        
+    }    
+    
+}
 
 static void put_fifo(void *opaque, uint8_t value)
 {
@@ -36,17 +90,42 @@ static void put_fifo(void *opaque, uint8_t value)
     if (tail >= 16)
         tail -= 16;
 
-    printf("tail: %d\n", tail);    
+    //printf("tail: %d\n", tail);    
     MMIO->rx_fifo[tail] = value;
-    MMIO->queue_count++;
-      
-                      
+    MMIO->queue_count++; 
+         
+    // Interrupt emulation is enabled 
+    if (MMIO->interrupt){
+         
+        // RXFIFO_Full interrupt is emulated 
+        /* TODO: Could also have a partially emulated flag variable (e.g. MMIO->interrupt->partial[RXFF])
+                 or something similar that indicates partial emulation
+        */       
+        if (CHECK_BIT(MMIO->interrupt->enabled, RXFF)){            
+            if (MMIO->queue_count >= MMIO->interrupt->RXWATER_val[RXFF]){           
+                // Fully emulating RXFIFO Interrupt 
+                if (!CHECK_BIT(MMIO->interrupt->partial, RXFF)){
+                
+                    // Set RXFF SR bit
+                    MMIO->SR[MMIO->interrupt->SR_i[RXFF]] |= MMIO->interrupt->SR_generate[RXFF];
+                    uart_update(MMIO, RXFF);
+                    
+                }                                
+                // Partially emulating RXFIFO Interrupt
+                else{
+                    ;
+                }         
+                
+            }                       
+        }
+        
+    }                  
 }
 
 // Determines if FIFO can Rx anymore data.
 static int cpea_can_receive(void *opaque)
 {
-    printf("Check if we can Rx data\n");
+    //printf("cpea_can_receive\n");
     CpeaMMIO *MMIO = (CpeaMMIO *)opaque;
     int rx_flag;
     /* TODO: Need to discern if we are in FIFO mode or not, then see if our 
@@ -61,9 +140,9 @@ static int cpea_can_receive(void *opaque)
         
     return rx_flag;
 }
+
 static void cpea_receive(void *opaque, const uint8_t *buf, int size)
 {   
-    printf("Woohoo!!!\n");
     CpeaMMIO *MMIO = (CpeaMMIO *)opaque;
     
     // Place Rx data into FIFO
@@ -75,12 +154,95 @@ static void cpea_event(void *opaque, QEMUChrEvent event)
         printf("What the heck is this event?\n");
 }
 
-// Callback for writes to mmio region
-// TODO: Log data that is written to registers.
+// Callback for writes to mmio region.
 static void mmio_write(void *opaque, hwaddr addr,
                       uint64_t val, unsigned size)
 {
-    return;
+    unsigned char chr;              // Character to write
+    int match;                      // Flag set if register type found
+	int DR_i;                       // Data Register Index
+	int CR_i;                       // Control Register Index
+	int SR_i;                       // Status Register Index
+	
+    hwaddr reg_addr = 0x40000000 + addr;   
+    CpeaMMIO *MMIO = NULL;
+    match = 0;
+
+    MMIO = findMod(reg_addr, &MMIO);
+    if (MMIO == NULL)
+        return;
+            
+    // TESTING
+    //chr = val;
+    //if (reg_addr != 0x4006a007)
+    //    qemu_chr_fe_printf(&MMIO->chrbe, "Addr: 0x%lx\nSize: %u\nVal: 0x%lx\n\n", reg_addr, size, val);
+    
+    DR_i = 0;
+    CR_i = 0;
+    SR_i = 0;
+    // Determine register type accessed (DR, CR, DR). Handle accordingly. 
+    while (!match){
+        match = 0;
+                   
+        // Search DRs
+        if (MMIO->DR_ADDR[DR_i] && DR_i != MAX_DR){
+               
+            // DR Write
+            if (reg_addr ==  MMIO->DR_ADDR[DR_i]){
+                
+                // Determine peripheral type accessed            
+                switch (MMIO->periphID){                
+                case uartID:
+                    chr = val;
+                    /* XXX this blocks entire thread. Rewrite to use
+                     * qemu_chr_fe_write and background I/O callbacks */
+                    qemu_chr_fe_write_all(&MMIO->chrbe, &chr, 1);
+                    break;
+                    
+                // Peripheral not modelled
+                default:
+                    break;
+                } 
+                match = 1;                   
+            }
+            DR_i++;
+        }      
+          
+        // Search CRs
+        else if (MMIO->CR_ADDR[CR_i] && CR_i != MAX_CR){
+            
+            // CR Write
+            if (reg_addr ==  MMIO->CR_ADDR[CR_i]){               
+                MMIO->CR[CR_i] = (uint32_t)val;                
+                
+                /*
+                // XXX: Testing
+                qemu_chr_fe_printf(&MMIO->chrbe, 
+                            "CR%d Write: 0x%x\nSize: %u, Val: 0x%lx\n\n", 
+                            CR_i, MMIO->CR_ADDR[CR_i], size, val);
+                */           
+                            
+                match = 1;
+            }        
+            CR_i++;
+        }
+    
+        // Search SRs: Can likely get rid of this. SRs shouldn't be written to.
+        else if (MMIO->SR_ADDR[SR_i] && SR_i != MAX_SR){
+        
+            // SR Write
+            if (reg_addr ==  MMIO->SR_ADDR[SR_i]){               
+                MMIO->SR[SR_i] = (uint32_t)val;
+                match = 1;
+            }        
+            SR_i++;
+        }
+        
+        // No matches found.
+        else{
+            break;
+        } 
+    }
 }   
 
 static uint64_t mmio_read(void *opaque, hwaddr addr,
@@ -88,58 +250,31 @@ static uint64_t mmio_read(void *opaque, hwaddr addr,
 {
     CpeaMachineState *cms;          // CPEA Machine State
     ARMv7MState *armv7m;            // Holds CPU state
+    uint32_t data;                  // Data read from FW
+    uint64_t r;                     // Return value for register reads
     uint32_t PC;                    // program counter
 	int SR_bit;                     // SR bit location to write to (0-31)
 	int SR_val;                     // Hold SR bit value (1 or 0)
-	int addr_i;                     // Index registers' addresses
-	int index;                      // Index for SR instances
+	int index;                      // Index for SR instances             
+    int match;                      // Flag set if register type found
+	int DR_i;                       // Data Register Index
+	int CR_i;                       // Control Register Index
+	int SR_i;                       // Status Register Index
  
     cms = (CpeaMachineState *)opaque;
     armv7m = cms->armv7m;
 
-    // Compute absolute addr from offset
     hwaddr reg_addr = 0x40000000 + addr;
     
-    CpeaMMIO *periphx = NULL;	// Points to the peripheral mmio accessed. 
+    CpeaMMIO *MMIO = NULL;
+    match = 0;
     
     // Determine if we are accessing a peripheral we mapped.  
-    periphx = findMod(reg_addr, &periphx);
-    if (periphx == NULL)
-        return -1;
-        
-    // Find register being accessed and handle according to type (DR, CR or SR)
-    for (addr_i=0; addr_i < MAX_SR; addr_i++){
+    MMIO = findMod(reg_addr, &MMIO);
+    if (MMIO == NULL)
+        return 0;
     
-        // DR accessed
-        if (addr_i < 2){
-            if (reg_addr == periphx->DR_ADDR[addr_i]){
-                
-                return 0;
-            } 
-        }
-        
-        // SR accessed
-        if (reg_addr == periphx->SR_ADDR[addr_i]){
-            
-            // SR instance doesn't exist.
-            if (!periphx->SR_INST){
-                return periphx->SR[addr_i];
-            }
-    
-            // SR instance exists
-	        else {	
-	            /* 
-	                This environment (env) contains the LAST executed address and the results from that.
-	                So, R15 is not up to date with the current PC, but R0-R14 are up to date.
-	                
-	                We need the current PC. One way to remedy is to check if we are within a byte of the desired PC.
-	                NOTE: PC is a instruction ahead when stepping through in GDB (e.g. would be 0x19f2 instead of 0x19f0 at that point)
-	                TODO  Need to take this into account for someone using GDB       
-	            */
-	            
-	            PC = armv7m->cpu->env.regs[15];     // Get program counter
-
-                /* 
+    /* 
                     XXX: Pulse the UART IRQ Handler in the FW to test that IRQ firing works.
                          Works Fine when pulsing. :) Runs the handler once then leaves.  
                            
@@ -160,32 +295,132 @@ static uint64_t mmio_read(void *opaque, hwaddr addr,
 	                        //qemu_set_irq(cms->irq_state->irq[n], 0);  
 	                    }    
 	                }                    	
-	            }
-	            */ 
-	  
-	            // Loop SR instances & look for match
-	            for (index = 0; index < inst_i; index++){
-	                
-	                // HACK: We only have access to the previous PC. Check if SR instance is within a byte of PC. 
-	                if (SR_INSTANCE[index]->INST_ADDR >= PC && SR_INSTANCE[index]->INST_ADDR <= PC + 4){ 
-	                    SR_bit = SR_INSTANCE[index]->BIT;
-	                    SR_val = SR_INSTANCE[index]->VAL;
-	                    if (SR_val == 1)
-	                        SET_BIT(periphx->SR[addr_i], SR_bit);
-	                    else
-	                        CLEAR_BIT(periphx->SR[addr_i], SR_bit);
-	                    
-	                    return periphx->SR[addr_i]; 
-	                } 
-	            }
-	            
-	            // No instance at accessed address, so return register value.
-	            return periphx->SR[addr_i];   
-            }      
+	            }	            
+    */
+    
+    DR_i = 0;
+    CR_i = 0;
+    SR_i = 0;
+    // Determine register type accessed (DR, CR, DR). Handle accordingly. 
+    while (!match){
+        match = 0;
+                   
+        // Search DRs
+        if (MMIO->DR_ADDR[DR_i] && DR_i != MAX_DR){
+               
+            // DR Read
+            if (reg_addr ==  MMIO->DR_ADDR[DR_i]){
+                
+                // Determine peripheral type accessed            
+                switch (MMIO->periphID){                
+                case uartID:
+                    data = MMIO->rx_fifo[MMIO->head];
+                    if (MMIO->queue_count > 0) {
+                        MMIO->queue_count--;
+                        if (++MMIO->head == 16)
+                            MMIO->head = 0;
+                    }
+                    
+                    // Interrupt emulation is enabled
+                    if (MMIO->interrupt){
+                    
+                        // RXFIFO_Full interrupt is emulated
+                        if (CHECK_BIT(MMIO->interrupt->enabled, RXFF)){
+                            if (MMIO->queue_count < MMIO->interrupt->RXWATER_val[RXFF]){             
+                                // Fully emulating RXFIFO Interrupt 
+                                if (!CHECK_BIT(MMIO->interrupt->partial, RXFF)){
+                                
+                                    // Clear RXFF SR bit                                
+                                    MMIO->SR[MMIO->interrupt->SR_i[RXFF]] &= ~MMIO->interrupt->SR_generate[RXFF];
+                                    uart_update(MMIO, RXFF);
+                    
+                                }                                
+                                // Partially emulating RXFIFO Interrupt
+                                else{
+                                    ;
+                                }               
+                            }
+                        }                                    
+                    }
+                    
+                    /* TODO: Might wanna figure out exactly what this does.
+                             It notifies that frontend is ready to Rx data, but
+                             not sure what that exactly entails.
+                    */
+                        
+                    // Check if Chardev exists
+                    if (qemu_chr_fe_backend_connected(&MMIO->chrbe))
+                        qemu_chr_fe_accept_input(&MMIO->chrbe);
+                            
+                    r = data;                    
+                    break;
+                    
+                // Peripheral not modelled
+                default:
+                    r = 0;
+                    break;
+                } 
+                match = 1;                   
+            }
+            DR_i++;
+        }      
+          
+        // Search CRs
+        else if (MMIO->CR_ADDR[CR_i] && CR_i != MAX_CR){
+            
+            // CR Read
+            if (reg_addr ==  MMIO->CR_ADDR[CR_i]){
+                r = MMIO->CR[CR_i];                                          
+                match = 1;
+            }        
+            CR_i++;
         }
-    }
+    
+        // Search SRs
+        else if (MMIO->SR_ADDR[SR_i] && SR_i != MAX_SR){
+        
+            // SR Read
+            if (reg_addr ==  MMIO->SR_ADDR[SR_i]){  
+                         
+                // SR instance doesn't exist.
+                if (!MMIO->SR_INST){
+                    r = MMIO->SR[SR_i];
+                }
+                                
+                // SR instance exists. Find the instance and return it.
+                else{
+                    /*
+                        NOTE: PC is a instruction ahead when stepping through in GDB (e.g. would be 0x19f2 instead of 0x19f0 at that point)
+	                    TODO  Need to take this into account for someone using GDB   
+                    */
+                    PC = armv7m->cpu->env.regs[15]; 
+	                for (index = 0; index < inst_i; index++){
+	                
+	                    // HACK: We only have access to the previous PC. Check if SR instance is within a byte of PC. 
+	                    if (SR_INSTANCE[index]->INST_ADDR >= PC && SR_INSTANCE[index]->INST_ADDR <= PC + 4){ 
+	                        SR_bit = SR_INSTANCE[index]->BIT;
+	                        SR_val = SR_INSTANCE[index]->VAL;
+	                        if (SR_val == 1)
+	                            SET_BIT(MMIO->SR[SR_i], SR_bit);
+	                        else
+	                            CLEAR_BIT(MMIO->SR[SR_i], SR_bit);	                    
+	                    } 
+	                }
+	                r = MMIO->SR[SR_i];                                       
+                }                    
+                match = 1;
+            }        
+            SR_i++;
+        }
+        
+        // No matches found.
+        else{
+            r = 0;
+            break;
+        } 
+    }    
 
-    return 0;
+    return r;
 }                   
 
 // Specify callback functions for mmio
@@ -227,7 +462,9 @@ static void cpea_irq_driver_init(Object *obj)
     	    } 
     	 	
     	    if (MMIO[mod_i]->irq_enabled){
-    	        MMIO[mod_i]->irq = &s->irq[n];
+    	        // TODO: Don't think I need this here. Doing it way down below
+    	        //       after IRQ connection
+    	        MMIO[mod_i]->irq = s->irq[n];
     	        
     	        // Also, maintain a list of all IRQn 
     	        s->IRQn_list[n] = MMIO[mod_i]->irqn;
@@ -385,6 +622,19 @@ static void cpea_init(MachineState *machine)
                               qdev_get_gpio_in(cpu_dev, cms->irq_state->IRQn_list[n]));  
     }
     
+    // Testing
+    int mod_i=0;
+    for (n=0; n < IRQtotal; n++){
+        while (mod_i < mmio_total){
+            if (MMIO[mod_i]->irq_enabled){
+                MMIO[mod_i]->irq = cms->irq_state->irq[n];
+                mod_i++;  	
+    	        break;  
+            }
+            mod_i++;
+        }    
+    }		              	                    
+    
     // Peripheral model configurations XXX: Need to findout if any of this could be apart of a device... Especially peripheral model stuff.
     /*
         1) Need to setup serial chardevs and assign them to Charbackend of peripheral
@@ -403,7 +653,7 @@ static void cpea_init(MachineState *machine)
 
     // 1) Search mmio for uart and assign a serial Chardev to UART's Charbackend
     
-    int mod_i=0;
+    mod_i=0;
     while (mod_i < mmio_total){
         if (!MMIO[mod_i]){
     	    printf("Error accessing MMIO%d", mod_i);	
@@ -428,7 +678,7 @@ static void cpea_init(MachineState *machine)
     	    break;   
     	}
     	mod_i++;      		
-    }        
+    }                  
     
 	// XXX: This does write to the monitor backend ONLY when backend/frontend is specified on command line
     unsigned char ch[] = "Hello World\n";

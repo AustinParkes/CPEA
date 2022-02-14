@@ -81,17 +81,17 @@ static void put_fifo(void *opaque, uint8_t value)
 {
 
     CpeaMMIO *MMIO = (CpeaMMIO *)opaque;
-    int tail;
+    int head;
     
-    // Tail is where we place data. Head is where we read data.
-    tail = MMIO->head + MMIO->queue_count;
+    // Head is where we place data. tail is where we read data.
+    head = MMIO->tail + MMIO->queue_count;
     
-    //tail = tail % 16;
-    if (tail >= 16)
-        tail -= 16;
+    //head = head % 16;
+    if (head >= 16)
+        head -= 16;
 
-    //printf("tail: %d\n", tail);    
-    MMIO->rx_fifo[tail] = value;
+    //printf("head: %d\n", head);    
+    MMIO->rx_fifo[head] = value;
     MMIO->queue_count++; 
          
     // Interrupt emulation is enabled 
@@ -119,6 +119,8 @@ static void put_fifo(void *opaque, uint8_t value)
             }                       
         }
         
+        // TODO: Would check for other enabled interrupt types here.
+             
     }                  
 }
 
@@ -215,6 +217,28 @@ static void mmio_write(void *opaque, hwaddr addr,
             if (reg_addr ==  MMIO->CR_ADDR[CR_i]){               
                 MMIO->CR[CR_i] = (uint32_t)val;                
                 
+                // Determine peripheral type accessed
+                switch (MMIO->periphID){
+                case uartID:
+                
+                    // Interrupt emulation is enabled 
+                    if (MMIO->interrupt){                    
+                        // RXFIFO_Full interrupt emulation enabled
+                        if (CHECK_BIT(MMIO->interrupt->enabled, RXFF)){                        
+                            // Fully emulating RXFIFO Interrupt 
+                            if (!CHECK_BIT(MMIO->interrupt->partial, RXFF)){
+                                if (reg_addr == MMIO->interrupt->RXWATER_addr[RXFF])
+                                    MMIO->interrupt->RXWATER_val[RXFF] = (uint32_t)val;         
+                            }      
+                        }        
+                    }
+                    break;
+                
+                // Peripheral not modelled
+                default:
+                    break;                    
+                }
+                
                 /*
                 // XXX: Testing
                 qemu_chr_fe_printf(&MMIO->chrbe, 
@@ -273,31 +297,7 @@ static uint64_t mmio_read(void *opaque, hwaddr addr,
     MMIO = findMod(reg_addr, &MMIO);
     if (MMIO == NULL)
         return 0;
-    
-    /* 
-                    XXX: Pulse the UART IRQ Handler in the FW to test that IRQ firing works.
-                         Works Fine when pulsing. :) Runs the handler once then leaves.  
-                           
-	            if (PC == 0x19f0 || PC == 0x19f2){
-	                printf("PC: 0x19f2\n");
 
-	                // Locate IRQn 31 and set it's associatated qemu_irq
-	                for (int n=0; n < IRQtotal; n++){
-	                    printf("n: %d and IRQn: %d\n", n, cms->irq_state->IRQn_list[n]);
-	                    if (cms->irq_state->IRQn_list[n] == 31){
-	                        printf("Set IRQ!\n");
-	                        
-	                        // Pulse IRQ. If set and never unset, stays in handler forever. 
-	                        qemu_irq_pulse(cms->irq_state->irq[n]);
-	                        
-	                        // NOTE: These are equivalent to pulsing
-	                        //qemu_set_irq(cms->irq_state->irq[n], 1);
-	                        //qemu_set_irq(cms->irq_state->irq[n], 0);  
-	                    }    
-	                }                    	
-	            }	            
-    */
-    
     DR_i = 0;
     CR_i = 0;
     SR_i = 0;
@@ -314,11 +314,11 @@ static uint64_t mmio_read(void *opaque, hwaddr addr,
                 // Determine peripheral type accessed            
                 switch (MMIO->periphID){                
                 case uartID:
-                    data = MMIO->rx_fifo[MMIO->head];
+                    data = MMIO->rx_fifo[MMIO->tail];
                     if (MMIO->queue_count > 0) {
                         MMIO->queue_count--;
-                        if (++MMIO->head == 16)
-                            MMIO->head = 0;
+                        if (++MMIO->tail == 16)
+                            MMIO->tail = 0;
                     }
                     
                     // Interrupt emulation is enabled
@@ -391,7 +391,9 @@ static uint64_t mmio_read(void *opaque, hwaddr addr,
                 else{
                     /*
                         NOTE: PC is a instruction ahead when stepping through in GDB (e.g. would be 0x19f2 instead of 0x19f0 at that point)
-	                    TODO  Need to take this into account for someone using GDB   
+	                          Need to take this into account for someone using GDB   
+	                          
+	                    NOTE: PC is an instruction behind right here.      
                     */
                     PC = armv7m->cpu->env.regs[15]; 
 	                for (index = 0; index < inst_i; index++){
@@ -464,7 +466,7 @@ static void cpea_irq_driver_init(Object *obj)
     	    if (MMIO[mod_i]->irq_enabled){
     	        // TODO: Don't think I need this here. Doing it way down below
     	        //       after IRQ connection
-    	        MMIO[mod_i]->irq = s->irq[n];
+    	        //MMIO[mod_i]->irq = s->irq[n];
     	        
     	        // Also, maintain a list of all IRQn 
     	        s->IRQn_list[n] = MMIO[mod_i]->irqn;
@@ -474,46 +476,8 @@ static void cpea_irq_driver_init(Object *obj)
     	    mod_i++;        		
         }                
     }
-        
-    printf("IRQ Driver Device Init!\n");
 }
 
-static void mmio_trigger(void *opaque, int irq, int level){
-
-    printf("Trigger: %d\n", irq);    
-    
-}
-
-static void cpea_mmio_init(Object *obj)
-{    
-    /*
-    DeviceState *dev = DEVICE(obj);
-    CpeaMMIOState *s = CPEA_MMIO(obj);
-    SysBusDevice *sbd = SYS_BUS_DEVICE(obj);
-    
-    int n;  
-    
-    if (IRQtotal) 
-        s->irq = g_new(qemu_irq, IRQtotal);
-   
-    // Init output IRQs.
-    for (n = 0; n < IRQtotal; n++) {
-        sysbus_init_irq(sbd, &s->irq[n]);
-    }
-    
-    // Each IRQ should have its own input 'qemu_irq'
-    if (IRQtotal)
-        qdev_init_gpio_in(dev, mmio_trigger, IRQtotal);
-    
-    
-    
-    //sysbus_init_irq(sbd, &s->irqn);
-    
-    qdev_init_gpio_in(dev, mmio_trigger, 1);
-                           
-    printf("MMIO Device Init!\n");
-    */
-}
 
 static void cpea_init(MachineState *machine)
 {
@@ -528,7 +492,7 @@ static void cpea_init(MachineState *machine)
     MemoryRegion *mmio = g_new(MemoryRegion, 1);
     MemoryRegion *system_memory = get_system_memory();
     
-    // Currently being used to init char front end
+    // Used to init char front end
     Error *err;
     
     char arm_cpu_model[30];
@@ -622,7 +586,7 @@ static void cpea_init(MachineState *machine)
                               qdev_get_gpio_in(cpu_dev, cms->irq_state->IRQn_list[n]));  
     }
     
-    // Testing
+    // WORKS. Assigns the output IRQs to the MMIO struct
     int mod_i=0;
     for (n=0; n < IRQtotal; n++){
         while (mod_i < mmio_total){
@@ -647,8 +611,6 @@ static void cpea_init(MachineState *machine)
     Chardev *chrdev[4];
     for (n=0; n<4; n++){
         chrdev[n] = serial_hd(n);
-        if (serial_hd(n))
-            printf("serial %d\n", n);
     }
 
     // 1) Search mmio for uart and assign a serial Chardev to UART's Charbackend
@@ -735,22 +697,6 @@ static const TypeInfo cpea_irq_driver_info = {
     .class_init    = cpea_irq_driver_class_init,
 };
 
-// mmio Device
-static void cpea_mmio_class_init(ObjectClass *klass, void *data)
-{
-    //DeviceClass *dc = DEVICE_CLASS(klass);
-    // Anything need to go here?    
-}
-
-static const TypeInfo cpea_mmio_info = {
-    .name = TYPE_CPEA_MMIO,
-    .parent = TYPE_SYS_BUS_DEVICE,
-    .instance_size = sizeof(CpeaMMIOState),
-    .instance_init = cpea_mmio_init,
-    .class_init    = cpea_mmio_class_init,
-};
-
-
 // CPEA Device   
 static void cpea_class_init(ObjectClass *oc, void *data)
 {
@@ -770,7 +716,6 @@ static const TypeInfo cpea_info = {
 
 static void cpea_machine_init(void){
     type_register_static(&cpea_info);
-    type_register_static(&cpea_mmio_info);
     type_register_static(&cpea_irq_driver_info);
 }  
 type_init(cpea_machine_init);

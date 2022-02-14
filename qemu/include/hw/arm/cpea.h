@@ -95,6 +95,10 @@ enum periphID {null, uartID, gpioID, genericID};
 enum Status_Register {SR1, SR2, SR3, SR4, SR5, SR6, SR7, SR8};
 enum Data_Register {DR1, DR2};
 
+
+enum dType {STRING = 1, INTEGER = 2};
+enum dRep {REG = 1, BIT = 2};
+
 // Interrupt types 
 enum uart_intr {RXFF};
 
@@ -109,9 +113,6 @@ enum uart_intr {RXFF};
         e.g. interrupt.type[RXFF] and interrupt.type[TXComplete]
 */
 typedef struct interrupt {
-
-    // XXX: 'type' might be redundant, since we index by type ...
-    int type[5];
         
     // Flag table to say which interrupts are emulated by user
     int enabled;
@@ -121,12 +122,10 @@ typedef struct interrupt {
     
     // CR that enables the interrupt type
     uint32_t CR_enable[5];
-    uint32_t CR_addr[5];
     uint32_t CR_i[5];
     
     // SR that is set upon a condition to generate the interrupt type
     uint32_t SR_generate[5];
-    uint32_t SR_addr[5];
     uint32_t SR_i[5];
     
     // UART specific    
@@ -176,7 +175,7 @@ typedef struct MMIO{
 	
 	// Peripheral Models XXX: Stuff like FIFOs should go here.
 	uint8_t rx_fifo[16];    // TODO: Using default size of 16 for now. Would likely make this configurable.
-	int head;
+	int tail;               // 
 	int queue_count;        // Number of datawords in rx_fifo
 
 	
@@ -209,6 +208,90 @@ void uartIntrConfig(toml_table_t* mmio, char* p_name, const char* module_str,
                 toml_table_t* table_ptr, const char* table_str, int struct_i);
 
 /**
+ * RXFFParse: Parse RX FIFO Full / RX Data Register Full interrupts
+ *
+ * Returns 0-Error, 1-Success
+ */
+int RXFFParse(toml_table_t* TablePtr, toml_table_t* AddrTab, 
+              int intrType, int struct_i);
+
+
+/**
+ * CheckData: Checks the data type entered by user (string / integer)
+ *
+ * Returns 0-Error, 1-String, 2-Integer
+ *
+ */
+int CheckIntrData(toml_table_t* InlineTable, const char *InlineTableName, 
+                  const char *InlineTableKey, int dataRep);
+
+/**
+ * GetData: Retrieves data from an inline table 
+ *
+ * Returns a union containing a register string or integer value
+ *
+ */
+toml_datum_t GetIntrData(toml_table_t* InlineTable, const char *InlineTableName,  
+                const char *InlineTableKey, int dataType, int dataRep);
+
+/**
+ * checkExistance: Check if a register exists and is configured by the user
+ * 
+ * Returns 0-Invalid Format 1-Valid Register 2-No Register
+ * Prints error message when a register doesn't exist or is invalid
+ *
+ */
+int checkExistance(toml_datum_t IntrData, toml_table_t* AddrTab, 
+                const char *InlineTableName, const char *InlineTableKey);
+
+/**
+ * checkPartial: Checks if a control register is entered for emulation                
+ *               Partial emulation if no CR is entered
+ *               Full emulation if a CR is entered
+ *                  
+ * Returns 0-Full Emulation 1-Partial Emulation
+ *
+ */
+int checkPartial(const char *InlineTableName, const char *InlineTableKey,
+                 int struct_i);
+
+/**
+ * checkIRQ: Check if IRQ is enabled during interrupt parsing 
+ *           Interrupt parsing will fail if no IRQ is enabled
+ *
+ *  Returns 0-No IRQ 1-IRQ configured
+ */
+int checkIRQ(const char *InlineTableName, int struct_i);
+
+/**
+ * regExists: Checks if user entered a register that exists in the 'addr' table 
+ *            Makes sure user entered a valid register
+ *
+ * Returns 0-Invalid 1-Valid 2-Nothing entered
+ */
+int regExists(toml_datum_t IntrData, toml_table_t* AddrTab, 
+              const char *InlineTableName, const char *InlineTableKey);
+
+/**
+ * getRegAddr: Gets the address of a register. We need addresses
+ *             of some registers to emulate them when they are accessed.
+ *
+ * Returns an address
+ *
+ */
+int getRegAddr(toml_datum_t IntrData, toml_table_t* AddrTab);
+
+
+/**
+ * getRegReset: Gets the reset value of a register. We need the reset
+ *              value to give a register its inital value to emulate it.
+ *
+ * Returns a reset value
+ *
+ */
+int getRegReset(toml_datum_t IntrData, toml_table_t* AddrTab);
+
+/**
  * parseConfig: 
  *
  */          
@@ -233,7 +316,7 @@ int mmioConfig(toml_table_t *);
 int setFlags(toml_table_t *, int);
 	
 /**
- * parseKeys: 
+ * parseKeys:
  *
  */				   
 void parseKeys(toml_table_t*, char *, const char *, toml_table_t *, const char *, int);

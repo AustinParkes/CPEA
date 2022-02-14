@@ -67,8 +67,8 @@ test_count = 1
     Flag9 = {reg = "SR1", bit = 5, val = 1, addr = 0xfb4}
     Flag10 = {reg = "SR1", bit = 3, val = 1, addr = 0xf7c}
     Flag11 = {reg = "SR1", bit = 2, val = 1, addr = 0xf7c}
-    Flag12 = {reg = "SR1", bit = 3, val = 0, addr = 0x104c}
-    Flag13 = {reg = "SR1", bit = 2, val = 0, addr = 0x104c}
+    Flag12 = {reg = "SR1", bit = 3, val = 0, addr = 0x104c} # Was 0x104c
+    Flag13 = {reg = "SR1", bit = 2, val = 0, addr = 0x104c} # Was 0x104c
     Flag14 = {reg = "SR1", bit = 5, val = 0, addr = 0x102c}
     Flag15 = {reg = "SR1", bit = 5, val = 0, addr = 0x102c}
 
@@ -84,11 +84,11 @@ test_count = 1
     [mmio.uart.0.addr]
     base_addr = 0x4006A000
     CR1_addr = 0x4006a000
-    CR2_addr = 0x4006a001
+    CR2_addr = 0x4006a001   
     CR3_addr = 0x4006a002   
     CR4_addr = 0x4006a003   # RXFIFO interrupt enable bit is here
     CR5_addr = 0x4006a008
-    CR6_addr = 0x4006a00c
+    CR6_addr = 0x4006a00c   
     CR7_addr = 0x4006a015   # FIFO RX Watermark (RXWATER)
     SR1_addr = 0x4006a004   # RXFIFO interrupt set bit is here
     DR1_addr = 0x7
@@ -105,9 +105,8 @@ test_count = 1
     DR1_reset = 0x0
     
     [mmio.uart.0.interrupts]
-    RXFIFO_Full = {CR_enable = "CR4", CRbit = 5, SR_generate = "SR1", SRbit = 5, RXWATER = "CR7"}
-    #RXFIFO_Full = {CR_enable = "reg|val", CRbit = 5, SR_generate = "reg|val", SRbit = 5, RXWATER = "reg|val"}
-    
+    RXFIFO_Full = {CR_enable = "CR4", CRbit = 5, SR_generate = "SR1", SRbit = 5, RXWATER = "CR7"}   
+
     [mmio.uart.0.flags]
     Flag1 = {reg = "SR1", bit = 7, val = 1, addr = 0xdca}
 

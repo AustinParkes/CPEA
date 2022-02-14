@@ -628,13 +628,8 @@ Testing Emulator with Real Firmware
                            3) Nothing? Would assume the RXFIFO size?
                   Things to check/do during emulation for RXFIFO_Full
                     When CR is read: Need to check if it's RXWATER and
-                    change RXWATER value.
-                    
-                   
-                          
-                           
-                           
-             1) 
+                    change RXWATER value.                       
+             1) Need to add a FIFO_size option
              2) 
              
              "Hardcoded"

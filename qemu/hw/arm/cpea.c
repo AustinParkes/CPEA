@@ -24,7 +24,7 @@
 #define SYSCLK_FRQ 120000000ULL
 
 
-static void uart_update(CpeaMMIO *MMIO, int type)
+static void uart_update(CpeaMMIO *MMIO, int type, int mode)
 {
 
     // User configured         
@@ -34,12 +34,17 @@ static void uart_update(CpeaMMIO *MMIO, int type)
     // Emulated CR & SR
     uint32_t intr_enabled;
     uint32_t intr_level;
+     
+    // Interrupt level used in partial emulation 
+    int level; 
       
     enabled_config = MMIO->interrupt->CR_enable[type];
-    level_config = MMIO->interrupt->SR_generate[type];
+    level_config = MMIO->interrupt->SR_set[type];
     
     intr_enabled = MMIO->CR[MMIO->interrupt->CR_i[type]];
     intr_level = MMIO->SR[MMIO->interrupt->SR_i[type]];
+    
+    level = MMIO->interrupt->level;
     
     /*
     // Testing 
@@ -49,30 +54,34 @@ static void uart_update(CpeaMMIO *MMIO, int type)
     printf("emu  SR: 0x%x\n", intr_level); 
     */
        
-    // Handle interrupt update according to type
-    switch (type){
-    
-        case RXFF:
-            
+    // Handle interrupt update according to type and mode
+    switch (type){    
+    case RXFF:
+        switch (mode){
+        case full: 
             // RXFF is enabled AND RXFF is set
-            if (enabled_config & intr_enabled && level_config & intr_level){
-            
-                // Raise IRQ
-                qemu_set_irq(MMIO->irq, 1);
-                //printf("Raise RXFF INTR\n");                   
-            }
-            
-            // Don't meet conditions for interrupt
-            else{
-                           
-                // Lower IRQ
+            if (enabled_config & intr_enabled && level_config & intr_level)
+                qemu_set_irq(MMIO->irq, 1);                  
+           
+            // Lower interrupt
+            else
                 qemu_set_irq(MMIO->irq, 0);
-                //printf("Lower RXFF INTR\n");
-            }                
-            break;
-            
-        default:
+
             break;        
+        
+        case partial:
+            if (CHECK_BIT(level, type))
+                qemu_set_irq(MMIO->irq, 1);
+                
+            // Lower interrupt    
+            else
+                qemu_set_irq(MMIO->irq, 0);    
+            break;
+        }                        
+        break;
+                    
+    default:
+        break;        
     }    
     
 }
@@ -97,23 +106,23 @@ static void put_fifo(void *opaque, uint8_t value)
     // Interrupt emulation is enabled 
     if (MMIO->interrupt){
          
-        // RXFIFO_Full interrupt is emulated 
-        /* TODO: Could also have a partially emulated flag variable (e.g. MMIO->interrupt->partial[RXFF])
-                 or something similar that indicates partial emulation
-        */       
+        // RXFIFO_Full interrupt is emulated  
         if (CHECK_BIT(MMIO->interrupt->enabled, RXFF)){            
             if (MMIO->queue_count >= MMIO->interrupt->RXWATER_val[RXFF]){           
                 // Fully emulating RXFIFO Interrupt 
                 if (!CHECK_BIT(MMIO->interrupt->partial, RXFF)){
                 
                     // Set RXFF SR bit
-                    MMIO->SR[MMIO->interrupt->SR_i[RXFF]] |= MMIO->interrupt->SR_generate[RXFF];
-                    uart_update(MMIO, RXFF);
+                    MMIO->SR[MMIO->interrupt->SR_i[RXFF]] |= MMIO->interrupt->SR_set[RXFF];
+                    uart_update(MMIO, RXFF, full);
                     
                 }                                
                 // Partially emulating RXFIFO Interrupt
                 else{
-                    ;
+                    SET_BIT(MMIO->interrupt->level, RXFF);
+                    // Set RXFF SR bit, even if it isn't emulated
+                    MMIO->SR[MMIO->interrupt->SR_i[RXFF]] |= MMIO->interrupt->SR_set[RXFF];
+                    uart_update(MMIO, RXFF, partial);
                 }         
                 
             }                       
@@ -331,13 +340,16 @@ static uint64_t mmio_read(void *opaque, hwaddr addr,
                                 if (!CHECK_BIT(MMIO->interrupt->partial, RXFF)){
                                 
                                     // Clear RXFF SR bit                                
-                                    MMIO->SR[MMIO->interrupt->SR_i[RXFF]] &= ~MMIO->interrupt->SR_generate[RXFF];
-                                    uart_update(MMIO, RXFF);
+                                    MMIO->SR[MMIO->interrupt->SR_i[RXFF]] &= ~MMIO->interrupt->SR_set[RXFF];
+                                    uart_update(MMIO, RXFF, full);
                     
                                 }                                
                                 // Partially emulating RXFIFO Interrupt
                                 else{
-                                    ;
+                                    CLEAR_BIT(MMIO->interrupt->level, RXFF);
+                                    // Clear RXFF SR bit, even if it's not emulated                                
+                                    MMIO->SR[MMIO->interrupt->SR_i[RXFF]] &= ~MMIO->interrupt->SR_set[RXFF];
+                                    uart_update(MMIO, RXFF, partial);
                                 }               
                             }
                         }                                    
@@ -380,6 +392,7 @@ static uint64_t mmio_read(void *opaque, hwaddr addr,
         else if (MMIO->SR_ADDR[SR_i] && SR_i != MAX_SR){
         
             // SR Read
+            // TODO: Probably want to add 
             if (reg_addr ==  MMIO->SR_ADDR[SR_i]){  
                          
                 // SR instance doesn't exist.
@@ -387,7 +400,8 @@ static uint64_t mmio_read(void *opaque, hwaddr addr,
                     r = MMIO->SR[SR_i];
                 }
                                 
-                // SR instance exists. Find the instance and return it.
+                // SR instance exists for this peripheral. 
+                // Check if it's for the accessed address
                 else{
                     /*
                         NOTE: PC is a instruction ahead when stepping through in GDB (e.g. would be 0x19f2 instead of 0x19f0 at that point)

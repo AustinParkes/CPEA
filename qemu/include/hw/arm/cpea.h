@@ -102,6 +102,7 @@ enum dRep {REG = 1, BIT = 2};
 // Interrupt types 
 enum uart_intr {RXFF};
 
+enum intr_mode {full, partial};
 
 /* XXX: Any MMIO struct that has interrupts enabled should have
         its own interrupt structure
@@ -120,12 +121,15 @@ typedef struct interrupt {
     // Flag table that indicates partial emulation
     int partial;
     
+    // Flag table for partial emulation to raise/lower interrupts
+    int level;
+    
     // CR that enables the interrupt type
     uint32_t CR_enable[5];
     uint32_t CR_i[5];
     
     // SR that is set upon a condition to generate the interrupt type
-    uint32_t SR_generate[5];
+    uint32_t SR_set[5];
     uint32_t SR_i[5];
     
     // UART specific    
@@ -217,7 +221,8 @@ int RXFFParse(toml_table_t* TablePtr, toml_table_t* AddrTab,
 
 
 /**
- * CheckData: Checks the data type entered by user (string / integer)
+ * CheckIntrData: Checks the data type entered by user (string / integer)
+ *                GetIntrData will usually be called sometime after this.
  *
  * Returns 0-Error, 1-String, 2-Integer
  *
@@ -226,7 +231,9 @@ int CheckIntrData(toml_table_t* InlineTable, const char *InlineTableName,
                   const char *InlineTableKey, int dataRep);
 
 /**
- * GetData: Retrieves data from an inline table 
+ * GetIntrData: Retrieves data from an inline table 
+ *              CheckIntrData is typically called before this.
+ *              CheckIntrReg may be called after this.
  *
  * Returns a union containing a register string or integer value
  *
@@ -235,25 +242,17 @@ toml_datum_t GetIntrData(toml_table_t* InlineTable, const char *InlineTableName,
                 const char *InlineTableKey, int dataType, int dataRep);
 
 /**
- * checkExistance: Check if a register exists and is configured by the user
- * 
- * Returns 0-Invalid Format 1-Valid Register 2-No Register
- * Prints error message when a register doesn't exist or is invalid
- *
- */
-int checkExistance(toml_datum_t IntrData, toml_table_t* AddrTab, 
-                const char *InlineTableName, const char *InlineTableKey);
-
-/**
  * checkPartial: Checks if a control register is entered for emulation                
  *               Partial emulation if no CR is entered
  *               Full emulation if a CR is entered
+ *               This should be used when parsing SRs since they need to be
+ *               configured in full emulation scenarios.
  *                  
  * Returns 0-Full Emulation 1-Partial Emulation
  *
  */
 int checkPartial(const char *InlineTableName, const char *InlineTableKey,
-                 int struct_i);
+                 int intrType, int struct_i);
 
 /**
  * checkIRQ: Check if IRQ is enabled during interrupt parsing 
@@ -264,17 +263,23 @@ int checkPartial(const char *InlineTableName, const char *InlineTableKey,
 int checkIRQ(const char *InlineTableName, int struct_i);
 
 /**
- * regExists: Checks if user entered a register that exists in the 'addr' table 
- *            Makes sure user entered a valid register
+ * CheckIntrReg: Checks the input given to a register field. 
+ *               Makes sure user entered a valid register or checks if 
+ *               user is doing partial emulation. This should only be
+ *               used to check register fields.
  *
- * Returns 0-Invalid 1-Valid 2-Nothing entered
+ *               Partial emulation should only be set for enable fields
+ *
+ * Returns 0-Invalid Reg 1-Valid Reg 2-Partial Emulation 3-Nothing entered
  */
-int regExists(toml_datum_t IntrData, toml_table_t* AddrTab, 
-              const char *InlineTableName, const char *InlineTableKey);
+int CheckIntrReg(toml_datum_t IntrData, toml_table_t* AddrTab, 
+              const char *InlineTableName, const char *InlineTableKey,
+              int intrType, int struct_i);
 
 /**
  * getRegAddr: Gets the address of a register. We need addresses
  *             of some registers to emulate them when they are accessed.
+ *             GetIntrData is usually called before this.
  *
  * Returns an address
  *
@@ -290,6 +295,20 @@ int getRegAddr(toml_datum_t IntrData, toml_table_t* AddrTab);
  *
  */
 int getRegReset(toml_datum_t IntrData, toml_table_t* AddrTab);
+
+/**
+ * genericHWConfig: Hardware Configuration for generic peripherals
+ *
+ */
+void genericHWConfig(toml_table_t* mmio, char* p_name, const char* module_str, 
+                toml_table_t* table_ptr, const char* table_str, int struct_i);
+
+/**
+ * uartHWConfig: UART Hardware Configuration
+ *
+ */
+void uartHWConfig(toml_table_t* mmio, char* p_name, const char* module_str, 
+                toml_table_t* table_ptr, const char* table_str, int struct_i);
 
 /**
  * parseConfig: 

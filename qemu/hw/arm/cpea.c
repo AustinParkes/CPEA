@@ -91,24 +91,26 @@ static void put_fifo(void *opaque, uint8_t value)
 
     CpeaMMIO *MMIO = (CpeaMMIO *)opaque;
     int head;
+    int rxfifo_size;
+    
+    rxfifo_size = MMIO->uart->rxfifo_size;
     
     // Head is where we place data. tail is where we read data.
-    head = MMIO->tail + MMIO->queue_count;
+    head = MMIO->uart->tail + MMIO->uart->queue_count;
     
-    //head = head % 16;
-    if (head >= 16)
-        head -= 16;
+    if (head >= rxfifo_size)
+        head -= rxfifo_size;
 
     //printf("head: %d\n", head);    
-    MMIO->rx_fifo[head] = value;
-    MMIO->queue_count++; 
+    MMIO->uart->rx_fifo[head] = value;
+    MMIO->uart->queue_count++; 
          
     // Interrupt emulation is enabled 
     if (MMIO->interrupt){
          
-        // RXFIFO_Full interrupt is emulated  
+        // RXFIFO interrupt is emulated  
         if (CHECK_BIT(MMIO->interrupt->enabled, RXFF)){            
-            if (MMIO->queue_count >= MMIO->interrupt->RXWATER_val[RXFF]){           
+            if (MMIO->uart->queue_count >= MMIO->interrupt->Trigger_val[RXFF]){           
                 // Fully emulating RXFIFO Interrupt 
                 if (!CHECK_BIT(MMIO->interrupt->partial, RXFF)){
                 
@@ -134,32 +136,31 @@ static void put_fifo(void *opaque, uint8_t value)
 }
 
 // Determines if FIFO can Rx anymore data.
-static int cpea_can_receive(void *opaque)
+int uart_can_receive(void *opaque)
 {
     //printf("cpea_can_receive\n");
     CpeaMMIO *MMIO = (CpeaMMIO *)opaque;
     int rx_flag;
-    /* TODO: Need to discern if we are in FIFO mode or not, then see if our 
-             queue length is too long to Rx anymore data in FIFO.
-             If too long, queue length will naturally decrease when data is read from FIFO.
-             Also, can't increase more if we don't Rx more data.
-    */
+    int rxfifo_size;
     
-    rx_flag = MMIO->queue_count < 16;
+    rxfifo_size = MMIO->uart->rxfifo_size; 
+    
+    rx_flag = MMIO->uart->queue_count < rxfifo_size;
     if (!rx_flag)
         printf("Can't RX data: Queue full\n");
-        
+             
     return rx_flag;
 }
 
-static void cpea_receive(void *opaque, const uint8_t *buf, int size)
+void uart_receive(void *opaque, const uint8_t *buf, int size)
 {   
     CpeaMMIO *MMIO = (CpeaMMIO *)opaque;
     
     // Place Rx data into FIFO
     put_fifo(MMIO, *buf);
 }
-static void cpea_event(void *opaque, QEMUChrEvent event)
+
+void uart_event(void *opaque, QEMUChrEvent event)
 {
     if (event == CHR_EVENT_BREAK)
         printf("What the heck is this event?\n");
@@ -232,12 +233,12 @@ static void mmio_write(void *opaque, hwaddr addr,
                 
                     // Interrupt emulation is enabled 
                     if (MMIO->interrupt){                    
-                        // RXFIFO_Full interrupt emulation enabled
+                        // RXFIFO interrupt emulation enabled
                         if (CHECK_BIT(MMIO->interrupt->enabled, RXFF)){                        
                             // Fully emulating RXFIFO Interrupt 
                             if (!CHECK_BIT(MMIO->interrupt->partial, RXFF)){
-                                if (reg_addr == MMIO->interrupt->RXWATER_addr[RXFF])
-                                    MMIO->interrupt->RXWATER_val[RXFF] = (uint32_t)val;         
+                                if (reg_addr == MMIO->interrupt->Trigger_addr[RXFF])
+                                    MMIO->interrupt->Trigger_val[RXFF] = (uint32_t)val;         
                             }      
                         }        
                     }
@@ -293,6 +294,7 @@ static uint64_t mmio_read(void *opaque, hwaddr addr,
 	int DR_i;                       // Data Register Index
 	int CR_i;                       // Control Register Index
 	int SR_i;                       // Status Register Index
+    int rxfifo_size;            
  
     cms = (CpeaMachineState *)opaque;
     armv7m = cms->armv7m;
@@ -323,19 +325,20 @@ static uint64_t mmio_read(void *opaque, hwaddr addr,
                 // Determine peripheral type accessed            
                 switch (MMIO->periphID){                
                 case uartID:
-                    data = MMIO->rx_fifo[MMIO->tail];
-                    if (MMIO->queue_count > 0) {
-                        MMIO->queue_count--;
-                        if (++MMIO->tail == 16)
-                            MMIO->tail = 0;
+                    rxfifo_size = MMIO->uart->rxfifo_size;
+                    data = MMIO->uart->rx_fifo[MMIO->uart->tail];
+                    if (MMIO->uart->queue_count > 0) {
+                        MMIO->uart->queue_count--;
+                        if (++MMIO->uart->tail == rxfifo_size)
+                            MMIO->uart->tail = 0;
                     }
                     
                     // Interrupt emulation is enabled
                     if (MMIO->interrupt){
                     
-                        // RXFIFO_Full interrupt is emulated
+                        // RXFIFO interrupt is emulated
                         if (CHECK_BIT(MMIO->interrupt->enabled, RXFF)){
-                            if (MMIO->queue_count < MMIO->interrupt->RXWATER_val[RXFF]){             
+                            if (MMIO->uart->queue_count < MMIO->interrupt->Trigger_val[RXFF]){             
                                 // Fully emulating RXFIFO Interrupt 
                                 if (!CHECK_BIT(MMIO->interrupt->partial, RXFF)){
                                 
@@ -453,7 +456,7 @@ static void cpea_irq_driver_init(Object *obj)
     CpeaIRQDriverState *s = CPEA_IRQ_DRIVER(obj);
     
     int n;
-    int mod_i;
+    int i;
     
     if (IRQtotal){     
         // Allocate space for output 'qemu_irq's
@@ -464,30 +467,26 @@ static void cpea_irq_driver_init(Object *obj)
     }
     
     // Init output IRQs 
-    mod_i=0;
+    i=0;
     for (n = 0; n < IRQtotal; n++) {
         
         // Create output IRQ line that can raise an interrupt
         qdev_init_gpio_out(DEVICE(s), &s->irq[n], 1);
         
-        // Assign IRQs to peripherals to set IRQs easily later  
-        while (mod_i < mmio_total){
-    	    if (!MMIO[mod_i]){
-    		    printf("Error accessing MMIO%d", mod_i);	
+        // Maintain a list of all IRQn   
+        while (i < mmio_total){
+    	    if (!MMIO[i]){
+    		    printf("Error accessing MMIO%d", i);	
     		    exit(1);
     	    } 
-    	 	
-    	    if (MMIO[mod_i]->irq_enabled){
-    	        // TODO: Don't think I need this here. Doing it way down below
-    	        //       after IRQ connection
-    	        //MMIO[mod_i]->irq = s->irq[n];
+    	 	// TODO: Will need to check if a peripheral has MULTIPLE IRQs enabled
+    	    if (MMIO[i]->irq_enabled){
     	        
-    	        // Also, maintain a list of all IRQn 
-    	        s->IRQn_list[n] = MMIO[mod_i]->irqn;
-    	        mod_i++;  	
+    	        s->IRQn_list[n] = MMIO[i]->irqn;
+    	        i++;  	
     	        break;   
     	    }
-    	    mod_i++;        		
+    	    i++;        		
         }                
     }
 }
@@ -496,8 +495,6 @@ static void cpea_irq_driver_init(Object *obj)
 static void cpea_init(MachineState *machine)
 {
     CpeaMachineState *cms = CPEA_MACHINE(machine);
-    //CpeaIRQDriverState *irq_state;
-    //ARMv7MState *armv7m;
     DeviceState *cpu_dev;                            
     DeviceState *irq_driver;
     
@@ -511,6 +508,7 @@ static void cpea_init(MachineState *machine)
     
     char arm_cpu_model[30];
     int n;
+    int i;
     
     // Default Core 
     strcpy(cms->cpu_model, "cortex-m4");
@@ -590,28 +588,34 @@ static void cpea_init(MachineState *machine)
                              
     /* This will exit with an error if bad cpu_type */   
     sysbus_realize_and_unref(SYS_BUS_DEVICE(cpu_dev), &error_fatal);
-
-
     
     // Connect output IRQ lines to CPU's IRQn lines
+    i=0;
     for (n = 0; n < IRQtotal; n++){               
         qdev_connect_gpio_out(DEVICE(irq_driver), 
                               n, 
-                              qdev_get_gpio_in(cpu_dev, cms->irq_state->IRQn_list[n]));  
-    }
-    
-    // WORKS. Assigns the output IRQs to the MMIO struct
-    int mod_i=0;
-    for (n=0; n < IRQtotal; n++){
-        while (mod_i < mmio_total){
-            if (MMIO[mod_i]->irq_enabled){
-                MMIO[mod_i]->irq = cms->irq_state->irq[n];
-                mod_i++;  	
+                              qdev_get_gpio_in(cpu_dev, cms->irq_state->IRQn_list[n]));
+                              
+        // Save output IRQs to their respective peripheral in the same order
+        // the IRQn list was created in cpea_irq_driver_init()
+        while (i < mmio_total){
+        
+    	    if (!MMIO[i]){
+    		    printf("Error accessing MMIO%d", i);	
+    		    exit(1);
+    	    } 
+    	            
+            if (MMIO[i]->irq_enabled){
+                MMIO[i]->irq = cms->irq_state->irq[n];
+                i++;  	
     	        break;  
             }
-            mod_i++;
-        }    
-    }		              	                    
+            
+            // No IRQ enabled, move on
+            else
+                i++;            
+        }                        
+    }
     
     // Peripheral model configurations XXX: Need to findout if any of this could be apart of a device... Especially peripheral model stuff.
     /*
@@ -621,7 +625,9 @@ static void cpea_init(MachineState *machine)
            NOTE: This would also likely happen in emuConfig when automated.
     */
     
-    // 1) Set up serial Chardevs
+    
+    // 1) Set up serial Chardevs 
+    // XXX: Note limit is 4
     Chardev *chrdev[4];
     for (n=0; n<4; n++){
         chrdev[n] = serial_hd(n);
@@ -629,37 +635,31 @@ static void cpea_init(MachineState *machine)
 
     // 1) Search mmio for uart and assign a serial Chardev to UART's Charbackend
     
-    mod_i=0;
-    while (mod_i < mmio_total){
-        if (!MMIO[mod_i]){
-    	    printf("Error accessing MMIO%d", mod_i);	
+    i=0;
+    while (i < mmio_total){
+        if (!MMIO[i]){
+    	    printf("Error accessing MMIO%d", i);	
     	    exit(1);
     	} 
     	
     	// If UART, assign the 2nd serial Chardev to it. 	
-    	if (MMIO[mod_i]->periphID == uartID){
+    	if (MMIO[i]->periphID == uartID){
     	    	
     	    // 1) Assign host's serial chardev to guest's backend
-            if (!qemu_chr_fe_init(&MMIO[mod_i]->chrbe, chrdev[0], &err)){
+            if (!qemu_chr_fe_init(&MMIO[i]->chrbe, chrdev[0], &err)){
                 printf("Failed to init Serial Chardev\n");
                 exit(1);
             } 
-
-            // XXX: This didn't work for some reason. Using the function above instead.
-            //MMIO[0]->chrbe.chr = chrdev[0];
                 
             // 2) Set handlers for front-end 
-            qemu_chr_fe_set_handlers(&MMIO[mod_i]->chrbe, cpea_can_receive, cpea_receive,
-                                    cpea_event, NULL, MMIO[mod_i], NULL, true);   	                                    
+            qemu_chr_fe_set_handlers(&MMIO[i]->chrbe, uart_can_receive, uart_receive,
+                                    uart_event, NULL, MMIO[i], NULL, true);   	                                    
     	    break;   
     	}
-    	mod_i++;      		
+    	i++;      		
     }                  
     
-	// XXX: This does write to the monitor backend ONLY when backend/frontend is specified on command line
-    unsigned char ch[] = "Hello World\n";
-    qemu_chr_fe_write_all(&MMIO[0]->chrbe, ch, 13);
-
+    
     armv7m_load_kernel(ARM_CPU(first_cpu), machine->kernel_filename,
                        cms->flash_size);
                                        

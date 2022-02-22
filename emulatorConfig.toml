@@ -105,13 +105,26 @@ test_count = 1
     DR1_reset = 0x0
     
     [mmio.uart.0.hardware]
-    RXFIFO_size = 1
+    RXFIFO_Size = 16
+    
+    # Imagine someone has enabled both RX/TX interrupts in a firmware
+    #
+    # Could a RX interrupt and TX interrupt have separate ISR?
+    # e.g. Can a single peripheral be tied to multiple different ISRs?
+    #
     
     [mmio.uart.0.interrupts]
-    RXFIFO_Full = {CR_enable = "partial", CRbit = 5, SR_set = "SR1", SRbit = 5, RXWATER = 1}   
+    RXFIFO = {CR_enable = "partial", CRbit = 5, SR_set = "SR1", SRbit = 5, Trigger = 1, IRQn = 31}
+    #TXFIFO = {}
+    #TXC = {}
 
+    [mmio.uart.0.interface]
+    host = "stdio"
+    guest = "serial"    
+        
     [mmio.uart.0.flags]
     Flag1 = {reg = "SR1", bit = 7, val = 1, addr = 0xdca}
+       
 
     [mmio.test]
     [mmio.test.0]

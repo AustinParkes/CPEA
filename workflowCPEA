@@ -613,31 +613,9 @@ Testing Emulator with Real Firmware
              - Got front end handlers to work via "qemu_chr_fe_init()" & "qemu_chr_fe_set_handlers()"   
                            
     1.1) [p] Need peripheral model for UART/serial: 
-             - Hardcode some of it at first. Find what needs configured as we go.
-             "Things to do"
-             Interrupts:
-             Plan: Get RXFIFO_FULL implemented then determine ways in which we can turn stuff into 
-                   functions and neaten/lessen the code.
-             0) RXFIFO_Full: Receiver FIFO/buffer is full.
-                  e.g. RXFIFO_Full = {CR_enable = "CR3", bit = 5, SR_generate = "SR1", bit = 5, RXWATER = "CR7"}
-                  [options]
-                  CR_enable: The CR and bit for which this interrupt is enabled in
-                  SR_generate: the SR and bit read for which this interrupt is generated
-                  RXWATER: 1) The emulated CR that should contain the Receive Watermark value
-                           2) A hardcoded value for Receive Watermark ignoring the emulated CR
-                           3) Nothing? Would assume the RXFIFO size?
-                  Things to check/do during emulation for RXFIFO_Full
-                    When CR is read: Need to check if it's RXWATER and
-                    change RXWATER value.                       
-             1) Need to add a FIFO_size option
-             2) 
-             
-             "Hardcoded"
-             FIFO: 16 Bytes
-             RDR reads: Update queue count, head, and return data
-                          
-             "Configurable"
-             FIFO Enable: CR bit that enables/disables FIFO.
+             - RxFIFO fully functional
+             - RXFIFO_Full interrupt functional 
+                  I think this is complete. Works for 2 completely different UARTs ...
              
              
              

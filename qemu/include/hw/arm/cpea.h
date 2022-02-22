@@ -95,31 +95,33 @@ enum periphID {null, uartID, gpioID, genericID};
 enum Status_Register {SR1, SR2, SR3, SR4, SR5, SR6, SR7, SR8};
 enum Data_Register {DR1, DR2};
 
-
+// Interrupt parsing
 enum dType {STRING = 1, INTEGER = 2};
 enum dRep {REG = 1, BIT = 2};
 
 // Interrupt types 
-enum uart_intr {RXFF};
+enum uart_intr {
+    RXFF,
+    TXFF
+};
 
-enum intr_mode {full, partial};
 
-/* XXX: Any MMIO struct that has interrupts enabled should have
-        its own interrupt structure
-        
-      - It should be possible for a peripheral to have multiple 
-        interrupts enabled at the same time.
-        Could make an array out of each of the variables in the struct,
-        and have the interrupt type be an index in the array for fast indexing.
-        e.g. interrupt.type[RXFF] and interrupt.type[TXComplete]
+                
+enum intr_mode {
+    full, 
+    partial
+};
+
+/* XXX: 
+
 */
 typedef struct interrupt {
         
     // Flag table to say which interrupts are emulated by user
     int enabled;
     
-    // Flag table that indicates partial emulation
-    int partial;
+    // Full or Partial emulation
+    int partial;   
     
     // Flag table for partial emulation to raise/lower interrupts
     int level;
@@ -132,11 +134,53 @@ typedef struct interrupt {
     uint32_t SR_set[5];
     uint32_t SR_i[5];
     
+    // IRQ specifics
+    int irq_enabled;
+	int irqn;
+	qemu_irq irq;
+    
     // UART specific    
-    uint32_t RXWATER_val[5];
-    uint32_t RXWATER_addr[5];      
+    uint32_t Trigger_val[5];
+    uint32_t Trigger_addr[5];      
 
 } interrupt;
+
+typedef struct test_intr {
+
+    int enabled;
+    int mode;   
+    int level;
+    
+    // CR that enables the interrupt type
+    uint32_t CR_enable;
+    uint32_t CR_i;
+    
+    // SR that is set upon a condition to generate the interrupt type
+    uint32_t SR_set;
+    uint32_t SR_i;
+    
+    // IRQ specifics
+    int irq_enabled;
+	int irqn;
+	qemu_irq irq;
+    
+    // # of bytes in a FIFO that trigger interrupt   
+    uint32_t Trigger_val;
+    uint32_t Trigger_addr;  
+     
+} test_intr;
+
+typedef struct uart{
+
+	uint8_t* rx_fifo;       // RX FIFO, size is configurable
+	int rxfifo_size;        
+	int tail;               // Slot data is read from
+	int queue_count;        // Number of datawords in rx_fifo    
+
+    // Peripheral Interaction. Guest's "backend"
+	CharBackend chrbe;
+
+} CpeaUART;	
 		
 // MMIO Structure for all peripherals. 
 typedef struct MMIO{
@@ -155,11 +199,6 @@ typedef struct MMIO{
 	uint32_t CR_ADDR[MAX_CR];
     uint32_t SR_ADDR[MAX_SR];                  
     uint32_t DR_ADDR[MAX_DR];					
-	
-	// XXX: What is the point of these? Reset values should go into actual registers ...
-	uint32_t CR_RESET[MAX_CR];		
-    uint32_t SR_RESET[MAX_SR];                  
-    uint32_t DR_RESET[MAX_DR];
 
     uint32_t CR[MAX_CR];
     uint32_t SR[MAX_SR];                        
@@ -168,20 +207,35 @@ typedef struct MMIO{
 	// SR instance flag
 	int SR_INST;
 	
-	// Interrupts
+	// Interrupts 
+	/*
+	    XXX: A single MMIO can have multiple IRQs associated with it
+	         Configs happen before any device creation which is good.
+	         
+	         1) Would make sense to have an interrupt struct for each interrupt type that is configured.
+	            How to allocate?
+	            - Per new interrupt is tricky because we'd have to realloc
+	            - Knowing ahead of time is better, if we can find a good way to read ahead of time then allocate.
+	              Could simply just read the IRQn key and assume the interrupt is enabled based off that
+	            Problem
+	            - We enumerate the interrupt types for indexing them .. we might allocate in a different order 
+	              then the interrupt types are enumerated  
+	              Can assign a key to the allocated interrupts as we allocate for indexing later
+	            
+	         2) Would also make sense to place the IRQ information into the interrupt structs
+	              
+	*/
 	int irq_enabled;
 	int irqn;
 	qemu_irq irq;
-	interrupt *interrupt;	
+	interrupt* interrupt;	
 	
 	// Peripheral Interaction
+	// TODO: This will likely go into the individual peripheral models
 	CharBackend chrbe;
 	
-	// Peripheral Models XXX: Stuff like FIFOs should go here.
-	uint8_t rx_fifo[16];    // TODO: Using default size of 16 for now. Would likely make this configurable.
-	int tail;               // 
-	int queue_count;        // Number of datawords in rx_fifo
-
+    // Peripheral Models
+    CpeaUART* uart;
 	
 } CpeaMMIO;
 extern CpeaMMIO *MMIO[MAX_MMIO];
@@ -195,6 +249,27 @@ typedef struct SR_INSTANCE{
     
 } INST_handle;
 extern INST_handle *SR_INSTANCE[MAX_INST];
+
+/**
+ * genericHWConfig: Hardware Configuration for generic peripherals
+ *
+ */
+void genericHWConfig(toml_table_t* mmio, char* p_name, const char* module_str, 
+                toml_table_t* table_ptr, const char* table_str, int struct_i);
+
+/**
+ * uartHWConfig: UART Hardware Configuration
+ *
+ */
+void uartHWConfig(toml_table_t* mmio, char* p_name, const char* module_str, 
+                toml_table_t* table_ptr, const char* table_str, int struct_i);
+
+/**
+ * getFifoSize: Gets FIFO size and commits to MMIO struct
+ *
+ * Returns 0-Error 1-Success
+ */
+int getFifoSize(CpeaUART uart, toml_table_t* TablePtr, int struct_i);
 
 
 /**
@@ -297,17 +372,17 @@ int getRegAddr(toml_datum_t IntrData, toml_table_t* AddrTab);
 int getRegReset(toml_datum_t IntrData, toml_table_t* AddrTab);
 
 /**
- * genericHWConfig: Hardware Configuration for generic peripherals
+ * genericInterface: Interface Configuration for generic peripherals
  *
  */
-void genericHWConfig(toml_table_t* mmio, char* p_name, const char* module_str, 
+void genericInterface(toml_table_t* mmio, char* p_name, const char* module_str, 
                 toml_table_t* table_ptr, const char* table_str, int struct_i);
 
 /**
- * uartHWConfig: UART Hardware Configuration
+ * uartInterface: UART Interface Configuration
  *
  */
-void uartHWConfig(toml_table_t* mmio, char* p_name, const char* module_str, 
+void uartInterface(toml_table_t* mmio, char* p_name, const char* module_str, 
                 toml_table_t* table_ptr, const char* table_str, int struct_i);
 
 /**
@@ -345,6 +420,24 @@ void parseKeys(toml_table_t*, char *, const char *, toml_table_t *, const char *
  *
  */	
 CpeaMMIO *findMod(uint64_t, CpeaMMIO**);
+
+/**
+ * uart_can_receive: 
+ *
+ */
+int uart_can_receive(void *opaque);
+
+/**
+ * uart_receive: 
+ *
+ */
+void uart_receive(void *opaque, const uint8_t *buf, int size);
+
+/**
+ * uart_event:
+ *
+ */
+void uart_event(void *opaque, QEMUChrEvent event);
 
 /**
  * error: 

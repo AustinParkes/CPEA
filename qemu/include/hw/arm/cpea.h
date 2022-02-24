@@ -21,13 +21,14 @@
 #define CLEAR_BIT(reg, k)   (reg &= ~(1<<k))
 #define CHECK_BIT(reg, k)   (reg & (1<<k))
 
-#define MAX_MMIO 100			// TODO: Find an appropriate max number
-#define MAX_MODS 16             // TODO: Find an appropriate max number
-#define MAX_CR 20               // TODO: Find an appropriate max number
-#define MAX_SR 20               // TODO: Find an appropriate max number
+// TODO: Need to define appropriate upper bounds for these
+#define MAX_MMIO 100
+#define MAX_MODS 16            
+#define MAX_CR 20              
+#define MAX_SR 20               
 #define MAX_DR 2
-#define MAX_INTR 10             // TODO: Find an appropriate max number
-#define MAX_INST 1000           // TODO: Find better max number for saved SR instances?
+#define MAX_INTR 10            
+#define MAX_INST 1000          
 
 #define TYPE_CPEA_MACHINE MACHINE_TYPE_NAME("cpea")
 OBJECT_DECLARE_SIMPLE_TYPE(CpeaMachineState, CPEA_MACHINE)
@@ -65,15 +66,6 @@ struct CpeaMachineState {
 
 };
 
-// Don't think we need this anymore. XXX: If we must, could turn this into a "peripheral model" Device
-struct CpeaMMIOState {
-    SysBusDevice parent_obj;
-    MemoryRegion *mmio; 
-
-    qemu_irq *irq;      
-};
-
-
 struct CpeaIRQDriverState {
     SysBusDevice parent_obj;
        
@@ -100,52 +92,17 @@ enum dType {STRING = 1, INTEGER = 2};
 enum dRep {REG = 1, BIT = 2};
 
 // Interrupt types 
-enum uart_intr {
+enum uartIntr_type {
     RXFF,
     TXFF
 };
-
-
                 
 enum intr_mode {
     full, 
     partial
 };
 
-/* XXX: 
-
-*/
 typedef struct interrupt {
-        
-    // Flag table to say which interrupts are emulated by user
-    int enabled;
-    
-    // Full or Partial emulation
-    int partial;   
-    
-    // Flag table for partial emulation to raise/lower interrupts
-    int level;
-    
-    // CR that enables the interrupt type
-    uint32_t CR_enable[5];
-    uint32_t CR_i[5];
-    
-    // SR that is set upon a condition to generate the interrupt type
-    uint32_t SR_set[5];
-    uint32_t SR_i[5];
-    
-    // IRQ specifics
-    int irq_enabled;
-	int irqn;
-	qemu_irq irq;
-    
-    // UART specific    
-    uint32_t Trigger_val[5];
-    uint32_t Trigger_addr[5];      
-
-} interrupt;
-
-typedef struct test_intr {
 
     int enabled;
     int mode;   
@@ -168,11 +125,11 @@ typedef struct test_intr {
     uint32_t Trigger_val;
     uint32_t Trigger_addr;  
      
-} test_intr;
+} interrupt;
 
 typedef struct uart{
 
-	uint8_t* rx_fifo;       // RX FIFO, size is configurable
+	uint8_t *rx_fifo;       // RX FIFO, size is configurable
 	int rxfifo_size;        
 	int tail;               // Slot data is read from
 	int queue_count;        // Number of datawords in rx_fifo    
@@ -208,34 +165,14 @@ typedef struct MMIO{
 	int SR_INST;
 	
 	// Interrupts 
-	/*
-	    XXX: A single MMIO can have multiple IRQs associated with it
-	         Configs happen before any device creation which is good.
-	         
-	         1) Would make sense to have an interrupt struct for each interrupt type that is configured.
-	            How to allocate?
-	            - Per new interrupt is tricky because we'd have to realloc
-	            - Knowing ahead of time is better, if we can find a good way to read ahead of time then allocate.
-	              Could simply just read the IRQn key and assume the interrupt is enabled based off that
-	            Problem
-	            - We enumerate the interrupt types for indexing them .. we might allocate in a different order 
-	              then the interrupt types are enumerated  
-	              Can assign a key to the allocated interrupts as we allocate for indexing later
-	            
-	         2) Would also make sense to place the IRQ information into the interrupt structs
-	              
-	*/
-	int irq_enabled;
-	int irqn;
-	qemu_irq irq;
-	interrupt* interrupt;	
-	
+	interrupt *INTR[MAX_INTR];
+
 	// Peripheral Interaction
-	// TODO: This will likely go into the individual peripheral models
+	// TODO: This will go into the individual peripheral models
 	CharBackend chrbe;
 	
     // Peripheral Models
-    CpeaUART* uart;
+    CpeaUART *uart;
 	
 } CpeaMMIO;
 extern CpeaMMIO *MMIO[MAX_MMIO];
@@ -329,13 +266,6 @@ toml_datum_t GetIntrData(toml_table_t* InlineTable, const char *InlineTableName,
 int checkPartial(const char *InlineTableName, const char *InlineTableKey,
                  int intrType, int struct_i);
 
-/**
- * checkIRQ: Check if IRQ is enabled during interrupt parsing 
- *           Interrupt parsing will fail if no IRQ is enabled
- *
- *  Returns 0-No IRQ 1-IRQ configured
- */
-int checkIRQ(const char *InlineTableName, int struct_i);
 
 /**
  * CheckIntrReg: Checks the input given to a register field. 
@@ -438,6 +368,14 @@ void uart_receive(void *opaque, const uint8_t *buf, int size);
  *
  */
 void uart_event(void *opaque, QEMUChrEvent event);
+
+/**
+ * intr_alloc: Allocate an interrupt struct for each enabled interrupt
+ *             in a peripheral
+ *
+ * Returns 0-Error 1-Success
+ */
+int intr_alloc(toml_table_t* TablePtr, int struct_i);
 
 /**
  * error: 

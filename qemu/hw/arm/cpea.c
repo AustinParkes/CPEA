@@ -37,7 +37,7 @@ static void uart_update(CpeaMMIO *MMIO, int type, int mode)
      
     // Interrupt level used in partial emulation 
     int level; 
-      
+    /*  
     enabled_config = MMIO->interrupt->CR_enable[type];
     level_config = MMIO->interrupt->SR_set[type];
     
@@ -45,14 +45,15 @@ static void uart_update(CpeaMMIO *MMIO, int type, int mode)
     intr_level = MMIO->SR[MMIO->interrupt->SR_i[type]];
     
     level = MMIO->interrupt->level;
-    
-    /*
-    // Testing 
-    printf("user CR: 0x%x\n", enabled_config);
-    printf("user SR: 0x%x\n", level_config);
-    printf("emu  CR: 0x%x\n", intr_enabled);
-    printf("emu  SR: 0x%x\n", intr_level); 
     */
+    
+    enabled_config = MMIO->INTR[type]->CR_enable;
+    level_config = MMIO->INTR[type]->SR_set;
+    
+    intr_enabled = MMIO->CR[MMIO->INTR[type]->CR_i];
+    intr_level = MMIO->SR[MMIO->INTR[type]->SR_i];
+    
+    level = MMIO->INTR[type]->level;  
        
     // Handle interrupt update according to type and mode
     switch (type){    
@@ -61,21 +62,23 @@ static void uart_update(CpeaMMIO *MMIO, int type, int mode)
         case full: 
             // RXFF is enabled AND RXFF is set
             if (enabled_config & intr_enabled && level_config & intr_level)
-                qemu_set_irq(MMIO->irq, 1);                  
+                qemu_set_irq(MMIO->INTR[type]->irq, 1);                  
            
             // Lower interrupt
             else
-                qemu_set_irq(MMIO->irq, 0);
+                qemu_set_irq(MMIO->INTR[type]->irq, 0);
 
             break;        
         
         case partial:
+            
             if (CHECK_BIT(level, type))
-                qemu_set_irq(MMIO->irq, 1);
+                qemu_set_irq(MMIO->INTR[type]->irq, 1);    
                 
             // Lower interrupt    
             else
-                qemu_set_irq(MMIO->irq, 0);    
+                qemu_set_irq(MMIO->INTR[type]->irq, 0); 
+                   
             break;
         }                        
         break;
@@ -106,33 +109,34 @@ static void put_fifo(void *opaque, uint8_t value)
     MMIO->uart->queue_count++; 
          
     // Interrupt emulation is enabled 
-    if (MMIO->interrupt){
+    // XXX: Can't remember what this check was really for.
+    //if (MMIO->INTR[RXFF]){
          
-        // RXFIFO interrupt is emulated  
-        if (CHECK_BIT(MMIO->interrupt->enabled, RXFF)){            
-            if (MMIO->uart->queue_count >= MMIO->interrupt->Trigger_val[RXFF]){           
-                // Fully emulating RXFIFO Interrupt 
-                if (!CHECK_BIT(MMIO->interrupt->partial, RXFF)){
+    // RXFIFO interrupt is emulated  
+    if (MMIO->INTR[RXFF]->enabled == 1){            
+        if (MMIO->uart->queue_count >= MMIO->INTR[RXFF]->Trigger_val){           
+            // Fully emulating RXFIFO Interrupt 
+            if (MMIO->INTR[RXFF]->mode == full){
                 
-                    // Set RXFF SR bit
-                    MMIO->SR[MMIO->interrupt->SR_i[RXFF]] |= MMIO->interrupt->SR_set[RXFF];
-                    uart_update(MMIO, RXFF, full);
+                // Set RXFF SR bit
+                MMIO->SR[MMIO->INTR[RXFF]->SR_i] |= MMIO->INTR[RXFF]->SR_set;
+                uart_update(MMIO, RXFF, full);
                     
-                }                                
-                // Partially emulating RXFIFO Interrupt
-                else{
-                    SET_BIT(MMIO->interrupt->level, RXFF);
-                    // Set RXFF SR bit, even if it isn't emulated
-                    MMIO->SR[MMIO->interrupt->SR_i[RXFF]] |= MMIO->interrupt->SR_set[RXFF];
-                    uart_update(MMIO, RXFF, partial);
-                }         
+            }                                
+            // Partially emulating RXFIFO Interrupt
+            else{
+                SET_BIT(MMIO->INTR[RXFF]->level, RXFF);
+                // Set RXFF SR bit, even if it isn't emulated
+                MMIO->SR[MMIO->INTR[RXFF]->SR_i] |= MMIO->INTR[RXFF]->SR_set;
+                uart_update(MMIO, RXFF, partial);
+            }         
                 
-            }                       
-        }
+        }                       
+    }
         
         // TODO: Would check for other enabled interrupt types here.
              
-    }                  
+    //}                  
 }
 
 // Determines if FIFO can Rx anymore data.
@@ -232,16 +236,16 @@ static void mmio_write(void *opaque, hwaddr addr,
                 case uartID:
                 
                     // Interrupt emulation is enabled 
-                    if (MMIO->interrupt){                    
+                    //if (MMIO->interrupt){                    
                         // RXFIFO interrupt emulation enabled
-                        if (CHECK_BIT(MMIO->interrupt->enabled, RXFF)){                        
+                        if (MMIO->INTR[RXFF]->enabled == 1){                        
                             // Fully emulating RXFIFO Interrupt 
-                            if (!CHECK_BIT(MMIO->interrupt->partial, RXFF)){
-                                if (reg_addr == MMIO->interrupt->Trigger_addr[RXFF])
-                                    MMIO->interrupt->Trigger_val[RXFF] = (uint32_t)val;         
+                            if (MMIO->INTR[RXFF]->mode == full){
+                                if (reg_addr == MMIO->INTR[RXFF]->Trigger_addr)
+                                    MMIO->INTR[RXFF]->Trigger_val = (uint32_t)val;         
                             }      
                         }        
-                    }
+                    //}
                     break;
                 
                 // Peripheral not modelled
@@ -334,29 +338,29 @@ static uint64_t mmio_read(void *opaque, hwaddr addr,
                     }
                     
                     // Interrupt emulation is enabled
-                    if (MMIO->interrupt){
+                    //if (MMIO->interrupt){
                     
                         // RXFIFO interrupt is emulated
-                        if (CHECK_BIT(MMIO->interrupt->enabled, RXFF)){
-                            if (MMIO->uart->queue_count < MMIO->interrupt->Trigger_val[RXFF]){             
+                        if (MMIO->INTR[RXFF]->enabled == 1){
+                            if (MMIO->uart->queue_count < MMIO->INTR[RXFF]->Trigger_val){             
                                 // Fully emulating RXFIFO Interrupt 
-                                if (!CHECK_BIT(MMIO->interrupt->partial, RXFF)){
+                                if (MMIO->INTR[RXFF]->mode == full){
                                 
                                     // Clear RXFF SR bit                                
-                                    MMIO->SR[MMIO->interrupt->SR_i[RXFF]] &= ~MMIO->interrupt->SR_set[RXFF];
+                                    MMIO->SR[MMIO->INTR[RXFF]->SR_i] &= ~MMIO->INTR[RXFF]->SR_set;
                                     uart_update(MMIO, RXFF, full);
                     
                                 }                                
                                 // Partially emulating RXFIFO Interrupt
                                 else{
-                                    CLEAR_BIT(MMIO->interrupt->level, RXFF);
+                                    CLEAR_BIT(MMIO->INTR[RXFF]->level, RXFF);
                                     // Clear RXFF SR bit, even if it's not emulated                                
-                                    MMIO->SR[MMIO->interrupt->SR_i[RXFF]] &= ~MMIO->interrupt->SR_set[RXFF];
+                                    MMIO->SR[MMIO->INTR[RXFF]->SR_i] &= ~MMIO->INTR[RXFF]->SR_set;
                                     uart_update(MMIO, RXFF, partial);
                                 }               
                             }
                         }                                    
-                    }
+                    //}
                     
                     /* TODO: Might wanna figure out exactly what this does.
                              It notifies that frontend is ready to Rx data, but
@@ -454,7 +458,8 @@ static const MemoryRegionOps mmio_ops = {
 static void cpea_irq_driver_init(Object *obj)
 {
     CpeaIRQDriverState *s = CPEA_IRQ_DRIVER(obj);
-    
+        
+    int m;
     int n;
     int i;
     
@@ -466,29 +471,31 @@ static void cpea_irq_driver_init(Object *obj)
         s->IRQn_list = (int *)malloc(sizeof(int) * IRQtotal);       
     }
     
-    // Init output IRQs 
-    i=0;
-    for (n = 0; n < IRQtotal; n++) {
+    // Init output IRQs in the same order IRQs were enabled
+    for (m = 0; m < IRQtotal; m++) {
         
         // Create output IRQ line that can raise an interrupt
-        qdev_init_gpio_out(DEVICE(s), &s->irq[n], 1);
+        qdev_init_gpio_out(DEVICE(s), &s->irq[m], 1);
         
-        // Maintain a list of all IRQn   
-        while (i < mmio_total){
-    	    if (!MMIO[i]){
-    		    printf("Error accessing MMIO%d", i);	
+        // Traverse and locate enabled interrupts  
+        for (n = 0; n < mmio_total; n++){
+    	    if (!MMIO[n]){
+    		    printf("Error accessing MMIO%d", n);	
     		    exit(1);
-    	    } 
-    	 	// TODO: Will need to check if a peripheral has MULTIPLE IRQs enabled
-    	    if (MMIO[i]->irq_enabled){
-    	        
-    	        s->IRQn_list[n] = MMIO[i]->irqn;
-    	        i++;  	
-    	        break;   
     	    }
-    	    i++;        		
-        }                
-    }
+    	     
+    	    for (i = 0; i < MAX_INTR; i++){
+    	        // It's possible that the INTR may not be allocated. Check if it is.
+    	        if (MMIO[n]->INTR[i]){
+    	            if (MMIO[n]->INTR[i]->enabled){
+    	                s->IRQn_list[i] = MMIO[n]->INTR[i]->irqn;
+    	                i++;
+    	                break;    
+    	            }
+    	        } 
+    	    }         	               	        
+        }
+    }          		
 }
 
 
@@ -507,6 +514,8 @@ static void cpea_init(MachineState *machine)
     Error *err;
     
     char arm_cpu_model[30];
+    
+    int m;
     int n;
     int i;
     
@@ -535,8 +544,7 @@ static void cpea_init(MachineState *machine)
     
     // init irq device
     irq_driver = qdev_new(TYPE_CPEA_IRQ_DRIVER); 
-    cms->irq_state = CPEA_IRQ_DRIVER(irq_driver);
-        
+    cms->irq_state = CPEA_IRQ_DRIVER(irq_driver);    
     //armv7m = ARMV7M(cpu_dev); 
     
     // Init mem regions, and add them to system memory      
@@ -589,34 +597,32 @@ static void cpea_init(MachineState *machine)
     /* This will exit with an error if bad cpu_type */   
     sysbus_realize_and_unref(SYS_BUS_DEVICE(cpu_dev), &error_fatal);
     
-    // Connect output IRQ lines to CPU's IRQn lines
-    i=0;
-    for (n = 0; n < IRQtotal; n++){               
+    // Connect output IRQ lines to CPU's IRQn lines   
+    for (m = 0; m < IRQtotal; m++){               
         qdev_connect_gpio_out(DEVICE(irq_driver), 
-                              n, 
-                              qdev_get_gpio_in(cpu_dev, cms->irq_state->IRQn_list[n]));
-                              
+                              m, 
+                              qdev_get_gpio_in(cpu_dev, cms->irq_state->IRQn_list[m])); 
+                                          
         // Save output IRQs to their respective peripheral in the same order
         // the IRQn list was created in cpea_irq_driver_init()
-        while (i < mmio_total){
-        
-    	    if (!MMIO[i]){
-    		    printf("Error accessing MMIO%d", i);	
+        for (n = 0; n < mmio_total; n++){
+    	    if (!MMIO[n]){
+    		    printf("Error accessing MMIO%d", n);	
     		    exit(1);
-    	    } 
-    	            
-            if (MMIO[i]->irq_enabled){
-                MMIO[i]->irq = cms->irq_state->irq[n];
-                i++;  	
-    	        break;  
-            }
-            
-            // No IRQ enabled, move on
-            else
-                i++;            
-        }                        
+    	    }
+    	    
+    	    for (i = 0; i < MAX_INTR; i++){
+    	        // Check that INTR index is allocated
+    	        if (MMIO[n]->INTR[i]){
+    	            if (MMIO[n]->INTR[i]->irq_enabled){
+    	                MMIO[n]->INTR[i]->irq = cms->irq_state->irq[m];
+    	                i++;
+    	                break;    
+    	            }        
+    	        }    	        
+    	    }       	    
+    	}                                     
     }
-    
     // Peripheral model configurations XXX: Need to findout if any of this could be apart of a device... Especially peripheral model stuff.
     /*
         1) Need to setup serial chardevs and assign them to Charbackend of peripheral

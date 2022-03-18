@@ -37,8 +37,8 @@ uart_count = 1
     [mmio.uart]
     [mmio.uart.0]
     [mmio.uart.0.config]
-    CR_count = 4
-    SR_count = 4
+    CR_count = 3
+    SR_count = 1
     DR_count = 1
     flag_count = 0
 
@@ -47,49 +47,38 @@ uart_count = 1
     CR1_addr = 0x4006a003   # Rx/Tx Interrupt Enable Bits
     CR2_addr = 0x4006a013   # TX Watermark  
     CR3_addr = 0x4006a015   # RX Watermark
-    CR4_addr = 0x4006a020   # Interrupt Clear
     SR1_addr = 0x4006a004   # RX interrupt set bit is here
-    SR2_addr = 0x4006A014   # Tx FIFO Count
-    SR3_addr = 0x4006a021   # Tx FIFO Size
-    SR4_addr = 0x4006a022   # Tx FIFO Full Flag
     DR1_addr = 0x4006a007   
 
     [mmio.uart.0.reset]
     CR1_reset = 0x0
     CR2_reset = 0x0
-    CR3_reset = 0x1
-    CR4_reset = 0
-    SR1_reset = 0xC0
-    SR2_reset = 0x0 
-    SR3_reset = 0x0
-    SR4_reset = 0x00        # This needs to be 0x80 when polarity=0   
+    CR3_reset = 0x1     # FIFO RX Watermark (RXWATER) 
+    SR1_reset = 0xC0    
     DR1_reset = 0x0
     
     [mmio.uart.0.hardware]
     RXFIFO_Size = 16
-    TXFIFO_Size = 16
+    TXFIFO_Size = 0
     
     [mmio.uart.0.interrupts]
     [mmio.uart.0.interrupts.RX]
     IRQn = 0
     Emulation_Mode = "partial"
-    Intr_Enable = {CR = "CR1", bit = 5}
+    Intr_Enable = {CR = "CR4", bit = 5}
     Intr_Disable = {CR = "none", bit = 0}
     Intr_Status = {SR = "SR1", bit = 5}
     Intr_Clear = {CR = "none"}    
     Trigger = 1
 
     [mmio.uart.0.interrupts.TX]
-    IRQn = 1
+    IRQn = "none"
     Emulation_Mode = "full"
-    Intr_Enable = {CR = "CR1", bit = 7}
+    Intr_Enable = {CR = "none", bit = 0}
     Intr_Disable = {CR = "none", bit = 0}
-    Intr_Status = {SR = "SR1", bit = 7} 
-    Intr_Clear = {CR = "CR4"}    
-    FIFO_Full = {SR = "none", bit = 7, polarity = 1}
-    FIFO_Size = {SR = "SR3"} 
-    FIFO_Count = {SR = "SR2"}        
-    Trigger = 8
+    Intr_Status = {SR = "none", bit = 0} 
+    Intr_Clear = {CR = "none"}     
+    Trigger = "none"
     
     [mmio.uart.0.interface]
     host = "stdio"

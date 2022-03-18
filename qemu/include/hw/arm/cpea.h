@@ -91,10 +91,9 @@ enum Data_Register {DR1, DR2};
 enum dType {STRING = 1, INTEGER = 2};
 enum dRep {REG = 1, BIT = 2};
 
-// Interrupt types 
 enum uartIntr_type {
-    RXFF,
-    TXFF
+    RX,
+    TX
 };
                 
 enum intr_mode {
@@ -102,40 +101,115 @@ enum intr_mode {
     partial
 };
 
+/* interrupt: Contains information for a peripheral's interrupt(s) 
+ *
+ *
+ * @mode: Full (0) or Partial (1) emulation
+ * @active: Interrupt currently active (1) or inactive (0) 
+ *          Some interrupts need this while others don't
+ * @enable_permit: Flag tables that allows a CR enable bit to be emulated
+ * @enable_addr: Address of CR that enables an interrupt. Only needed if an 
+                 interrupt disable register is used in tandem
+ * @CRen: Index for the CR that enables interrupt in FW
+ * @disable_permit: Flag tables that allow a CR disable bit to be emulated
+ * @disable_addr: Address of CR that disables an interrupt. Need the address
+ *                to emulate hardware in realtime (during MMIO write)
+ * @CRdis: Index for the CR that disables interrupt in FW
+ * @flag_permit: Flag tables that allows a SR bit to be emulated (interrupt status)
+ * @SRflg: Index for the SR whose bits convey interrupt status
+ * @clear_addr: Address of the interrupt clear register to emulate. It's assumed
+ *              bits written to the ICR correspond to the bits to clear in the SR
+ * @level: interrupt's running status during partial emulation
+ *
+ * @irq_enabled: IRQ enable flag
+ * @irqn: The IRQ number for this interrupt
+ * @irq: Output IRQ to raise interrupts
+ *
+ * @trigger_val: FIFO threshold value which triggers an interrupt
+ * @trigger_addr: Address of CR that contains FIFO threshold value (optional)
+ */
 typedef struct interrupt {
 
-    int enabled;
-    int mode;   
+    int mode;
+    int active; 
+       
+    uint32_t enable_permit;
+    uint32_t enable_addr;    
+    uint32_t CRen;
+    
+    uint32_t disable_permit;
+    uint32_t disable_addr;
+    uint32_t CRdis;
+
+    uint32_t flag_permit;
+    uint32_t SRflg;
+    
+    uint32_t clear_addr;      
+    
     int level;
     
-    // CR that enables the interrupt type
-    uint32_t CR_enable;
-    uint32_t CR_i;
-    
-    // SR that is set upon a condition to generate the interrupt type
-    uint32_t SR_set;
-    uint32_t SR_i;
-    
-    // IRQ specifics
     int irq_enabled;
 	int irqn;
 	qemu_irq irq;
     
-    // # of bytes in a FIFO that trigger interrupt   
-    uint32_t Trigger_val;
-    uint32_t Trigger_addr;  
+    // TODO: Could probably move this into uart's peripheral model
+    uint32_t trigger_val;
+    uint32_t trigger_addr;    
+      
      
 } interrupt;
 
+
+/* uart: Contains information for UART hardware 
+ * @txff_permit: Allows Tx FIFO Full flag to be emulated
+ * @txff_addr: Address the register the Tx FIFO Full bit belongs to 
+ * @SRtxff: Index of the SR that the txff flag is stored in
+ * @txff_polarity: '1' means Tx FIFO is full when the bit value is '1'
+ *                 '0' means Tx FIFO is full when the bit value is '0'
+ * @SRtxf_size: Index of the register that contains Tx FIFO size
+ * @txf_cnt_addr: Address of the register that contains count of datawords
+ *                in Tx FIFO
+ * @SRtxf_cnt: Index of the SR that Tx FIFO count is stored in               
+ *
+ *
+ *
+ *
+ *
+ *
+ *
+ *
+ * @TimerActive: Timer is active (1) vs non-active (0) to which it issues
+ *               a callback periodically to deplete FIFO 
+ *  
+ */
 typedef struct uart{
 
-	uint8_t *rx_fifo;       // RX FIFO, size is configurable
-	int rxfifo_size;        
-	int tail;               // Slot data is read from
-	int queue_count;        // Number of datawords in rx_fifo    
+    /* Registers */
+    uint32_t txff_permit;
+    uint32_t txff_addr;     // TODO: This isn't used
+    uint32_t SRtxff;
+    int txff_polarity;
+    
+    uint32_t SRtxf_size;    
+    
+    uint32_t txf_cnt_addr;
+    uint32_t SRtxf_cnt;
+    
+    /* Hardware */
+	uint16_t *rx_fifo;
+	int rxfifo_size;     
+    int read;
+    int rxqueue_cnt;
+
+    uint16_t *tx_fifo;
+	int txfifo_size; 	
+	int write;
+	int txqueue_cnt;
+    int TimerActive;
 
     // Peripheral Interaction. Guest's "backend"
 	CharBackend chrbe;
+	QEMUTimer *fifo_timer;
 
 } CpeaUART;	
 		
@@ -224,62 +298,20 @@ void uartIntrConfig(toml_table_t* mmio, char* p_name, const char* module_str,
                 toml_table_t* table_ptr, const char* table_str, int struct_i);
 
 /**
- * RXFFParse: Parse RX FIFO Full / RX Data Register Full interrupts
+ * RXParse: Parse RX interrupts
  *
  * Returns 0-Error, 1-Success
  */
-int RXFFParse(toml_table_t* TablePtr, toml_table_t* AddrTab, 
-              int intrType, int struct_i);
-
-
-/**
- * CheckIntrData: Checks the data type entered by user (string / integer)
- *                GetIntrData will usually be called sometime after this.
- *
- * Returns 0-Error, 1-String, 2-Integer
- *
- */
-int CheckIntrData(toml_table_t* InlineTable, const char *InlineTableName, 
-                  const char *InlineTableKey, int dataRep);
+int RXParse(toml_table_t* TablePtr, toml_table_t* AddrTab, 
+              toml_table_t* ResetTab, int intrType, int struct_i);
 
 /**
- * GetIntrData: Retrieves data from an inline table 
- *              CheckIntrData is typically called before this.
- *              CheckIntrReg may be called after this.
+ * TXParse: Parse TX Interrupts
  *
- * Returns a union containing a register string or integer value
- *
+ * Returns 0-Error, 1-Success
  */
-toml_datum_t GetIntrData(toml_table_t* InlineTable, const char *InlineTableName,  
-                const char *InlineTableKey, int dataType, int dataRep);
-
-/**
- * checkPartial: Checks if a control register is entered for emulation                
- *               Partial emulation if no CR is entered
- *               Full emulation if a CR is entered
- *               This should be used when parsing SRs since they need to be
- *               configured in full emulation scenarios.
- *                  
- * Returns 0-Full Emulation 1-Partial Emulation
- *
- */
-int checkPartial(const char *InlineTableName, const char *InlineTableKey,
-                 int intrType, int struct_i);
-
-
-/**
- * CheckIntrReg: Checks the input given to a register field. 
- *               Makes sure user entered a valid register or checks if 
- *               user is doing partial emulation. This should only be
- *               used to check register fields.
- *
- *               Partial emulation should only be set for enable fields
- *
- * Returns 0-Invalid Reg 1-Valid Reg 2-Partial Emulation 3-Nothing entered
- */
-int CheckIntrReg(toml_datum_t IntrData, toml_table_t* AddrTab, 
-              const char *InlineTableName, const char *InlineTableKey,
-              int intrType, int struct_i);
+int TXParse(toml_table_t* TablePtr, toml_table_t* AddrTab, 
+              toml_table_t* ResetTab, int intrType, int struct_i);
 
 /**
  * getRegAddr: Gets the address of a register. We need addresses
@@ -289,7 +321,8 @@ int CheckIntrReg(toml_datum_t IntrData, toml_table_t* AddrTab,
  * Returns an address
  *
  */
-int getRegAddr(toml_datum_t IntrData, toml_table_t* AddrTab);
+int getRegAddr(toml_table_t* AddrTab, const char *IntrName,
+            toml_datum_t IntrData);
 
 
 /**
@@ -299,7 +332,8 @@ int getRegAddr(toml_datum_t IntrData, toml_table_t* AddrTab);
  * Returns a reset value
  *
  */
-int getRegReset(toml_datum_t IntrData, toml_table_t* AddrTab);
+int getRegReset(toml_table_t* ResetTab, const char *IntrName,
+            toml_datum_t IntrData);
 
 /**
  * genericInterface: Interface Configuration for generic peripherals
@@ -332,6 +366,15 @@ CpeaMachineState *emuConfig(CpeaMachineState *);
  *
  */
 int mmioConfig(toml_table_t *);	
+	
+	
+/**
+ * checkIRQ: Check if an IRQn is configured for an interrupt 
+ *
+ * Returns 0-No IRQ 1-IRQ Configured
+ */		
+int checkIRQ(const char *InlineTableName, int intrType, 
+            int checkType, int struct_i);	
 	
 /**
  * setFlags: 
@@ -377,6 +420,110 @@ void uart_event(void *opaque, QEMUChrEvent event);
  */
 int intr_alloc(toml_table_t* TablePtr, int struct_i);
 
+/**
+ * GetEmuMode: Check and obtain the interrupt mode of a particular interrupt
+ *             Will determine if interrupt is fully emulated or partially
+ *             emulated
+ *             
+ * Returns 0-Error 1-Success 2-Skip 
+ */
+int GetEmuMode(toml_table_t* ConfigTable, const char *IntrName, 
+        int intrType, int struct_i);
+
+
+/**
+ * IntrEnable: Check and obtain configurations for a configuration
+ *             register that enables an interrupt
+ *              
+ *             
+ * Returns 0-Error 1-Success
+ */
+int IntrEnable(toml_table_t* IntrTable, const char *IntrName, 
+        toml_table_t* AddrTab, int intrType, int struct_i);
+
+/**
+ * IntrDisable: Check and obtain configurations for a configuration
+ *              register that disables an interrupt
+ *              
+ *             
+ * Returns 0-Error 1-Success
+ */
+int IntrDisable(toml_table_t* IntrTable, const char *IntrName, 
+        toml_table_t* AddrTab, int intrType, int struct_i);
+        
+/**
+ * IntrClear: Check and obtain configurations for a configuration
+ *            register that clears an interrupt's status bit
+ *              
+ *             
+ * Returns 0-Error 1-Success
+ */
+int IntrClear(toml_table_t* IntrTypeTable, const char *IntrName, 
+        toml_table_t* AddrTab, int intrType, int struct_i);
+
+/**
+ * IntrStatus: Check and obtain configurations for the status register
+ *             that says an interrupt is ready to fire 
+ *             
+ * Returns 0-Error 1-Success
+ */
+int IntrStatus(toml_table_t* IntrTypeTable, const char *IntrName, 
+        toml_table_t* AddrTab, int intrType, int struct_i);
+ 
+ 
+/**
+ * fifoFull:  
+ *             
+ *              
+ *             
+ * Returns 0-Error 1-Success
+ */ 
+int fifoFull(toml_table_t* IntrTypeTable, const char *IntrName, 
+        toml_table_t* AddrTab, int intrType, int struct_i);
+
+/**
+ * fifoSize:  
+ *             
+ *              
+ *             
+ * Returns 0-Error 1-Success
+ */ 
+int fifoSize(toml_table_t* IntrTypeTable, const char *IntrName, 
+        toml_table_t* AddrTab, int intrType, int struct_i);
+
+/**
+ * fifoCount:  
+ *             
+ *              
+ *             
+ * Returns 0-Error 1-Success
+ */ 
+int fifoCount(toml_table_t* IntrTypeTable, const char *IntrName, 
+        toml_table_t* AddrTab, int intrType, int struct_i); 
+        
+/**
+ * fifoTrigger: Get the FIFO threshold value in the form of a value
+ *              or an actual control register which contains
+ *              a threshold value  
+ *             
+ * Returns 0-Error 1-Success
+ */
+int fifoTrigger(toml_table_t* IntrTypeTable, const char *IntrName, 
+        toml_table_t* AddrTab, toml_table_t* ResetTab, 
+        int intrType, int struct_i);
+
+/**
+ * GetIntrData: Gets data from configuration fields
+ *              Performs checks on register and bit fields
+ *              to see if data is valid
+ *              
+ *             
+ * Returns toml_datum_t: A union containing data or error code
+ */
+toml_datum_t GetIntrData(toml_table_t* IntrTypeTable, toml_table_t* AddrTab, 
+            const char *IntrName, const char *ConfigName, const char *dataKey);
+                      
+            
 /**
  * error: 
  *

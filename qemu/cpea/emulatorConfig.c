@@ -22,7 +22,7 @@
  *          Modules represent subsets of a peripheral: uart0, uart1, etc.
  *          Structures represent the peripherals as a whole: uart
  *
- *                             
+ * TODO: 8) Need a way to give a toml file as an argument to use it in place of the hardcoded "emulatorConfig.toml"                            
 */
 
 #include <stdio.h>
@@ -237,7 +237,7 @@ int mmioConfig(toml_table_t* mmio){
 	int periph_i;				// Peripheral Index for peripheral tables and peripheral counts
 	int mod_i;					// Peripheral Module Index
 	int tab_i;					// Index to iterate through modules. e.g. config, addr, reset, flags
-	//int init_i;                 // Index to initialize MMIO struct.	           
+	//int init_i;               // Index to initialize MMIO struct.	           
 	char p_name[20];			// Peripheral Name
 	int pid;					// Peripheral ID
 	int p_total;				// Total number of peripherals
@@ -373,16 +373,10 @@ void parseKeys(toml_table_t* mmio, char* p_name, const char* module_str,
     int SR_i=0;				// Status Register Index
     int DR_i=0;				// Data Register Index
     int key_i=0;			// Key Index
-    //int has_irq;            // Store if irq exists or not
-    //int irqn;               // Store irqn
     
-    char reg_type[4];       // Helps determine register type
-    //const char *has_irq_s;  // Store boolean string for irq     	
+    char reg_type[4];       // Helps determine register type   	
     const char* key_str;	// Store name of any key 	  
  	
-    //toml_table_t* irq_ptr;	// ptr to irq inline table
-    //toml_datum_t irq_true;  // irq enabled for peripheral
-    //toml_datum_t irqn_key;  // Defines IRQn  
     toml_datum_t key_data;	// Store data from any key
  			
     uint32_t base_addr;     // Need base address to check if user entered and offset or absolute address.
@@ -464,74 +458,7 @@ void parseKeys(toml_table_t* mmio, char* p_name, const char* module_str,
 			DR_count = 2;
 		
 		
-		/* Skip parsing flag count (table_ptr, 3) Don't need it here. */
-		
-		
-		/*
-		key_str = toml_key_in(table_ptr, 4);
-		if (!key_str){
-            fprintf(stderr, "ERROR: Missing irq table in [mmio].[%s].[%s].[%s]\n", p_name, module_str, table_str);
-            exit(1);	
-    	}	    	
-    	irq_ptr = toml_table_in(table_ptr, key_str);
-    	   	
-    	// Default irq info   	
-    	MMIO[struct_i]->irq_enabled = 0;
-    	MMIO[struct_i]->irqn = 0xffff; 
-    	// Parse 'true' key 
-    	irq_true = toml_int_in(irq_ptr, "enabled");
-  	    	
-        // User didn't enter integer
-    	if (!irq_true.ok){    	    
-  	        irq_true = toml_string_in(irq_ptr, "enabled"); 	         
-  	        if(!irq_true.ok){
-  	            fprintf(stderr, "ERROR: Bad data for \"true\" in [mmio.%s.%s.%s.irq]\n", p_name, module_str, table_str);
-                exit(1);  
-  	        }
-  	        
-  	        // String entered   	        
-  	        has_irq_s = irq_true.u.s;
-  	        if (!strcmp(has_irq_s, "false"))
-  	            has_irq = 0;
-  	        else if (!strcmp(has_irq_s, "true"))
-  	            has_irq = 1;
-  	        else{
-  	            fprintf(stderr, "ERROR: Must use boolean for \"true\" in [mmio.%s.%s.%s.irq]\n", p_name, module_str, table_str);
-                exit(1);    	        
-  	        }
-  	        free(irq_true.u.s);       
-    	}
-    	
-    	// User entered integer
-    	else{
-            has_irq = irq_true.u.i;
-            if (has_irq < 0 || has_irq > 1){
-  	            fprintf(stderr, "ERROR: Must use boolean for \"true\" in [mmio.%s.%s.%s.irq]\n", p_name, module_str, table_str);
-                exit(1);                 
-            }
-    	}
-        
-        // Parse 'irqn' key
-        if (has_irq){
-        
-            IRQtotal = IRQtotal + 1;    // Global counter
-        
-            irqn_key = toml_int_in(irq_ptr, "irqn");
-            if (!irqn_key.ok){
-        	    fprintf(stderr, "ERROR: [mmio.%s.%s.%s.irq] has an irq enabled, but no IRQn\n", p_name, module_str, table_str);
-                exit(1);           
-            }                
-            irqn = irqn_key.u.i;
-            if (irqn < 0 || irqn > 480){
-        	    fprintf(stderr, "ERROR: [mmio.%s.%s.%s.irq] must have irqn in range [0, 480]\n", p_name, module_str, table_str);
-                exit(1);              
-            }
-            
-            // Update irq info for this module
-            MMIO[struct_i]->irq_enabled = 1;
-            MMIO[struct_i]->irqn = irqn;
-        }  
-        */  	
+		/* Skip parsing flag count (table_ptr, 3) Don't need it here. */	
 			
 	}	
 	
@@ -839,35 +766,47 @@ int getFifoSize(CpeaUART uart, toml_table_t* TablePtr, int struct_i){
     
     const char *keyName;
     toml_datum_t fifoData;
+    int i;
+    
+    for (i = 0; i < 2; i++){
+        keyName = toml_key_in(TablePtr, 0);
+        fifoData = toml_int_in(TablePtr, keyName);
 
-    keyName = toml_key_in(TablePtr, 0);
-    fifoData = toml_int_in(TablePtr, keyName);
+        if (!fifoData.ok){
+            fprintf(stderr, "[%s]: Value needs to be an integer\n",
+                            keyName);
+            return 0;                           
+        } 
 
-    // String entered. Complain
-    if (!fifoData.ok){
-        fprintf(stderr, "[%s]: Value needs to be an integer\n",
-                        keyName);
-        return 0;                           
-    } 
-    // Integer entered
-    else{
-        if (fifoData.u.i < 1 || fifoData.u.i > 1024){
-            fprintf(stderr, "[%s]: Value should be 1-1024\n"
-                            "You entered %ld\n",
-                            keyName, fifoData.u.i); 
-            return 0;       
+        else{
+            if (fifoData.u.i < 1 || fifoData.u.i > 8192){
+                fprintf(stderr, "[%s]: Value should be 1-8192\n"
+                                "You entered %ld\n",
+                                keyName, fifoData.u.i); 
+                return 0;       
+            }
         }
+  
+        if (!MMIO[struct_i]->uart)
+            MMIO[struct_i]->uart = (CpeaUART*)calloc(1, sizeof(CpeaUART));  
+        
+        // RXFIFO
+        if (i == 0){
+            uart.rx_fifo = (uint16_t *)calloc(fifoData.u.i, (sizeof(uint16_t)));            
+            MMIO[struct_i]->uart->rx_fifo = uart.rx_fifo;
+            MMIO[struct_i]->uart->rxfifo_size = fifoData.u.i;
+        }        
+        // TXFIFO    
+        else if (i == 1){            
+            uart.tx_fifo = (uint16_t *)calloc(fifoData.u.i, (sizeof(uint16_t)));
+            MMIO[struct_i]->uart->tx_fifo = uart.tx_fifo;
+            MMIO[struct_i]->uart->txfifo_size = fifoData.u.i;                                   
+        }
+        
+        // Technically an error
+        else 
+            return 0;    
     }
-       
-    uart.rx_fifo = (uint8_t *)calloc(fifoData.u.i, (sizeof(uint8_t)));
-    uart.rxfifo_size = fifoData.u.i;
-    
-    if (!MMIO[struct_i]->uart)
-        MMIO[struct_i]->uart = (CpeaUART*)calloc(1, sizeof(CpeaUART));
-            
-    MMIO[struct_i]->uart->rx_fifo = uart.rx_fifo;
-    MMIO[struct_i]->uart->rxfifo_size = uart.rxfifo_size;
-    
     return 1;       
 }
 
@@ -879,419 +818,248 @@ void genericIntrConfig(toml_table_t* mmio, char* p_name, const char* module_str,
 }
 
 void uartIntrConfig(toml_table_t* mmio, char* p_name, const char* module_str, 
-            toml_table_t* TablePtr, const char* table_str, int struct_i)
+            toml_table_t* IntrTable, const char* table_str, int struct_i)
 {
     toml_table_t* uartTab;     // uart table
     toml_table_t* ModTab;      // uart module table
-    toml_table_t* AddrTab;      // addr table
+    toml_table_t* AddrTab;     // addr table
+    toml_table_t* ResetTab;    // reset table
     
     // Retrieve 'addr' table for this peripheral
     uartTab = toml_table_in(mmio, p_name);
     ModTab = toml_table_in(uartTab, module_str);
     AddrTab = toml_table_in(ModTab, "addr");
+    ResetTab = toml_table_in(ModTab, "reset");
  
-    if (!intr_alloc(TablePtr, struct_i)){
+    // XXX: I think this still works for the new TOML format
+    if (!intr_alloc(IntrTable, struct_i)){
         fprintf(stderr, "Error in [mmio.%s.%s.interrupts]\n", 
                 p_name, module_str);
         exit(1);    
     } 
- 
-    // TODO: Need to fix RXFFParse API to match the new interrupt scheme
-    // TODO: Also need to fix the cpea.c emulation to match the new interrupt scheme ...
-    // RXFIFO Interrupt parsing
-    if (!RXFFParse(TablePtr, AddrTab, RXFF, struct_i)){
+        
+    // RX Interrupt parsing
+    if (!RXParse(IntrTable, AddrTab, ResetTab, RX, struct_i)){
         fprintf(stderr, "Error in [mmio.%s.%s.interrupts]\n", 
                 p_name, module_str);
         exit(1);
     }
-  
-    
+
+    // TX Interrupt parsing
+    if (!TXParse(IntrTable, AddrTab, ResetTab, TX, struct_i)){
+        fprintf(stderr, "Error in [mmio.%s.%s.interrupts]\n", 
+                p_name, module_str);
+        exit(1);
+    }  
 }
 
-int RXFFParse(toml_table_t* TablePtr, toml_table_t* AddrTab, 
-              int intrType, int struct_i)
+int RXParse(toml_table_t* IntrTable, toml_table_t* AddrTab, 
+              toml_table_t* ResetTab, int intrType, int struct_i)
 {
 
-    toml_table_t* IntrConfig;   // Inline Table for the Interrupt
-    const char* IntrName;       // Interrupt Name for inline table       
+    toml_table_t* IntrTypeTable;
+    const char* IntrName; 
     
-    int userType;                // String (1) or integer (2)
-    int bitType;                // String (1) or integer (2)
-    toml_datum_t RegData;       // Register data from an interrupt table key
-    toml_datum_t BitData;       // Bit data from an interrupt table key
-    int status;                 // Invalid (0), exists (1), or no register (2)
-    
-    int address;                // 'Trigger' register address
-    int reset;                  // 'Trigger' register reset
-    
-    // Check if IRQ enabled
-      
-    
-    IntrName = toml_key_in(TablePtr, intrType);
-    IntrConfig = toml_table_in(TablePtr, IntrName);
-    
-    /*** CR_enable ***/
-    /* XXX: One of these days, might be able to turn CR/SR parsing 
-            into a function if it's repeatedly used
-            For now, use the low-level functions.
-              
-    */
-    
-    
-    
-    // Get data type user entered
-    userType = CheckIntrData(IntrConfig, IntrName, "CR_enable", REG);
-    if (!userType)
-        return 0;
-    
-    bitType = CheckIntrData(IntrConfig, IntrName, "CRbit", BIT);
-    if (!bitType)
-        return 0;
-    
-    // Get register data itself
-    RegData = GetIntrData(IntrConfig, IntrName, "CR_enable", userType, REG);
-
-    // Check what user entered in register field
-    status = CheckIntrReg(RegData, AddrTab, IntrName, "CR_enable", intrType, struct_i);
-    if (!status)
-        return 0;    
-        
-    // Register entered and exists
-    else if (status == 1){
-        // Get bit data, while checking if its valid
-        BitData = GetIntrData(IntrConfig, IntrName, "CRbit", bitType, BIT);
-        if (!BitData.ok)
-            return 0;
-            
-        // Configure the interrupt
-        
-        // Enable emulation
-        MMIO[struct_i]->INTR[intrType]->enabled = 1;
-        // Set CR_enable
-        SET_BIT(MMIO[struct_i]->INTR[intrType]->CR_enable, BitData.u.i);
-        // Get CR index   
-        MMIO[struct_i]->INTR[intrType]->CR_i = (atoi(RegData.u.s+2) - 1);        
-        MMIO[struct_i]->INTR[intrType]->mode = full;    
-        // Free toml string
-        free(RegData.u.s);         
-    }
-        
-    // Partial emulation
-    else if (status == 2){
-        MMIO[struct_i]->INTR[intrType]->enabled = 1;                    
-        MMIO[struct_i]->INTR[intrType]->mode = partial;        
-    }
-        
-    // Leave, interrupt not being configured
-    else 
-        return 1;              
-            
-    /*** SR_set ***/
-    
-    // Get data type user entered
-    userType = CheckIntrData(IntrConfig, IntrName, "SR_set", REG);
-    if (!userType)
-        return 0;
-
-    
-    bitType = CheckIntrData(IntrConfig, IntrName, "SRbit", BIT);
-    if (!bitType)
-        return 0;     
-     
-    // Get register data itself
-    RegData = GetIntrData(IntrConfig, IntrName, "SR_set", userType, REG);
-    
-    // Check if register exists that the user entered
+    IntrName = toml_key_in(IntrTable, intrType);
+    IntrTypeTable = toml_table_in(IntrTable, IntrName);
  
-    status = CheckIntrReg(RegData, AddrTab, IntrName, "SR_set", intrType, struct_i);
-    if (!status)
-        return 0;    
-        
-    // register entered and exists
-    else if (status == 1){
-        // Get bit data, while checking if its valid
-        BitData = GetIntrData(IntrConfig, IntrName, "SRbit", bitType, BIT);
-        if (!BitData.ok)
-            return 0;
-            
-        // Configure the interrupt   
-        SET_BIT(MMIO[struct_i]->INTR[intrType]->SR_set, BitData.u.i);        
-        MMIO[struct_i]->INTR[intrType]->SR_i = (atoi(RegData.u.s+2) - 1);            
-        free(RegData.u.s);
-            
-    }
-        
-    // Skip
-    else{
-        // Don't want to be here during full emulation
-        if(!checkPartial(IntrName, "SR_set", intrType, struct_i))
-            return 0;
-    }        
-
+    // Skip if IRQ not enabled
+    if(!checkIRQ(IntrName, intrType, 0, struct_i))
+        return 1; 
     
-    /** Trigger **/
-
-    userType = CheckIntrData(IntrConfig, IntrName, "Trigger", REG);
-    if (!userType)
+    if (!GetEmuMode(IntrTypeTable, IntrName, intrType, struct_i))
+        return 0;
+    
+    if (!IntrEnable(IntrTypeTable, IntrName, AddrTab, intrType, struct_i))
+        return 0;
+    
+    if (!IntrDisable(IntrTypeTable, IntrName, AddrTab, intrType, struct_i))
         return 0;
         
-    // Get register data itself
-    RegData = GetIntrData(IntrConfig, IntrName, "Trigger", userType, REG);             
-    
-    // Check if register exists that the user entered
-    if (userType == STRING){  
-        status = CheckIntrReg(RegData, AddrTab, IntrName, "Trigger", intrType, struct_i);
-        if (!status)
-            return 0;    
+    if (!IntrClear(IntrTypeTable, IntrName, AddrTab, intrType, struct_i))
+        return 0;        
+ 
+    if (!IntrStatus(IntrTypeTable, IntrName, AddrTab, intrType, struct_i))
+        return 0; 
         
-        // register entered and status
-        else if (status == 1){ 
-                   
-            // 'Trigger' Address
-            address = getRegAddr(RegData, AddrTab);  
-            MMIO[struct_i]->INTR[intrType]->Trigger_addr = address;
-            
-            // 'Trigger' Reset value
-            reset = getRegReset(RegData, AddrTab);
-            MMIO[struct_i]->INTR[intrType]->Trigger_val = reset;
-            free(RegData.u.s);
-        
-        }
-        
-        // Default to Trigger = 1
-        else
-            MMIO[struct_i]->INTR[intrType]->Trigger_val = 1;
-      
-    }
-    
-    // Configure no matter what
-    else if (userType == INTEGER)
-        MMIO[struct_i]->INTR[intrType]->Trigger_val = RegData.u.i;                          
-       
-        
-  
+    if (!fifoTrigger(IntrTypeTable, IntrName, AddrTab, ResetTab, intrType, struct_i))
+        return 0;     
+ 
     return 1;
 }
 
-
-int CheckIntrData(toml_table_t* InlineTable, const char *InlineTableName,
-             const char *InlineTableKey, int dataRep){
-
-    int dType;                  // Data type entered by user (String/Integer) 
-    toml_datum_t KeyData;       // Data inside inline table
-    char regType[3];
-    
-    KeyData = toml_string_in(InlineTable, InlineTableKey);
-    
-    strncpy(regType, InlineTableKey, 2);
-    
-    // String not entered
-    if (!KeyData.ok){
-        KeyData = toml_int_in(InlineTable, InlineTableKey);
-        if (!KeyData.ok){
-  	        fprintf(stderr, "Bad data for [%s.%s]\n",
-  	                        InlineTableName, InlineTableKey);
-            dType = 0;              
-        } 
-               
-        // Integer entered
-        else{
-            // Bit
-            if (dataRep == BIT){
-                dType = INTEGER;
-            }
-            // Register
-            else{
-                // XXX: Value can't be integer for keys that start with "CR" or "SR"
-                if (!strncmp(InlineTableKey, "CR", 2) ||
-                    !strncmp(InlineTableKey, "SR", 2))
-                {    
-                    fprintf(stderr, "[%s.%s]: Value needs to be a string\n"
-                                "You entered an integer: %ld\n",
-                                InlineTableName, InlineTableKey, KeyData.u.i);    
-                    dType = 0;
-                }
-                else
-                    dType = INTEGER;
-            }    
-        }    
-    }
-    
-    // String entered
-    else{
-        // Bit
-        if (dataRep == BIT){
-            fprintf(stderr, "[%s.%s]: Value needs to be an integer\n"
-                            "You entered a string: %s\n",
-                            InlineTableName, InlineTableKey, KeyData.u.s);
-            dType = 0;    
-        }
-        // Register
-        else
-            dType = STRING;
-    }
-      
-    // 0-Error, 1-String, 2-Integer   
-    return dType;
-}
-
-toml_datum_t GetIntrData(toml_table_t* InlineTable, const char *InlineTableName, 
-                    const char *InlineTableKey, int dataType, int dataRep)
+int TXParse(toml_table_t* IntrTable, toml_table_t* AddrTab, 
+              toml_table_t* ResetTab, int intrType, int struct_i)
 {
-
-    toml_datum_t IntrData;
-
-    // Retrieve string
-    if (dataType == STRING){
     
-        IntrData = toml_string_in(InlineTable, InlineTableKey);
-                        
-        // Trying to retrieve bit data. Programmer error    
-        if (dataRep == BIT){
-            fprintf(stderr, "[%s.%s]: Value needs to be a bit 0-31\n"
+    toml_table_t* IntrTypeTable;
+    const char* IntrName; 
+    
+    IntrName = toml_key_in(IntrTable, intrType);
+    IntrTypeTable = toml_table_in(IntrTable, IntrName);
+     
+    // Skip if IRQ not enabled
+    if(!checkIRQ(IntrName, intrType, 0, struct_i))
+        return 1;
+ 
+    if (!GetEmuMode(IntrTypeTable, IntrName, intrType, struct_i))
+        return 0;  
+           
+    if (MMIO[struct_i]->INTR[intrType]->mode == partial){
+        fprintf(stderr, "[%s.Emulation_Mode]: TX interrupt must be done "
+                        "in full emulation mode\n",
+                        IntrName);
+        return 0;                    
+    }
+        
+    if (!IntrEnable(IntrTypeTable, IntrName, AddrTab, intrType, struct_i))
+        return 0;
+    
+    if (!IntrDisable(IntrTypeTable, IntrName, AddrTab, intrType, struct_i))
+        return 0;
+        
+    if (!IntrClear(IntrTypeTable, IntrName, AddrTab, intrType, struct_i))
+        return 0;        
+    
+    if (!IntrStatus(IntrTypeTable, IntrName, AddrTab, intrType, struct_i))
+        return 0; 
+    
+    if (!fifoFull(IntrTypeTable, IntrName, AddrTab, intrType, struct_i)){
+        return 0;
+    }
+    
+    if (!fifoSize(IntrTypeTable, IntrName, AddrTab, intrType, struct_i)){
+        return 0;
+    }
+
+    if (!fifoCount(IntrTypeTable, IntrName, AddrTab, intrType, struct_i)){
+        return 0;
+    }
+        
+    if (!fifoTrigger(IntrTypeTable, IntrName, AddrTab, ResetTab, intrType, struct_i))
+        return 0;               
+            
+    return 1;               
+}                                          
+
+toml_datum_t GetIntrData(toml_table_t* IntrTypeTable, toml_table_t* AddrTab, 
+            const char *IntrName, const char *ConfigName, const char *dataKey)
+{
+    toml_datum_t AddrData;
+    toml_datum_t IntrData;
+    toml_table_t *RegConfigTable;
+    
+    char addrReg[20];
+  
+    // Commonly parsed data
+    if (ConfigName){
+        RegConfigTable = toml_table_in(IntrTypeTable, ConfigName);
+        
+        if (!strcmp(dataKey, "CR")){
+            IntrData = toml_string_in(RegConfigTable, dataKey);
+            if (!IntrData.ok){
+                fprintf(stderr, "[%s.%s.%s]: Value needs to be a string\n"
+                            "Please enter an existing register instead\n"
+                            "Type \"none\" if you wish to skip\n",
+                             IntrName, ConfigName, dataKey);
+                return IntrData;
+            }
+            if (!strcmp(IntrData.u.s, "none")){
+                return IntrData;    
+            }
+            else{           
+                strcpy(addrReg, IntrData.u.s); 
+                strcat(addrReg, "_addr");
+                AddrData = toml_int_in(AddrTab, addrReg);
+            
+                if (!AddrData.ok){
+                    fprintf(stderr, "[%s.%s.%s] does not exist in addr table\n"
+                            "Please give register in format CR[n]\n"
+                            "Type \"none\" if you wish to skip\n", 
+                            IntrName, ConfigName, IntrData.u.s);
+                    return AddrData;        
+                }
+                return IntrData;
+            } 
+                                             
+        }
+        else if (!strcmp(dataKey, "SR")){
+            IntrData = toml_string_in(RegConfigTable, dataKey);
+            if (!IntrData.ok){
+                fprintf(stderr, "[%s.%s.%s]: Value needs to be a string\n"
+                            "Please enter an existing register instead\n"
+                            "Type \"none\" if you wish to skip\n",
+                             IntrName, ConfigName, dataKey);
+                return IntrData;
+            }
+
+            if (!strcmp(IntrData.u.s, "none")){
+                return IntrData;    
+            }
+            else{            
+                strcpy(addrReg, IntrData.u.s); 
+                strcat(addrReg, "_addr");
+                AddrData = toml_int_in(AddrTab, addrReg);        
+                if (!AddrData.ok){
+                    fprintf(stderr, "[%s.%s.%s] does not exist in addr table\n"
+                            "Please give register in format SR[n]\n"
+                            "Type \"none\" if you wish to skip\n", 
+                            IntrName, ConfigName, IntrData.u.s);
+                    return AddrData;        
+                }
+                return IntrData;
+            }                         
+        }
+        else if (!strcmp(dataKey, "bit")){
+            IntrData = toml_int_in(RegConfigTable, dataKey);
+            if (!IntrData.ok){
+                fprintf(stderr, "[%s.%s.%s]: Value needs to be a bit 0-31\n"
                             "You entered a string\n",
-                            InlineTableName, InlineTableKey);
+                            IntrName, ConfigName, dataKey);
+                return IntrData;                
+            }
+            
+            if (IntrData.u.i < 0 || IntrData.u.i > 31){
+                fprintf(stderr, "[%s.%s.%s]: Bit value needs to be 0-31\n"
+                                "You gave %ld\n",
+                                IntrName, ConfigName, dataKey, IntrData.u.i);                
+                return IntrData;
+            }
+        }
+        else if (!strcmp(dataKey, "polarity")){
+            IntrData = toml_int_in(RegConfigTable, dataKey);
+            if (!IntrData.ok){
+                fprintf(stderr, "[%s.%s.%s]: Value needs to be 0 or 1\n"
+                            "You entered a string\n",
+                            IntrName, ConfigName, dataKey);
+                return IntrData;                
+            }
+            
+            if (IntrData.u.i < 0 || IntrData.u.i > 1){
+                fprintf(stderr, "[%s.%s.%s]: Value needs to be 0 or 1\n"
+                                "You gave %ld\n",
+                                IntrName, ConfigName, dataKey, IntrData.u.i);                
+                return IntrData;
+            }            
+                        
+        }
+        
+        // Interrupt specific data. Return it
+        else{
             exit(1);
         }
-            
     }
     
-    // Retrieve integer
-    else if (dataType == INTEGER){
-        IntrData = toml_int_in(InlineTable, InlineTableKey);   
-        if (dataRep == BIT){
-            if (IntrData.u.i < 0 || IntrData.u.i > 31){
-                fprintf(stderr, "[%s.%s]: Bit value needs to be 0-31\n"
-                                "You gave %ld\n", 
-                                InlineTableName, InlineTableKey, IntrData.u.i);
-  	                        
-  	            IntrData.ok = 0;            
-  	        }                                        
-        }     
-    }
-      
-    return IntrData;
-}                
-
-// Only works for CR_enable and SR_set
-int CheckIntrReg(toml_datum_t IntrData, toml_table_t* AddrTab, 
-                const char *InlineTableName, const char *InlineTableKey,
-                int intrType, int struct_i)
-{
-
-        toml_datum_t AddrData;
-        char regType[3];
-        // TODO: Dangerous, need to use safer str functions
-        char addrReg[20];           // Name of an address register
-        
-        // Nothing entered. Do nothing
-        if (!strcmp(IntrData.u.s, "reg"))
-            return 3;
-            
-        // Register entered    
-        else if (!strncmp(IntrData.u.s, "CR", 2) || 
-            !strncmp(IntrData.u.s, "SR", 2))
-        {
-            // Get the register type, by its first 2 letters
-            strncpy(regType, IntrData.u.s, 2);
-            
-            // Check if register matches an existing register in address table
-            strcpy(addrReg, IntrData.u.s);
-            strcat(addrReg, "_addr");
-            AddrData = toml_int_in(AddrTab, addrReg);
-            
-            // Register doesn't exist in 'addr' table           
-            if (!AddrData.ok){
-                fprintf(stderr, "[%s.%s.%s] does not exist in addr table\n"
-                        "Please give register in format %s[n]\n", 
-                        InlineTableName, InlineTableKey, 
-                        IntrData.u.s, regType);
-                return 0;
-            }
-            
-            // If interrupt allocated, Complain if partial emulation enabled.
-            if (MMIO[struct_i]->INTR[intrType]){
-                if (MMIO[struct_i]->INTR[intrType]->mode == partial &&
-                    strncmp(InlineTableKey, "SR", 2))
-                {
-                    fprintf(stderr, "[%s.%s]: Can't emulate some registers when\n"
-                                    "partial emulation is enabled\nPlace "
-                                    "\"reg\" to skip checking the field\n",
-                                    InlineTableName, InlineTableKey);
-                    return 0;                
-                }
-            }
-            
-            return 1;                                 
+    // Interrupt specific data. Return it
+    else{
+        IntrData = toml_int_in(IntrTypeTable, dataKey);
+        if (!IntrData.ok){
+            IntrData = toml_string_in(IntrTypeTable, dataKey);
         }
-        
-        // Partial emulation
-        else if(!strcmp(IntrData.u.s, "partial")){
-            return 2;
-        }
-        
-        // Invalid register format. Complain
-        else{
-            fprintf(stderr, "[%s.%s]: Either invalid register format\n"
-                            "or \"partial\" entered incorrectly\n"
-                            "Please give registers in format %s[n]\n",
-                            InlineTableName, InlineTableKey, regType);
-            return 0;
-        } 
-                       
-}
-
-// Check if CR is enabled during SR
-int checkPartial(const char *InlineTableName, const char *InlineTableKey,
-            int intrType, int struct_i)
-{
-    // Not doing partial emulation
-    if (MMIO[struct_i]->INTR[intrType]->mode == 0){
-        fprintf(stderr, "[%s.%s]: Can't skip if a control register"
-                    "is configured\nCan skip if doing partial emulation\n",
-                    InlineTableName, InlineTableKey);
-        return 0;    
     }
     
-    // Doing partial emulation
-    else
-        return 1;
-            
-}
-
-// Get a registers address value. Already established it exists
-int getRegAddr(toml_datum_t IntrData, toml_table_t* AddrTab)
-{
-
-    toml_datum_t data;
-    int address;
-    char addrReg[20];           // Name of an address register
-    
-    strcpy(addrReg, IntrData.u.s);
-    strcat(addrReg, "_addr");
-    data = toml_int_in(AddrTab, addrReg);
-    
-    address = data.u.i;
-    return address;
-
-}
-
-// Get a registers reset value. Already established it exists
-int getRegReset(toml_datum_t IntrData, toml_table_t* AddrTab)
-{
-
-    toml_datum_t data;
-    int reset;
-    char resetReg[20];           // Name of an reset register
-    
-    strcpy(resetReg, IntrData.u.s);
-    strcat(resetReg, "_reset");
-    data = toml_int_in(AddrTab, resetReg);
-    
-    reset = data.u.i;
-    return reset;    
-
-}          
+    return IntrData;    
+}      
 
 // Filler. Does nothing right now
 void genericInterface(toml_table_t* mmio, char* p_name, const char* module_str, 
@@ -1336,21 +1104,21 @@ void uartInterface(toml_table_t* mmio, char* p_name, const char* module_str,
         
 }                                
 
-int intr_alloc(toml_table_t* TablePtr, int struct_i){
+int intr_alloc(toml_table_t* IntrTypeTable, int struct_i){
 
     int i;
     const char* IntrName;
-    toml_table_t* IntrTable;
+    toml_table_t* RegConfigTable;
     toml_datum_t IRQn;
     
     // Loop through interrupts, checking IRQn, 
     for (i=0; ; i++){
-        IntrName = toml_key_in(TablePtr, i);
+        IntrName = toml_key_in(IntrTypeTable, i);
         if (!IntrName)
             break;
         
-        IntrTable = toml_table_in(TablePtr, IntrName);        
-        IRQn = toml_int_in(IntrTable, "IRQn");
+        RegConfigTable = toml_table_in(IntrTypeTable, IntrName);        
+        IRQn = toml_int_in(RegConfigTable, "IRQn");
         
         // IRQn has not been configured
         if (!IRQn.ok){
@@ -1358,9 +1126,7 @@ int intr_alloc(toml_table_t* TablePtr, int struct_i){
         }
         
         // IRQn has integer in place
-        // XXX: Need to know the interrupt type we are on so we can assign a key index for it 
         else{
-            // TODO: Ensure IRQ is a valid value here
             if (IRQn.u.i < 0 || IRQn.u.i > 480){
                 fprintf(stderr, "[%s.IRQn]: Entered invalid IRQn\n"
                                 "Please enter an IRQn from 0 to 480\n",
@@ -1369,16 +1135,479 @@ int intr_alloc(toml_table_t* TablePtr, int struct_i){
             }
             IRQtotal++;
             
-            // TODO: Allocate interrupt for the index we are on 
             MMIO[struct_i]->INTR[i] = (interrupt *)calloc(1, sizeof(interrupt));
-            
-            // TODO: Initialize IRQ information
             MMIO[struct_i]->INTR[i]->irq_enabled = 1;
             MMIO[struct_i]->INTR[i]->irqn = IRQn.u.i;           
         }        
     }
     
     return 1;    
+}
+
+int checkIRQ(const char *IntrName, int intrType, int checkType, int struct_i){   
+
+    enum {
+        SKIP,
+        ERR
+    };
+    
+    switch (checkType){
+    
+    // Checking IRQ to skip configurations
+    case SKIP:
+    
+        // IRQ not configured. Leave non-verbosely
+        if (!MMIO[struct_i]->INTR[intrType]){
+            return 0;
+        }
+        
+        // IRQ configured. Continue peacefully
+        else
+            return 1;        
+        break;
+    
+    // Checking IRQ to check for error condition    
+    case ERR:
+    
+        // IRQ not configured. Complain
+        if (!MMIO[struct_i]->INTR[intrType]){
+            fprintf(stderr, "[%s.IRQn]: Can't configure interrupt if an IRQ isn't"
+                        "configured\n",
+                        IntrName);
+            return 0;
+        }
+    
+        // IRQ configured
+        else
+            return 1;    
+        break;
+        
+    default:
+        fprintf(stderr, "checkIRQ: checkType (%d) not implemented\n", checkType);
+        exit(1);
+        break;          
+    } 
+}
+
+int GetEmuMode(toml_table_t* IntrTypeTable, const char *IntrName, 
+        int intrType, int struct_i)
+{
+
+    toml_datum_t mode;
+    mode = toml_string_in(IntrTypeTable, "Emulation_Mode");
+    if (!mode.ok){
+        fprintf(stderr, "[%s.Emulation_Mode]: Invalid format\n"
+                        "Please enter a string for the emulation mode\n"
+                        "The two modes are \"full\" and \"partial\"\n"
+                        "You can skip by entering \"none\" in IRQn field\n",
+                        IntrName);
+        return 0;
+    }
+    else{
+        if (!strcmp(mode.u.s, "full")){
+            MMIO[struct_i]->INTR[intrType]->mode = 0;
+        }
+        else if (!strcmp(mode.u.s, "partial")){
+            MMIO[struct_i]->INTR[intrType]->mode = 1;
+        }
+        else{
+            fprintf(stderr, "[%s.Emulation_Mode]: Invalid option\n"
+                        "The two modes are \"full\" and \"partial\"\n"
+                        "You can skip by entering \"none\" in IRQn field\n",
+                        IntrName);
+            return 0;
+        }        
+    }
+    
+    return 1;    
+}
+
+int getRegAddr(toml_table_t* AddrTab, const char *IntrName,
+            toml_datum_t IntrData)
+{
+
+    toml_datum_t data;
+    int address;
+    char addrReg[20];
+    
+    strcpy(addrReg, IntrData.u.s);
+    strcat(addrReg, "_addr");
+    data = toml_int_in(AddrTab, addrReg);
+    if (!data.ok){
+        fprintf(stderr, "[%s.%s]: Register doesn't exist in addr table\n"
+                        "Provide a register that exists\n",
+                        IntrName, IntrData.u.s);
+        return 0;
+    }    
+    address = data.u.i;
+    return address;
+
+}
+
+int getRegReset(toml_table_t* ResetTab, const char *IntrName,
+            toml_datum_t IntrData)
+{
+
+    toml_datum_t data;
+    int reset;
+    char resetReg[20];
+    
+    strcpy(resetReg, IntrData.u.s);
+    strcat(resetReg, "_reset");
+    data = toml_int_in(ResetTab, resetReg);
+    if (!data.ok){
+        fprintf(stderr, "[%s.%s]: Register doesn't exist in reset table\n"
+                        "Provide a register that exists\n",
+                        IntrName, IntrData.u.s);
+        return 0;
+    }    
+    reset = data.u.i;
+    return reset;    
+
+} 
+
+int IntrEnable(toml_table_t* IntrTypeTable, const char *IntrName, 
+        toml_table_t* AddrTab, int intrType, int struct_i)
+{
+    toml_datum_t RegData;
+    toml_datum_t BitData;
+    int addr; 
+    int mode = MMIO[struct_i]->INTR[intrType]->mode;
+            
+    switch(mode){   
+    case full:
+        
+        RegData = GetIntrData(IntrTypeTable, AddrTab, IntrName, "Intr_Enable", "CR");
+        if (!RegData.ok)
+            return 0;
+
+        if (!strcmp(RegData.u.s, "none")){
+            fprintf(stderr, "[%s.Intr_Enable.CR]: Can't skip this configuration in "
+                            "full emulation mode\n",
+                            IntrName);
+            return 0;
+        }
+        BitData = GetIntrData(IntrTypeTable, AddrTab, IntrName, "Intr_Enable", "bit");
+        if (!BitData.ok)
+            return 0;                    
+
+        addr = getRegAddr(AddrTab, IntrName, RegData); 
+         
+        MMIO[struct_i]->INTR[intrType]->enable_addr = addr;         
+        MMIO[struct_i]->INTR[intrType]->CRen = (atoi(RegData.u.s+2) - 1); 
+        SET_BIT(MMIO[struct_i]->INTR[intrType]->enable_permit, BitData.u.i);
+                       
+        break;
+        
+    case partial:
+        break;    
+    
+    default:
+        break;    
+    }
+    
+    return 1;    
+}
+
+int IntrDisable(toml_table_t* IntrTypeTable, const char *IntrName, 
+        toml_table_t* AddrTab, int intrType, int struct_i)
+{
+    toml_datum_t RegData;
+    toml_datum_t BitData;
+    int addr; 
+    int mode = MMIO[struct_i]->INTR[intrType]->mode;
+            
+    switch(mode){   
+    case full:
+        RegData = GetIntrData(IntrTypeTable, AddrTab, IntrName, "Intr_Disable", "CR");
+        if (!RegData.ok)
+            return 0;
+
+        if (!strcmp(RegData.u.s, "none")){
+            return 1;
+        }        
+        
+        BitData = GetIntrData(IntrTypeTable, AddrTab, IntrName, "Intr_Disable", "bit");
+        if (!BitData.ok)
+            return 0;  
+         
+        addr = getRegAddr(AddrTab, IntrName, RegData); 
+         
+        MMIO[struct_i]->INTR[intrType]->disable_addr = addr; 
+        MMIO[struct_i]->INTR[intrType]->CRdis = (atoi(RegData.u.s+2) - 1); 
+        SET_BIT(MMIO[struct_i]->INTR[intrType]->disable_permit, BitData.u.i);
+       
+                       
+        break;
+        
+    case partial:
+        break;    
+    
+    default:
+        break;    
+    }
+    
+    return 1;  
+}
+
+int IntrClear(toml_table_t* IntrTypeTable, const char *IntrName, 
+        toml_table_t* AddrTab, int intrType, int struct_i)
+{
+    toml_datum_t RegData;
+    int addr;            
+
+    RegData = GetIntrData(IntrTypeTable, AddrTab, IntrName, "Intr_Clear", "CR");
+    if (!RegData.ok)
+        return 0;
+
+    if (!strcmp(RegData.u.s, "none")){
+        return 1;
+    }
+
+    addr = getRegAddr(AddrTab, IntrName, RegData); 
+    if (!addr)
+        return 0;
+                    
+    MMIO[struct_i]->INTR[intrType]->clear_addr = addr; 
+    
+    return 1;  
+}
+
+int IntrStatus(toml_table_t* IntrTypeTable, const char *IntrName, 
+        toml_table_t* AddrTab, int intrType, int struct_i)
+{
+    toml_datum_t RegData;
+    toml_datum_t BitData; 
+    int mode = MMIO[struct_i]->INTR[intrType]->mode;
+
+    RegData = GetIntrData(IntrTypeTable, AddrTab, IntrName, "Intr_Status", "SR");
+    if (!RegData.ok)
+        return 0;
+
+    BitData = GetIntrData(IntrTypeTable, AddrTab, IntrName, "Intr_Status", "bit");
+    if (!BitData.ok)
+        return 0;  
+    
+    // We configure the SR in either mode, when a user enters information for it
+    // SR sometimes can't be skipped, even in partial mode        
+    switch(mode){   
+    case full:
+
+        if (!strcmp(RegData.u.s, "none")){
+            fprintf(stderr, "[%s.Intr_Status.SR]: Can't skip this configuration in "
+                            "full emulation mode\n",
+                            IntrName);
+            return 0;
+        }
+                 
+        MMIO[struct_i]->INTR[intrType]->SRflg = (atoi(RegData.u.s+2) - 1); 
+        SET_BIT(MMIO[struct_i]->INTR[intrType]->flag_permit, BitData.u.i);
+                       
+        break;
+      
+    case partial:
+        if (!strcmp(RegData.u.s, "none"))
+            return 1;
+            
+        MMIO[struct_i]->INTR[intrType]->SRflg = (atoi(RegData.u.s+2) - 1); 
+        SET_BIT(MMIO[struct_i]->INTR[intrType]->flag_permit, BitData.u.i);
+                        
+        break;    
+    
+    default:
+        break;    
+    }
+    
+    return 1;  
+}
+
+int fifoFull(toml_table_t* IntrTypeTable, const char *IntrName, 
+        toml_table_t* AddrTab, int intrType, int struct_i){
+
+    toml_datum_t RegData;
+    toml_datum_t BitData;
+    toml_datum_t PolarityData; 
+    int addr;
+
+    RegData = GetIntrData(IntrTypeTable, AddrTab, IntrName, "FIFO_Full", "SR");
+    if (!RegData.ok)
+        return 0;
+
+    if (!strcmp(RegData.u.s, "none"))
+        return 1;
+
+    addr = getRegAddr(AddrTab, IntrName, RegData);
+    if (!addr)
+        return 0;
+
+    BitData = GetIntrData(IntrTypeTable, AddrTab, IntrName, "FIFO_Full", "bit");
+    if (!BitData.ok)
+        return 0;    
+
+    PolarityData = GetIntrData(IntrTypeTable, AddrTab, IntrName, "FIFO_Full", "polarity");
+    if (!PolarityData.ok)
+        return 0;  
+    
+    MMIO[struct_i]->uart->SRtxff = (atoi(RegData.u.s+2) - 1);
+    SET_BIT(MMIO[struct_i]->uart->txff_permit, BitData.u.i);     
+    MMIO[struct_i]->uart->txff_addr = addr;
+    MMIO[struct_i]->uart->txff_polarity = PolarityData.u.i;   
+
+    return 1;
+}
+
+int fifoSize(toml_table_t* IntrTypeTable, const char *IntrName, 
+        toml_table_t* AddrTab, int intrType, int struct_i){
+
+    toml_datum_t RegData; 
+    int SRindex;
+    
+    RegData = GetIntrData(IntrTypeTable, AddrTab, IntrName, "FIFO_Size", "SR");
+    if (!RegData.ok)
+        return 0;
+
+    if (!strcmp(RegData.u.s, "none"))
+        return 1;    
+    
+    MMIO[struct_i]->uart->SRtxf_size = (atoi(RegData.u.s+2) - 1);         
+    SRindex = MMIO[struct_i]->uart->SRtxf_size;
+        
+    MMIO[struct_i]->SR[SRindex] = MMIO[struct_i]->uart->txfifo_size; 
+
+    return 1;
+}
+
+int fifoCount(toml_table_t* IntrTypeTable, const char *IntrName, 
+        toml_table_t* AddrTab, int intrType, int struct_i){
+
+    toml_datum_t RegData;     
+    int addr;
+    
+    RegData = GetIntrData(IntrTypeTable, AddrTab, IntrName, "FIFO_Count", "SR");
+    if (!RegData.ok)
+        return 0;
+
+    if (!strcmp(RegData.u.s, "none"))
+        return 1;    
+    
+    addr = getRegAddr(AddrTab, IntrName, RegData);
+    if (!addr)
+        return 0;
+    
+    MMIO[struct_i]->uart->SRtxf_cnt = (atoi(RegData.u.s+2) - 1);
+    MMIO[struct_i]->uart->txf_cnt_addr = addr;             
+
+    return 1;
+}
+
+int fifoTrigger(toml_table_t* IntrTypeTable, const char *IntrName, 
+        toml_table_t* AddrTab, toml_table_t* ResetTab, 
+        int intrType, int struct_i)
+{
+    toml_datum_t IntrData;
+    int addr;
+    int reset;    
+    int mode = MMIO[struct_i]->INTR[intrType]->mode;
+    
+    IntrData = toml_int_in(IntrTypeTable, "Trigger"); 
+ 
+    switch(mode){   
+    case full:
+        if (!IntrData.ok){
+            IntrData = toml_string_in(IntrTypeTable, "Trigger");
+            
+            if (intrType == RX){
+                if (!strcmp(IntrData.u.s, "none")){
+                    fprintf(stderr, "[RX.Trigger]: Can't skip FIFO trigger "
+                                    "for RX interrupt\n");
+                    return 0;
+                }
+            }    
+            else if (intrType == TX){
+                if (!strcmp(IntrData.u.s, "none"))
+                    return 1;
+            }    
+                        
+            addr = getRegAddr(AddrTab, IntrName, IntrData);
+            if (!addr)
+                return 0; 
+                             
+            reset = getRegReset(ResetTab, IntrName, IntrData);
+            if (!reset)
+                return 0;
+                
+            MMIO[struct_i]->INTR[intrType]->trigger_addr = addr;
+            MMIO[struct_i]->INTR[intrType]->trigger_val = reset;
+                        
+            free(IntrData.u.s);                    
+        }
+        else{
+            if (intrType == RX){
+                if (IntrData.u.i > 0 && IntrData.u.i <= MMIO[struct_i]->uart->rxfifo_size)
+                    MMIO[struct_i]->INTR[intrType]->trigger_val = IntrData.u.i;  
+                else{
+                    fprintf(stderr, "[%s.Trigger]: Trigger size must be 1 to RXFIFO_Size\n"
+                                    "You entered: %ld\n",
+                                    IntrName, IntrData.u.i);   
+                    return 0;
+                }
+            }
+            else if (intrType == TX){
+                if (IntrData.u.i > 0 && IntrData.u.i <= MMIO[struct_i]->uart->txfifo_size)
+                    MMIO[struct_i]->INTR[intrType]->trigger_val = IntrData.u.i;  
+                else{
+                    fprintf(stderr, "[%s.Trigger]: Trigger size must be 1 to TXFIFO_Size\n"
+                                    "You entered: %ld\n",
+                                    IntrName, IntrData.u.i);   
+                    return 0;
+                }            
+            }
+            else
+                return 0;                  
+        }                    
+        break;
+    
+    // XXX : TX interrupt will never execute here since partial 
+    //       isn't allowed for it, but there is code for it anyway  
+    case partial: 
+               
+        if (IntrData.ok){
+            if (intrType == RX){
+                if (IntrData.u.i > 0 && IntrData.u.i <= MMIO[struct_i]->uart->rxfifo_size)
+                    MMIO[struct_i]->INTR[intrType]->trigger_val = IntrData.u.i;  
+                else{
+                    fprintf(stderr, "[%s.Trigger]: Trigger size must be 1 to RXFIFO_Size\n"
+                                    "You entered: %ld\n",
+                                    IntrName, IntrData.u.i);   
+                    return 0;
+                }
+            }
+            else if (intrType == TX){
+                if (IntrData.u.i > 0 && IntrData.u.i <= MMIO[struct_i]->uart->txfifo_size)
+                    MMIO[struct_i]->INTR[intrType]->trigger_val = IntrData.u.i;  
+                else{
+                    fprintf(stderr, "[%s.Trigger]: Trigger size must be 1 to TXFIFO_Size\n"
+                                    "You entered: %ld\n",
+                                    IntrName, IntrData.u.i);   
+                    return 0;
+                }            
+            }
+            else
+                return 0;               
+        }
+        else{    
+            fprintf(stderr, "[%s.Trigger]: Can't use string here for partial emulation\n"
+                            "Please use integer value instead\n",
+                            IntrName);
+            return 0;
+        }                  
+        break;    
+    
+    default:
+        break;    
+    }
+    
+    return 1; 
 }
 
 void error(const char *msg, const char *msg1, const char *msg2, const char *msg3)

@@ -355,12 +355,17 @@ Testing Emulator with Real Firmware
                         @ "~/school/thesis/CPEA/qemu/plugins/api.c"                  
                                                         
              0.10) Where to find timer and clocking API
-             
+                         
                 QEMU Timers: There are a multitude of different clock types for different applications.
+                             Can issue callbacks when a particular duration has passed.
                         @ "~/school/thesis/CPEA/qemu/include/qemu/timer.h"
                         
                 CPU Clock: File below contains a note on CPU freq. Not sure if this is how we modify the freq or not.
-                        @ "~/school/thesis/CPEA/qemu/include/hw/timer/armv7m_systick.h"        
+                        @ "~/school/thesis/CPEA/qemu/include/hw/timer/armv7m_systick.h"
+                        
+                Device Clock: Clock IO for Devices
+                        @ "~/school/thesis/CPEA/qemu/include/hw/qdev-clock.h"
+                        @ "~/school/thesis/CPEA/qemu/hw/core/qdev-clock.c"                
                         
              0.11) Where to find Chardev API
                 
@@ -612,16 +617,159 @@ Testing Emulator with Real Firmware
     1.1) [x] Need chardev API to connect guest frontend to host backend
              - Got front end handlers to work via "qemu_chr_fe_init()" & "qemu_chr_fe_set_handlers()"   
                            
-    1.1) [p] Need peripheral model for UART/serial: 
-             - RxFIFO fully functional
-             - RXFIFO_Full interrupt functional 
-                  I think this is complete. Works for 2 completely different UARTs ...
+    1.1) [p] Need peripheral model for UART/serial:
+             // General Process
+             RX --> User writes data -> Place data in rx FIFO -> FW reads data from RDR  
+             TX --> FW writes data to TDR -> Place data in tx FIFO -> application reads data
+            
              
+             // RX Interrupts 
+             - RXNE (Rx Data Register Not Empty): Implemented as part of RXFIFO   
+             - RXFNE (Rx FIFO Not Empty): Implemented as part of RXFIFO                 
+             - RXFF  (Rx FIFO Full): Implemented as part of RXFIFO            
+             - RXFT  (Rx FIFO Threshold Reached) : Implemented as part of RXFIFO 
+                 
+             The 4 interrupts above are so similar that they are implemented as a single
+             configurable interrupt RXFIFO 
+             - Rx interrupt set after FIFO threshold is reached
+             - Rx interrupt is cleared after RDR is read
+             - // Could also be cleared through intr clear register, but we don't emulate this.
+             - Have not included emulation of an interrupt clear register to clear this interrupt
+               Not yet convinced it's necessary yet since interrupt is naturally cleared after RDR is read
+
+             The reasoning is as follows:
+             1) RXNE is functionality equivalent to RXFNE if FIFO = 1. You can mimic FIFO being disabled 
+                by setting FIFO = 1
+             2) If RXFNE were enabled, RXFT, and RXFF could never possibly fire since their conditions could never be met.
+                Similarly, if RXFT were enabled, then RXFF would never fire because its condition could never be met.                
+                This means there is no point in enabling any of these interrupts simultaneously, so we can safely include them
+                all as part of 1 interrupt type RXFIFO.              
+                We can safely use a threshold value to mimic RXNE, RXFNE, RXFF, as well as RXFT.
+             3) It's also observed that most vendors include these interrupts into a single interrupt
+                and allow it to be configurable through disabling/enabling FIFO or configuring a FIFO
+                threshold value
+             4) These observations are taken from different MCU vendors from particular MCUs:
+                - Kinetis K64
+                - ARM Primecell UART (Not an MCU but included anyway)
+                - STM32L4+
+                - Atmel ARM SAM4L
+                - Stellaris LM3S8970 
+                                                                     
+             // TX Interrupts
+             - TXE (Tx Data Register Empty): Since there is no FIFO and no need for a FIFO
+                                             this is identical to what we will emulate
+             - TXFNF (Tx FIFO Not Full): Indicates that data can be written in the TDR
+             - TXFE (Tx FIFO Empty): Can be same as TXFT if Threshold = 0
+             - TXFT (Tx FIFO Threshold): No FIFO, and this is also more of an error
+                                         that can't occur W/ out FIFO
+             - TC (Tx Complete): In our emulation, this is identical to TXE.
+                                 This would be the same as when the TXFIFO becomes empty
+                                 from data being TX 
              
+             The 5 interrupts above aren't entirely similar but can still be implemented as a single
+             configure interrupt TX.  
              
+             - Will have FIFO option to implement interrupts dependent on FIFO triggers
+                           
+             - When is flag set/cleared: Interrupt flag is set primarily when there is a write to TDR.
+               After this, intr flag must be cleared through interrupt clear register, clearing SR bit, or disabling interrupt. 
+               Hardware will clear intr when write to TDR is issued, but then
+               be enabled right after data is Tx .. so this is not a method of clearing we rely on.
                
+               Reset value can also automatically set a flag. 
+               // Ok for any uart module. It has its reset values for a reason.
+               
+             - No partial emulation since an interrupt clear register, SR, or interrupt enable register
+               is typically used to disable the interrupt.
+               AKA, we can't emulate a piece of hardware to do it for us since its up to the software
+                    We rely on FW to tell us when we are done w/ interrupt, so those registers are fully emulated.
+                                    
+             The reasoning is as follows:
+             1) There is currently no use for a Tx FIFO, elminating 3 of the interrupts above. No FIFO
+                is used because we block the same thread FW is on to ensure data is written from FW to the host.
+                In other words, it's impossible for data to ever queue in a FIFO so there is no need for a FIFO.
+             2) TC is functionally identical to TXFE (FIFO) or TXE (No FIFO) since there is no concept of a shift register
+                in our emulation. (TC set when data leaves shift register whereas the other two are set when data enters shift register)               
+             3) I don't know a scenario where any two of these interrupts would be enabled at the same time, although this isn't verified. 
+             4) Observations to emulate TX interrupts in this way are taken from different MCU vendors from particular MCUs:
+                - PrimeCell UART: 
+                - Stellaris LM3S8970: 
+                - STM32L4+: 
+                - Atmel SAM4L
+                - Kinetis K64 - pretty sure this is fine but double check
 
+            Emulation Processes
+            // TODO: Break "1) No FIFO" down into more specific steps like "2) With FIFO"
+            1) No FIFO: We simply set intr flag after a write to DR automatically to mimic scenarios with no FIFO
+                        and when you want intr to fire from a single DR write
+            
+            Understanding of FIFO Interrupts:
+            scenario 1
+            1) Disable tx
+            2) Fill FIFO to a preset trigger value
+            3) When trigger value reached, interrupt fires
+            4) From interrupt, enable tx again, all bytes in FIFO should transmit
+            5) Repeat from step 1 if you want this to happen again
+            scenario 2 Efficient data TX (perhaps more general)
+            0) FIFO intr configured so that if FIFO becomes >= 7/8 empty, intr will fire
+            1) TX is enabled and TX interrupt is enabled
+            2) FIFO is automatically 8/8 empty, so interrupt will fire
+            3) Interrupt will fill FIFO until it's full
+               (during emulation, we will check when FIFO is full, and maybe leave interrupt and clear its flag manually)
+            4) FW continues normal operation while FIFO empties
+            5) When FIFO reaches >= 7/8 empty again, repeat from step 2
+           
+            Note: Might need tx enable/disable bits to be emulated to get this to happen realistically
+                  Then again, maybe not
+        
+            2) With FIFO:
+               0) Enable Tx interrupt and configure Tx FIFO to trigger interrupt when it becomes certain level of emptiness (e.g. >= 1/2 empty)
+                  - Tx FIFO: Acceptable values will range [1 - TxFIFO_Size]. '1' means 1 slot is empty. 'TxFIFO_Size' means all slots are empty
+                    '0' would mean no slots are empty which isn't acceptable.
+               1) Set Tx interrupt flag when FIFO's emptiness has exceeded the trigger
+                  - There are atleast 3 ways this can be updated
+                    - After interrupt is enabled since the FIFO will (probably) have 0 bytes in it (fully empty)
+                      However, trigger must be greater than 0 (In otherwords it must have been configured by this point)
+                    - After trigger register is set, if one exists.
+                      However, the Tx interrupt must be enabled and the trigger value must be surpassed
+                    - Simply after FIFO loses a dataword (during transmission) and checking if the trigger was surpassed
+                  
+               2) The interrupt is presumed to fill the FIFO. If the FIFO reaches full, we should clear the interrupt flag manually.
+                  - As we first recognize the FIFO filling, we should create and setup a timer to issue a callback to deplete the FIFO (as if hardware were doing it
+                    automatically). FIFO should absolutely fill faster than FIFO is depleted. 
+                    // TODO: Find ways in which FW will monitor FIFO filling to see if we can easily emulate them               
+                  - Firmware would probably be responsible for monitoring FIFO size as it's filled, but there are probably numerous ways
+                    of implementing this functionality making emulating all possibilities challenging. Therefore, ASSUME interrupt leaves (flag cleared)
+                    when FIFO is completely filled.  
+                    - Kinetis K64: 1) Can read FIFO size and data count from registers to determine when FIFO is full
+                    - Stellaris LM3S8970: 1) Has a register flag that indicates Tx FIFO is full WHEN it's set
+                    - STM32L4+: 1) Has a register flag that indicates Tx FIFO is full WHEN it's cleared ...
+                    - Atmel SAM4L: Can't find any registers that indicate when Tx FIFO is full. Wonder how it would handle this type of interrupt???
+                    - PrimeCell UART: 1) Has a register flag that indicates Tx FIFO is full WHEN it's set
+                                       
+               3) Firmware should execute as normal WHILE the FIFO empties
+                  - Continue monitoring FIFO level during the timer callback                                                                      
+               4) When FIFO exceeds trigger (>= empty), repeat from step 1             
+                          
 
+            QEMUTIMER new_timer = (QEMU_VIRTUAL_CLOCK, TIMER_CALLBACK, )
+            
+            
+            
+            curr_time = qemu_clock_ns(QEMU_VIRTUAL_CLOCK, ...)
+            
+    1.2) Emulating UART interrupts: Checklist          
+         [p] RX Interrupt
+             [x] set intr flag after fifo trigger reached
+             [x] clear intr flag after DR read             
+             [x] Need to add interrupt clear register to emulation
+             [x] Need to discern when a disable register is used, and implement it alongside enable register
+         [p] TX Interrupt
+             [p] Set TX intr flag after DR write
+             [p] Set TX intr flag IF FIFO trigger reached  
+             [x] Add interrupt clear register to emulation  
+             [x] Need to discern when a disable register is used, and implement it alongside enable register              
+        
 /* Making ARM Machine more generic/configurable for any firmware */      
 7) [p] Make ARM Cortex-M machine more configurable and automated. 
       Probably should read up on Cortex-m features to be comprehensive.
@@ -791,47 +939,8 @@ Testing Emulator with Real Firmware
       3) [x] Make MMIO configurable 
              [x] Can add peripherals, edit number of DR/SRs, apply addresses registers, and 
                  set/unset SR bits at particular addresses to pass SR checks.    
-
-
-Scratch Area
-[] Follow in order, the steps involved with stellaris.c UART creation and how a user might interact with it.
-   These are steps for setting up a serial port to interact with UART.
-   
-    NOTE: Can use "find -iname <file>" to search for files mentioned.
-    
-    Stellaris uart initialization
-    0) "pl011.c" is where uart is emulated.
-    1) "stellaris.c": 1377 Call "pl011_luminary_create()" device creation function passing "Chardev *serial_hd(i)"
-    2) "pl011.h": 80 Call "qdev_new()" to create the uart device and go through it's device init function.
-                     The device init function in "pl011.c": 369 initializes mmio region, clock, and uart registers
-    3) "pl011.h": 82 Call "qdev_prop_set_chr()" to set PL011State's "chardev" property with "Chardev *serial_hd(i)"
-                     Confusing part is that PL011State only has a variable "CharBackend chr" which is not type "Chardev *"
-                     "pl011.c": 364 shows "CharBackend chr"'s property definition. 
-    3.1) "sysemu.h": 72 "Chardev *serial_hd(int i)" is a function that returns the Chardev for serial port i.
-                         Also likely sets up the connect to the serial port.
-                         Keep in mind, Chardev connects to a backend that a user/external device would connect to.                                                  
-    3.2) NOW, that PL011State->CharBackend has its Chardev, will likely be used in "pl011.c" during its emulation.                 
-    4) "pl011.h": 84-85 Places uart hwaddr in SysBus and then connects uart's output IRQ to CPU's input IRQ.
-    
-    x) UART initialization in "stellaris.c" is complete. UART was connected to a serial port. See "pl011.c" for its use.
-       Going to go over the uart device initialization now.
-    
-    Character Device Setup for uart
-    5) "pl011.c": 395 Call "qemu_chr_fe_set_handlers()" to set the front end char handlers. (sets callbacks)
-                      "pl011_can_receive" returns amount of char data frontend may receive. Not sure when it's called.
-                      "pl011_receive" callback to receive data from external char device. Places received data in a FIFO.
-                      "pl011_event" event callback issued when a particular "QEMUChrEvent" occurs.
-                       
-    Character Device Emulation (Not in any particular order because any of this can happen at any time during emulation)
-    6) "pl011.c": 107 Call "qemu_chr_fe_accept_input(&s->chr)" during uart DR read to notify the front end is ready to Rx data.
-                      I'd like to see the source code for this function to see what it's doing. The API explanation doesn't tell me.
-                      
-    7) "pl011.c": 207 Call "qemu_chr_fe_write_all()" during uart DR write to write data from frontend to backend. Will block if the 
-                      backend cannot consume all the data. Function is thread-safe. (block == Blocks entire thread)
-    8) "pl011_receive": In 5), this callback "fd_read" is issued when external device writes (I think). The callback places data into a FIFO that is used
-                        for uart DR reads/writes and interrupts. 
-
-    
+                 
+8) Create test cases for testing interrupts                 
 
 /* Getting executable binary from a proper ELF */  
 arm-none-eabi-objcopy -O binary <elf> <bin>

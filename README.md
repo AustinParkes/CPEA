@@ -26,7 +26,7 @@ Code Referenced or Used
 -----------------------
 1) RIOT Console FW (P2IM used this) [Console](https://github.com/RIOT-OS/RIOT/tree/master/examples/default)
 2) QEMU PL011 UART by Paul Brook [Prime Cell UART](https://github.com/qemu/qemu/blob/master/hw/char/pl011.c)
-
+3) tm4c-linux-template by shawn-dsliva [MCU Compilation](https://github.com/shawn-dsilva/tm4c-linux-template)
 
 Other References
 ----------------

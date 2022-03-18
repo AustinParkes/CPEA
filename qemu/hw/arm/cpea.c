@@ -28,115 +28,136 @@ static void uart_update(CpeaMMIO *MMIO, int type, int mode)
 {
 
     // User configured         
-    uint32_t enabled_config;
-    uint32_t level_config;
+    uint32_t enable_permit;
+    uint32_t disable_permit;
+    uint32_t level_permit;
     
-    // Emulated CR & SR
-    uint32_t intr_enabled;
-    uint32_t intr_level;
+    // Interrupt State       
+    uint32_t intr_enabled = 0;
+    uint32_t intr_level;   
+    
+    // Flags, only used if a disable register in use
+    uint32_t enable_flags;
+    uint32_t disable_flags;
      
     // Interrupt level used in partial emulation 
     int level; 
-    /*  
-    enabled_config = MMIO->interrupt->CR_enable[type];
-    level_config = MMIO->interrupt->SR_set[type];
     
-    intr_enabled = MMIO->CR[MMIO->interrupt->CR_i[type]];
-    intr_level = MMIO->SR[MMIO->interrupt->SR_i[type]];
-    
-    level = MMIO->interrupt->level;
-    */
-    
-    enabled_config = MMIO->INTR[type]->CR_enable;
-    level_config = MMIO->INTR[type]->SR_set;
-    
-    intr_enabled = MMIO->CR[MMIO->INTR[type]->CR_i];
-    intr_level = MMIO->SR[MMIO->INTR[type]->SR_i];
+    enable_permit = MMIO->INTR[type]->enable_permit;
+    disable_permit = MMIO->INTR[type]->disable_permit;
+    level_permit = MMIO->INTR[type]->flag_permit;
+
+    enable_flags = MMIO->CR[MMIO->INTR[type]->CRen];
+    disable_flags = MMIO->CR[MMIO->INTR[type]->CRdis];
+   
+    // Disable register permitted
+    if (disable_permit){
+        if (enable_permit & enable_flags)
+            intr_enabled |= MMIO->CR[MMIO->INTR[type]->CRen];
+        else if (disable_permit & disable_flags)
+            intr_enabled &= ~MMIO->CR[MMIO->INTR[type]->CRdis];    
+        else
+            intr_enabled = 0;                                      
+    }
+    else
+        intr_enabled = MMIO->CR[MMIO->INTR[type]->CRen];
+                    
+    intr_level = MMIO->SR[MMIO->INTR[type]->SRflg];
     
     level = MMIO->INTR[type]->level;  
-       
-    // Handle interrupt update according to type and mode
+          
     switch (type){    
-    case RXFF:
+    case RX:
         switch (mode){
         case full: 
-            // RXFF is enabled AND RXFF is set
-            if (enabled_config & intr_enabled && level_config & intr_level)
+            if (enable_permit & intr_enabled && level_permit & intr_level)            
                 qemu_set_irq(MMIO->INTR[type]->irq, 1);                  
-           
-            // Lower interrupt
-            else
+
+            else            
                 qemu_set_irq(MMIO->INTR[type]->irq, 0);
+ 
+  
 
             break;        
         
-        case partial:
-            
-            if (CHECK_BIT(level, type))
+        case partial:            
+            if (level == 1)
                 qemu_set_irq(MMIO->INTR[type]->irq, 1);    
-                
-            // Lower interrupt    
+                  
             else
                 qemu_set_irq(MMIO->INTR[type]->irq, 0); 
                    
             break;
-        }                        
+            
+        // XXX: This is technically an error    
+        default:
+            break;    
+        }                                    
         break;
-                    
+    
+    case TX:
+        switch (mode){
+        case full:
+            if (enable_permit & intr_enabled && level_permit & intr_level){
+                MMIO->INTR[type]->active = 1;          
+                qemu_set_irq(MMIO->INTR[type]->irq, 1);                  
+            }
+            else{ 
+                MMIO->INTR[type]->active = 0;       
+                qemu_set_irq(MMIO->INTR[type]->irq, 0);
+            }    
+                            
+            break;
+            
+        case partial:
+            break;
+            
+        // XXX: This is technically an error    
+        default:
+            break;        
+                
+        }
+        break;
+                        
     default:
         break;        
-    }    
-    
+    }       
 }
 
-static void put_fifo(void *opaque, uint8_t value)
+static void put_rxfifo(void *opaque, uint8_t value)
 {
 
     CpeaMMIO *MMIO = (CpeaMMIO *)opaque;
-    int head;
+    int slot;
     int rxfifo_size;
-    
+
     rxfifo_size = MMIO->uart->rxfifo_size;
     
-    // Head is where we place data. tail is where we read data.
-    head = MMIO->uart->tail + MMIO->uart->queue_count;
+    // Slot is where we place data. read is where we read data.
+    slot = MMIO->uart->read + MMIO->uart->rxqueue_cnt;
     
-    if (head >= rxfifo_size)
-        head -= rxfifo_size;
-
-    //printf("head: %d\n", head);    
-    MMIO->uart->rx_fifo[head] = value;
-    MMIO->uart->queue_count++; 
+    if (slot >= rxfifo_size)
+        slot -= rxfifo_size;
+   
+    MMIO->uart->rx_fifo[slot] = value;
+    MMIO->uart->rxqueue_cnt++;          
          
-    // Interrupt emulation is enabled 
-    // XXX: Can't remember what this check was really for.
-    //if (MMIO->INTR[RXFF]){
-         
-    // RXFIFO interrupt is emulated  
-    if (MMIO->INTR[RXFF]->enabled == 1){            
-        if (MMIO->uart->queue_count >= MMIO->INTR[RXFF]->Trigger_val){           
-            // Fully emulating RXFIFO Interrupt 
-            if (MMIO->INTR[RXFF]->mode == full){
-                
-                // Set RXFF SR bit
-                MMIO->SR[MMIO->INTR[RXFF]->SR_i] |= MMIO->INTR[RXFF]->SR_set;
-                uart_update(MMIO, RXFF, full);
+    if (MMIO->INTR[RX]){            
+        if (MMIO->uart->rxqueue_cnt >= MMIO->INTR[RX]->trigger_val){           
+            if (MMIO->INTR[RX]->mode == full){               
+                MMIO->SR[MMIO->INTR[RX]->SRflg] |= MMIO->INTR[RX]->flag_permit;
+                uart_update(MMIO, RX, full);
                     
             }                                
-            // Partially emulating RXFIFO Interrupt
             else{
-                SET_BIT(MMIO->INTR[RXFF]->level, RXFF);
-                // Set RXFF SR bit, even if it isn't emulated
-                MMIO->SR[MMIO->INTR[RXFF]->SR_i] |= MMIO->INTR[RXFF]->SR_set;
-                uart_update(MMIO, RXFF, partial);
+                MMIO->INTR[RX]->level = 1;
+                // SR can still be partially emulated in partial mode
+                MMIO->SR[MMIO->INTR[RX]->SRflg] |= MMIO->INTR[RX]->flag_permit;
+                uart_update(MMIO, RX, partial);
             }         
                 
         }                       
-    }
-        
-        // TODO: Would check for other enabled interrupt types here.
-             
-    //}                  
+    }                
 }
 
 // Determines if FIFO can Rx anymore data.
@@ -149,7 +170,8 @@ int uart_can_receive(void *opaque)
     
     rxfifo_size = MMIO->uart->rxfifo_size; 
     
-    rx_flag = MMIO->uart->queue_count < rxfifo_size;
+    rx_flag = MMIO->uart->rxqueue_cnt < rxfifo_size;
+
     if (!rx_flag)
         printf("Can't RX data: Queue full\n");
              
@@ -161,7 +183,7 @@ void uart_receive(void *opaque, const uint8_t *buf, int size)
     CpeaMMIO *MMIO = (CpeaMMIO *)opaque;
     
     // Place Rx data into FIFO
-    put_fifo(MMIO, *buf);
+    put_rxfifo(MMIO, *buf);
 }
 
 void uart_event(void *opaque, QEMUChrEvent event)
@@ -170,15 +192,136 @@ void uart_event(void *opaque, QEMUChrEvent event)
         printf("What the heck is this event?\n");
 }
 
+static void fifoTx(void *opaque)
+{
+
+    CpeaMMIO *MMIO = (CpeaMMIO *)opaque;
+    QEMUTimer *fifo_timer = MMIO->uart->fifo_timer;
+    fifo_timer = timer_new_ms(QEMU_CLOCK_VIRTUAL, fifoTx, MMIO);
+        
+    int TxEmpty;            // Number of empty slots in Tx FIFO     
+    uint8_t chr;
+    
+    int txfifo_size = MMIO->uart->txfifo_size;
+    
+    // Deplete FIFO (Tx data)
+    if (MMIO->uart->txqueue_cnt > 0){
+        chr = MMIO->uart->tx_fifo[MMIO->uart->write];
+        qemu_chr_fe_write(&MMIO->chrbe, &chr, 1);        
+        
+        MMIO->uart->txqueue_cnt--;
+        
+        // Update Tx FIFO count if the register is emulated
+        if (MMIO->uart->txf_cnt_addr)
+            MMIO->SR[MMIO->uart->SRtxf_cnt] = MMIO->uart->txqueue_cnt;
+        
+        // Update FIFO Full flag if the register is emulated
+        if (MMIO->uart->txff_permit){
+        
+            // Flag cleared when FIFO not full
+            if (MMIO->uart->txff_polarity != 0){
+                MMIO->SR[MMIO->uart->SRtxff] &= ~MMIO->uart->txff_permit;    
+            }
+            
+            // Flag set when FIFO not full
+            else{                
+                MMIO->SR[MMIO->uart->SRtxff] |= MMIO->uart->txff_permit;
+            }
+        }
+                
+        if (++MMIO->uart->write == txfifo_size)
+            MMIO->uart->write = 0;
+
+        // TODO: Update timer the same way it was initialized 
+        int64_t now = qemu_clock_get_ms(QEMU_CLOCK_VIRTUAL);
+        int64_t duration = 100;
+        timer_mod(fifo_timer, now + duration);  
+        
+        TxEmpty = MMIO->uart->txfifo_size - MMIO->uart->txqueue_cnt; 
+        if (TxEmpty >= MMIO->INTR[TX]->trigger_val){
+            MMIO->SR[MMIO->INTR[TX]->SRflg] |= MMIO->INTR[TX]->flag_permit;
+            uart_update(MMIO, TX, full);
+        }                                   
+    }
+    
+                           
+}
+
+static void fifoTimerInit(CpeaMMIO *MMIO)
+{
+
+    QEMUTimer *fifo_timer = MMIO->uart->fifo_timer;
+    fifo_timer = timer_new_ms(QEMU_CLOCK_VIRTUAL, fifoTx, MMIO);
+    
+    int64_t now = qemu_clock_get_ms(QEMU_CLOCK_VIRTUAL);
+    
+    // Duration should be roughly equivalent to 1200 bytes/s (9600 baud)   
+    // (~ 0.83 ms per byte)
+    // TODO: Too fast?
+    int64_t duration = 100;
+    
+    // Modify timer to expire at duration and issue fifoTx callback
+    timer_mod(fifo_timer, now + duration);
+    
+    MMIO->uart->TimerActive = 1;
+}
+
+static void put_txfifo(CpeaMMIO *MMIO, uint8_t value)
+{
+    
+    int slot;
+    int txfifo_size;
+    
+    txfifo_size = MMIO->uart->txfifo_size;
+    
+    slot = MMIO->uart->write + MMIO->uart->txqueue_cnt;
+    
+    if (slot >= txfifo_size)
+        slot -= txfifo_size;   
+           
+    MMIO->uart->tx_fifo[slot] = value;
+    MMIO->uart->txqueue_cnt++;
+    
+    // Update Tx FIFO count if the register is emulated
+    if (MMIO->uart->txf_cnt_addr)
+        MMIO->SR[MMIO->uart->SRtxf_cnt] = MMIO->uart->txqueue_cnt;
+
+    // Set timer and activate Tx fifo transmission
+    if (!MMIO->uart->TimerActive)
+        fifoTimerInit(MMIO);   
+
+    // XXX: May re-consider if we want to manually clear interrupt. This SHOULD be FWs job. 
+    if (MMIO->uart->txqueue_cnt == txfifo_size){
+        
+        // Update FIFO Full flag if the register is emulated
+        if (MMIO->uart->txff_permit){
+            // Flag set when FIFO full
+            if (MMIO->uart->txff_polarity != 0){
+                MMIO->SR[MMIO->uart->SRtxff] |= MMIO->uart->txff_permit;
+            }
+            
+            // Flag cleared when FIFO full
+            else{
+                MMIO->SR[MMIO->uart->SRtxff] &= ~MMIO->uart->txff_permit;
+            }
+        }
+        
+        MMIO->SR[MMIO->INTR[TX]->SRflg] &= ~MMIO->INTR[TX]->flag_permit;
+        uart_update(MMIO, TX, full); 
+    }      
+       
+}
+
 // Callback for writes to mmio region.
 static void mmio_write(void *opaque, hwaddr addr,
                       uint64_t val, unsigned size)
 {
     unsigned char chr;              // Character to write
     int match;                      // Flag set if register type found
-	int DR_i;                       // Data Register Index
-	int CR_i;                       // Control Register Index
-	int SR_i;                       // Status Register Index
+	int DR_i = 0;                   // Data Register Index
+	int CR_i = 0;                   // Control Register Index
+	int SR_i = 0;                   // Status Register Index
+	int TxEmpty;                    // # of empty slots in Tx FIFO
 	
     hwaddr reg_addr = 0x40000000 + addr;   
     CpeaMMIO *MMIO = NULL;
@@ -187,15 +330,7 @@ static void mmio_write(void *opaque, hwaddr addr,
     MMIO = findMod(reg_addr, &MMIO);
     if (MMIO == NULL)
         return;
-            
-    // TESTING
-    //chr = val;
-    //if (reg_addr != 0x4006a007)
-    //    qemu_chr_fe_printf(&MMIO->chrbe, "Addr: 0x%lx\nSize: %u\nVal: 0x%lx\n\n", reg_addr, size, val);
-    
-    DR_i = 0;
-    CR_i = 0;
-    SR_i = 0;
+
     // Determine register type accessed (DR, CR, DR). Handle accordingly. 
     while (!match){
         match = 0;
@@ -208,11 +343,47 @@ static void mmio_write(void *opaque, hwaddr addr,
                 
                 // Determine peripheral type accessed            
                 switch (MMIO->periphID){                
-                case uartID:
-                    chr = val;
-                    /* XXX this blocks entire thread. Rewrite to use
-                     * qemu_chr_fe_write and background I/O callbacks */
-                    qemu_chr_fe_write_all(&MMIO->chrbe, &chr, 1);
+                case uartID:                   
+                    chr = val;                    
+  
+                    // Tx Interrupt active
+                    if (MMIO->INTR[TX]){
+                        if (MMIO->INTR[TX]->active){
+                            if (MMIO->INTR[TX]->trigger_val != 0){                                
+                                put_txfifo(MMIO, chr);            
+                            }
+                            /*
+                            TODO: This is Non-FIFO Tx interrupt
+                                  Ignore it for now, test later
+                            else
+                                qemu_chr_fe_write_all(&MMIO->chrbe, &chr, 1);
+                            */    
+                                                                          
+                        }
+
+                        else
+                            qemu_chr_fe_write_all(&MMIO->chrbe, &chr, 1);
+                            
+                    }
+                    else
+                        qemu_chr_fe_write_all(&MMIO->chrbe, &chr, 1);   
+
+                    /*
+                    TODO: This is Non-FIFO Tx interrupt
+                          Ignore it for now, test later
+                    if (MMIO->INTR[TX]){
+                        if (MMIO->INTR[TX]->mode == full){
+                            MMIO->SR[MMIO->INTR[TX]->SRflg] |= MMIO->INTR[TX]->flag_permit;
+                            uart_update(MMIO, TX, full);       
+                        }
+                        else{
+                            MMIO->INTR[TX]->level = 1;
+                            MMIO->SR[MMIO->INTR[TX]->SRflg] |= MMIO->INTR[TX]->flag_permit;
+                            uart_update(MMIO, TX, partial);                         
+                        }
+                    }
+                    */
+                    
                     break;
                     
                 // Peripheral not modelled
@@ -234,18 +405,78 @@ static void mmio_write(void *opaque, hwaddr addr,
                 // Determine peripheral type accessed
                 switch (MMIO->periphID){
                 case uartID:
-                
-                    // Interrupt emulation is enabled 
-                    //if (MMIO->interrupt){                    
-                        // RXFIFO interrupt emulation enabled
-                        if (MMIO->INTR[RXFF]->enabled == 1){                        
-                            // Fully emulating RXFIFO Interrupt 
-                            if (MMIO->INTR[RXFF]->mode == full){
-                                if (reg_addr == MMIO->INTR[RXFF]->Trigger_addr)
-                                    MMIO->INTR[RXFF]->Trigger_val = (uint32_t)val;         
-                            }      
-                        }        
-                    //}
+                   
+                    // TODO: Turn these Rx Intr CR checks into a function                
+                    if (MMIO->INTR[RX]){
+                        if (MMIO->INTR[RX]->disable_permit){
+                            if (reg_addr == MMIO->INTR[RX]->disable_addr)
+                                MMIO->CR[MMIO->INTR[RX]->CRen] &= ~(uint32_t)val;
+                            else if (reg_addr == MMIO->INTR[RX]->enable_addr)
+                                MMIO->CR[MMIO->INTR[RX]->CRdis] &= ~(uint32_t)val;       
+                        }
+                        else{      
+                            if (reg_addr == MMIO->INTR[RX]->clear_addr)
+                                MMIO->SR[MMIO->INTR[RX]->SRflg] &= ~(uint32_t)val;
+                    
+                            else if (reg_addr == MMIO->INTR[RX]->trigger_addr)
+                                MMIO->INTR[RX]->trigger_val = (uint32_t)val;
+                        }               
+                    }
+                    
+                    // TODO: Turn these Tx Intr CR checks into a function
+                    if (MMIO->INTR[TX]){
+                        if (MMIO->INTR[TX]->disable_permit){
+                            if (reg_addr == MMIO->INTR[TX]->disable_addr)
+                                MMIO->CR[MMIO->INTR[TX]->CRen] &= ~(uint32_t)val;
+
+                            else if (reg_addr == MMIO->INTR[TX]->enable_addr){
+                                MMIO->CR[MMIO->INTR[TX]->CRdis] &= ~(uint32_t)val;
+                                // TODO: Check if trigger configured and reached, if so set flag and update
+                                //       If not continue
+                                //       CHECK IF WORKS
+                                if (MMIO->INTR[TX]->trigger_val != 0){
+                                    TxEmpty = MMIO->uart->txfifo_size - MMIO->uart->txqueue_cnt;
+                                    if (TxEmpty >= MMIO->INTR[TX]->trigger_val){
+                                        MMIO->SR[MMIO->INTR[TX]->SRflg] |= MMIO->INTR[TX]->flag_permit;
+                                        uart_update(MMIO, TX, full);
+                                    }    
+                                }   
+                            }           
+                        }   
+                        else{                    
+                            if (reg_addr == MMIO->INTR[TX]->clear_addr)
+                                MMIO->SR[MMIO->INTR[TX]->SRflg] &= ~(uint32_t)val;
+
+                            else if (reg_addr == MMIO->INTR[TX]->enable_addr){
+                                // TODO: Check if trigger configured and reached, if so set flag and update
+                                //       If not continue 
+                                //       CHECK IF WORKS
+                                if (MMIO->INTR[TX]->trigger_val != 0){
+                                    TxEmpty = MMIO->uart->txfifo_size - MMIO->uart->txqueue_cnt;
+                                    if (TxEmpty >= MMIO->INTR[TX]->trigger_val){
+                                        MMIO->SR[MMIO->INTR[TX]->SRflg] |= MMIO->INTR[TX]->flag_permit;
+                                        uart_update(MMIO, TX, full);
+                                    }    
+                                }                                                                                               
+   
+                            }
+                            else if (reg_addr == MMIO->INTR[TX]->trigger_addr){
+                                MMIO->INTR[TX]->trigger_val = (uint32_t)val;
+                                // TODO: Check if trigger value surpassed, if so set flag and update
+                                //       If not continue. update will check if intr enabled
+                                //       CHECK IF WORKS                                
+                                if (MMIO->INTR[TX]->trigger_val != 0){
+                                    TxEmpty = MMIO->uart->txfifo_size - MMIO->uart->txqueue_cnt;
+                                    if (TxEmpty >= MMIO->INTR[TX]->trigger_val){
+                                        MMIO->SR[MMIO->INTR[TX]->SRflg] |= MMIO->INTR[TX]->flag_permit;
+                                        uart_update(MMIO, TX, full);
+                                    }    
+                                }                                   
+                            }
+        
+                        }                        
+                    }
+                            
                     break;
                 
                 // Peripheral not modelled
@@ -330,37 +561,29 @@ static uint64_t mmio_read(void *opaque, hwaddr addr,
                 switch (MMIO->periphID){                
                 case uartID:
                     rxfifo_size = MMIO->uart->rxfifo_size;
-                    data = MMIO->uart->rx_fifo[MMIO->uart->tail];
-                    if (MMIO->uart->queue_count > 0) {
-                        MMIO->uart->queue_count--;
-                        if (++MMIO->uart->tail == rxfifo_size)
-                            MMIO->uart->tail = 0;
-                    }
+                    data = MMIO->uart->rx_fifo[MMIO->uart->read];
+                    if (MMIO->uart->rxqueue_cnt > 0) {
+                        MMIO->uart->rxqueue_cnt--;
+                        if (++MMIO->uart->read == rxfifo_size)
+                            MMIO->uart->read = 0;
+                    }                    
+                    // RX interrupt is emulated
+                    if (MMIO->INTR[RX]){
+                        if (MMIO->uart->rxqueue_cnt < MMIO->INTR[RX]->trigger_val){             
+                            if (MMIO->INTR[RX]->mode == full){                                                          
+                                MMIO->SR[MMIO->INTR[RX]->SRflg] &= ~MMIO->INTR[RX]->flag_permit;
+                                uart_update(MMIO, RX, full);
                     
-                    // Interrupt emulation is enabled
-                    //if (MMIO->interrupt){
-                    
-                        // RXFIFO interrupt is emulated
-                        if (MMIO->INTR[RXFF]->enabled == 1){
-                            if (MMIO->uart->queue_count < MMIO->INTR[RXFF]->Trigger_val){             
-                                // Fully emulating RXFIFO Interrupt 
-                                if (MMIO->INTR[RXFF]->mode == full){
-                                
-                                    // Clear RXFF SR bit                                
-                                    MMIO->SR[MMIO->INTR[RXFF]->SR_i] &= ~MMIO->INTR[RXFF]->SR_set;
-                                    uart_update(MMIO, RXFF, full);
-                    
-                                }                                
-                                // Partially emulating RXFIFO Interrupt
-                                else{
-                                    CLEAR_BIT(MMIO->INTR[RXFF]->level, RXFF);
-                                    // Clear RXFF SR bit, even if it's not emulated                                
-                                    MMIO->SR[MMIO->INTR[RXFF]->SR_i] &= ~MMIO->INTR[RXFF]->SR_set;
-                                    uart_update(MMIO, RXFF, partial);
-                                }               
-                            }
-                        }                                    
-                    //}
+                            }                                
+                            // Partially emulating RX Interrupt
+                            else{
+                                MMIO->INTR[RX]->level = 0;                              
+                                MMIO->SR[MMIO->INTR[RX]->SRflg] &= ~MMIO->INTR[RX]->flag_permit;
+                                uart_update(MMIO, RX, partial);
+                            }               
+                        }
+                    }                                    
+
                     
                     /* TODO: Might wanna figure out exactly what this does.
                              It notifies that frontend is ready to Rx data, but
@@ -458,46 +681,28 @@ static const MemoryRegionOps mmio_ops = {
 static void cpea_irq_driver_init(Object *obj)
 {
     CpeaIRQDriverState *s = CPEA_IRQ_DRIVER(obj);
-        
-    int m;
-    int n;
-    int i;
+    
+    int IRQcnt = 0;     // IRQ counter
+    int mmio_i = 0;     // Current MMIO index
+    int intr_i = 0;     // Current INTR index            
     
     if (IRQtotal){     
-        // Allocate space for output 'qemu_irq's
         s->irq = g_new(qemu_irq, IRQtotal);
-        
-        // Allocate list to store multiple IRQn
         s->IRQn_list = (int *)malloc(sizeof(int) * IRQtotal);       
     }
-    
-    // Init output IRQs in the same order IRQs were enabled
-    for (m = 0; m < IRQtotal; m++) {
-        
-        // Create output IRQ line that can raise an interrupt
-        qdev_init_gpio_out(DEVICE(s), &s->irq[m], 1);
-        
-        // Traverse and locate enabled interrupts  
-        for (n = 0; n < mmio_total; n++){
-    	    if (!MMIO[n]){
-    		    printf("Error accessing MMIO%d", n);	
-    		    exit(1);
-    	    }
-    	     
-    	    for (i = 0; i < MAX_INTR; i++){
-    	        // It's possible that the INTR may not be allocated. Check if it is.
-    	        if (MMIO[n]->INTR[i]){
-    	            if (MMIO[n]->INTR[i]->enabled){
-    	                s->IRQn_list[i] = MMIO[n]->INTR[i]->irqn;
-    	                i++;
-    	                break;    
-    	            }
-    	        } 
-    	    }         	               	        
-        }
-    }          		
-}
 
+    // Init output IRQ for each activated interrupt, in order.
+    while(mmio_i < mmio_total){    	    
+    	for (intr_i = 0; intr_i < MAX_INTR; intr_i++){
+    	    if (MMIO[mmio_i]->INTR[intr_i]){
+    	        s->IRQn_list[intr_i] = MMIO[mmio_i]->INTR[intr_i]->irqn;
+    	        qdev_init_gpio_out(DEVICE(s), &s->irq[IRQcnt], 1);
+    	        IRQcnt++;  
+    	    } 
+    	}
+    	mmio_i++;            	               	        
+    }           		
+}
 
 static void cpea_init(MachineState *machine)
 {
@@ -514,10 +719,10 @@ static void cpea_init(MachineState *machine)
     Error *err;
     
     char arm_cpu_model[30];
-    
-    int m;
-    int n;
-    int i;
+
+    int mmio_i = 0;
+    int intr_i = 0;
+    int IRQcnt = 0;
     
     // Default Core 
     strcpy(cms->cpu_model, "cortex-m4");
@@ -545,7 +750,6 @@ static void cpea_init(MachineState *machine)
     // init irq device
     irq_driver = qdev_new(TYPE_CPEA_IRQ_DRIVER); 
     cms->irq_state = CPEA_IRQ_DRIVER(irq_driver);    
-    //armv7m = ARMV7M(cpu_dev); 
     
     // Init mem regions, and add them to system memory      
     memory_region_init_rom(flash, NULL, "flash", cms->flash_size,
@@ -574,7 +778,6 @@ static void cpea_init(MachineState *machine)
         memory_region_add_subregion(system_memory, cms->sram_base3, sram3);
     }
         
-    // TODO: Should just init the regions for which the user configures. 
     memory_region_init_io(mmio, NULL, &mmio_ops, cms, "mmio", 
                           0x20000000);
     
@@ -596,74 +799,47 @@ static void cpea_init(MachineState *machine)
                              
     /* This will exit with an error if bad cpu_type */   
     sysbus_realize_and_unref(SYS_BUS_DEVICE(cpu_dev), &error_fatal);
-    
-    // Connect output IRQ lines to CPU's IRQn lines   
-    for (m = 0; m < IRQtotal; m++){               
-        qdev_connect_gpio_out(DEVICE(irq_driver), 
-                              m, 
-                              qdev_get_gpio_in(cpu_dev, cms->irq_state->IRQn_list[m])); 
-                                          
-        // Save output IRQs to their respective peripheral in the same order
-        // the IRQn list was created in cpea_irq_driver_init()
-        for (n = 0; n < mmio_total; n++){
-    	    if (!MMIO[n]){
-    		    printf("Error accessing MMIO%d", n);	
-    		    exit(1);
-    	    }
-    	    
-    	    for (i = 0; i < MAX_INTR; i++){
-    	        // Check that INTR index is allocated
-    	        if (MMIO[n]->INTR[i]){
-    	            if (MMIO[n]->INTR[i]->irq_enabled){
-    	                MMIO[n]->INTR[i]->irq = cms->irq_state->irq[m];
-    	                i++;
-    	                break;    
-    	            }        
-    	        }    	        
-    	    }       	    
-    	}                                     
-    }
-    // Peripheral model configurations XXX: Need to findout if any of this could be apart of a device... Especially peripheral model stuff.
-    /*
-        1) Need to setup serial chardevs and assign them to Charbackend of peripheral
-           NOTE: This would likely happen in emuConfig when automated
-        2) Set up the front end handlers TODO: Just get callbacks to be issued. Can learn them later.  
-           NOTE: This would also likely happen in emuConfig when automated.
-    */
-    
-    
-    // 1) Set up serial Chardevs 
-    // XXX: Note limit is 4
-    Chardev *chrdev[4];
-    for (n=0; n<4; n++){
-        chrdev[n] = serial_hd(n);
-    }
 
-    // 1) Search mmio for uart and assign a serial Chardev to UART's Charbackend
+    // Connect & save output IRQs in same order initialized.
+    while (mmio_i < mmio_total){
+    	for (intr_i = 0; intr_i < MAX_INTR; intr_i++){
+    	    if (MMIO[mmio_i]->INTR[intr_i]){
+    	        qdev_connect_gpio_out(DEVICE(irq_driver), 
+                                      IRQcnt, 
+                                      qdev_get_gpio_in(cpu_dev, cms->irq_state->IRQn_list[IRQcnt]));
+                                                                                     
+                MMIO[mmio_i]->INTR[intr_i]->irq = cms->irq_state->irq[IRQcnt];
+                IRQcnt++;
+    	    } 
+    	}
+    	mmio_i++;    
+    }
     
-    i=0;
-    while (i < mmio_total){
-        if (!MMIO[i]){
-    	    printf("Error accessing MMIO%d", i);	
-    	    exit(1);
-    	} 
-    	
-    	// If UART, assign the 2nd serial Chardev to it. 	
-    	if (MMIO[i]->periphID == uartID){
+    // XXX: Note limit is 4 serial_hds
+    Chardev *chrdev;
+    chrdev = serial_hd(0);
+
+    // Search mmio for uart and assign a serial Chardev to UART's Charbackend
+    // TODO: Wanna do this per interrupt in the future
+    for (mmio_i = 0; mmio_i < mmio_total; mmio_i++){		
+    	if (MMIO[mmio_i]->periphID == uartID){
     	    	
-    	    // 1) Assign host's serial chardev to guest's backend
-            if (!qemu_chr_fe_init(&MMIO[i]->chrbe, chrdev[0], &err)){
+    	    //Assign guest's serial chardev to host's backend
+            if (!qemu_chr_fe_init(&MMIO[mmio_i]->chrbe, chrdev, &err)){
                 printf("Failed to init Serial Chardev\n");
                 exit(1);
             } 
                 
-            // 2) Set handlers for front-end 
-            qemu_chr_fe_set_handlers(&MMIO[i]->chrbe, uart_can_receive, uart_receive,
-                                    uart_event, NULL, MMIO[i], NULL, true);   	                                    
+            // Set handlers for front-end 
+            qemu_chr_fe_set_handlers(&MMIO[mmio_i]->chrbe, uart_can_receive, uart_receive,
+                                    uart_event, NULL, MMIO[mmio_i], NULL, true);  
+ 
+            // TODO: This break is here ONLY to loop once ... get rid of it 
+            //       when we allow communication to become configurable                         	                                    
     	    break;   
-    	}
-    	i++;      		
-    }                  
+    	} 
+    }	     		
+                
     
     
     armv7m_load_kernel(ARM_CPU(first_cpu), machine->kernel_filename,

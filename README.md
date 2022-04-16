@@ -42,9 +42,3 @@ Other References
 1) Exception Entry and Return [Cortex-M3 User Guide]https://developer.arm.com/documentation/dui0552/a/the-cortex-m3-processor/exception-model/exception-entry-and-return
 2) ARM and Thumb Mode [ARM-Thumb Modes]https://www.embedded.com/introduction-to-arm-thumb/
 
-```toml
-# This is a full-line comment
-key = "value"  # This is a comment at the end of a line
-another = "# This is not a comment"
-```
-

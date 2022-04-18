@@ -20,6 +20,4 @@ obj/RxInterrupt.o: src/RxInterrupt.c \
  /home/austin/Programs/gcc-arm-none-eabi-10-2020-q4-major-x86_64-linux/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/sys/_pthreadtypes.h \
  /home/austin/Programs/gcc-arm-none-eabi-10-2020-q4-major-x86_64-linux/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/machine/types.h \
  /home/austin/Programs/gcc-arm-none-eabi-10-2020-q4-major-x86_64-linux/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/sys/stdio.h \
- /home/austin/Programs/gcc-arm-none-eabi-10-2020-q4-major-x86_64-linux/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/string.h \
- /home/austin/Programs/gcc-arm-none-eabi-10-2020-q4-major-x86_64-linux/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/sys/string.h \
- inc/RxInterrupt.h
+ ../../lib/inc/library.h inc/RxInterrupt.h

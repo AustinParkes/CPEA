@@ -30,6 +30,9 @@ from tomlkit import ws
 from elftools.elf.elffile import ELFFile
 from elftools.elf.elffile import SymbolTableSection
 
+# Acceptable model names for ARM TODO: Can update this now for supported QEMU cortex-m models
+arm_cpus = ["none", "cortex-m4"]
+
 def generate_periph(config_file):
                            
     count = 0           # Number of modules we want to generate	
@@ -44,119 +47,16 @@ def generate_periph(config_file):
     core and mem_map
     """
     # Update emulator configurations
-    if config['config']['options']:
+    # TODO: Drastically modify this so it isn't confusing to read ... 
     
-        options = ["core", "mem_map"]
+    # TODO: Modify this to add [config] if it doesn't exist
+    if config['config']:     # if config['config']['options']:
+    
+        #options = ["core", "mem_map"]    
         
-        # Acceptable model names for ARM TODO: Can update this now for supported QEMU cortex-m models
-        arm_cpus = ["cortex-m4"]
-        
-        # Cycle options to generate the correct configurations
-        for option in options:
-        
-            # Remove config option
-            if config['config']['options'][option] == 0: 
-                if option in config['config']:
-                    config['config'].remove(option)            
-                        
-            
-            # Config option should exist
-            elif config['config']['options'][option] == 1:
-                if option not in config['config']:
-                
-                    # Determine the option we will generate
-                    if option == "core":                      
-                        config['config'].update({option: {'cpu_model': "cortex-m4",
-                                                        'num_irq': 480,
-                                                        #'sVTOR': hex(0),   # Unused
-                                                        'bitband': 1
-                                                        #'idau': 1          # Unused
-                                                         }})
-                        config['config'][option].indent(4)
-                        
-                    # TODO: Still want to figure out the best default mem_map    
-                    elif option == "mem_map":                                       
-                        config['config'].update({option: {'flash_base': hex(0x0),
-                                                        'flash_size': hex(0x1F40000),
-                                                        'sram_base': hex(0x1fff0000),
-                                                        'sram_size': hex(0x3E800),
-                                                        'sram_base2': hex(0x0),
-                                                        'sram_size2': hex(0x0),
-                                                        'sram_base3': hex(0x0),
-                                                        'sram_size3': hex(0x0)}})
-                                                        
-                        config['config'][option].indent(4) 
-                
-                # Configs already exist. Check if entered values are allowed. 
-                # TODO: Boundaries will likely change in future to reflect more realisticly. Just give general boundaries for now.
-                else:
-                
-                    # Determine the option to check
-                    if option == "core":
-                    
-                        # Check all "core" config boundaries
-                        if config['config'][option]['cpu_model'] not in arm_cpus:
-                            print("ERROR: Must use a supported CPU model. You used %s" % (config['config'][option]['cpu_model']))
-                            print("Supported models can be seen with -s [--support] option")
-                            quit()
-                        
-                        # Ideally, this never gets executed due to first check.    
-                        elif len(config['config'][option]['cpu_model']) > 19:
-                            print("ERROR: CPU string too long. Must be less than 20 characters.")
-                            quit()     
+        update_core(config)
+        update_mem_map(config)
 
-                        
-                        # TODO: Find an upper limit for num_irq    
-                        elif config['config'][option]['num_irq'] < 0 or config['config'][option]['num_irq'] > 480:    
-                            print("ERROR: [config.%s.num_irq] must be in range [0, 480]" % (option))
-                            quit() 
-
-                        # TODO:
-                        elif config['config'][option]['bitband'] < 0 or config['config'][option]['bitband'] > 1:    
-                            print("ERROR: [config.%s.bitband] must be a boolean value (0 or 1)" % (option))
-                            quit()
-
-                    
-                    # TODO: Find more appropriate memory limits   
-                    # TODO: Make sure memory doesn't overlap? Maybe overlapping is allowed in QEMU ... not sure.  
-                    elif option == "mem_map":    
-                        if config['config'][option]['flash_base'] < 0 or config['config'][option]['flash_base'] > 0xffffffff:
-                            print("ERROR: [config.%s.flash_base] must be in range [0, 0xffffffff]" % (option))
-                            quit()
-                            
-                        elif config['config'][option]['flash_size'] < 0 or config['config'][option]['flash_size'] > 0x20000000:
-                            print("ERROR: [config.%s.flash_size] must be in range [0, 0x20000000]" % (option))
-                            quit()   
-                        
-                        elif config['config'][option]['sram_base'] < 0 or config['config'][option]['sram_base'] > 0xffffffff:
-                            print("ERROR: [config.%s.sram_base] must be in range [0, 0xffffffff]" % (option))
-                            quit()  
-                            
-                        elif config['config'][option]['sram_size'] < 0 or config['config'][option]['sram_size'] > 0xffffffff:
-                            print("ERROR: [config.%s.sram_size] must be in range [0, 0x0x20000000]" % (option))
-                            quit()
-                            
-                        elif config['config'][option]['sram_base2'] < 0 or config['config'][option]['sram_base2'] > 0xffffffff:
-                            print("ERROR: [config.%s.sram_base2] must be in range [0, 0xffffffff]" % (option))
-                            quit()  
-                            
-                        elif config['config'][option]['sram_size2'] < 0 or config['config'][option]['sram_size2'] > 0xffffffff:
-                            print("ERROR: [config.%s.sram_size2] must be in range [0, 0x0x20000000]" % (option))
-                            quit()     
-                            
-                        elif config['config'][option]['sram_base3'] < 0 or config['config'][option]['sram_base3'] > 0xffffffff:
-                            print("ERROR: [config.%s.sram_base] must be in range [0, 0xffffffff]" % (option))
-                            quit()  
-                            
-                        elif config['config'][option]['sram_size3'] < 0 or config['config'][option]['sram_size3'] > 0xffffffff:
-                            print("ERROR: [config.%s.sram_size] must be in range [0, 0x0x20000000]" % (option))
-                            quit()                                                                                                                                                        
-                          
-                                                                  
-            else:
-                print("ERROR: [config.options.%s] must be a boolean value (0 or 1)" % (option))         
-                quit()
-               
     
     # Update mmio table
     if config['mmio']:
@@ -241,10 +141,100 @@ def generate_periph(config_file):
 	
     # Remove unwanted quotations from around hexadecimal vlaues
     parsed_config = del_quotes(config)
-		
-    #print(parsed_config)
+
+    #print(parsed_config)        
     with open(config_file, 'w') as f:
         f.write(parsed_config)
+
+
+def update_core(config):
+    
+    core = config['config']['core']
+    
+    # Ensure core options have acceptable values
+    if 'core' in config['config']:
+        # Check all "core" config boundaries
+        if core['cpu_model'] not in arm_cpus:
+            print("ERROR: Must use a supported CPU model. You used %s" % (core['cpu_model']))
+            print("Supported models can be seen with -s [--support] option")
+            quit()
+                        
+        # Ideally, this never gets executed due to first check.    
+        elif len(core['cpu_model']) > 19:
+            print("ERROR: CPU string too long. Must be less than 20 characters.")
+            quit()     
+
+                        
+        # TODO: Find an upper limit for num_irq    
+        elif core['num_irq'] < 0 or core['num_irq'] > 480:    
+            print("ERROR: [config.core.num_irq] must be in range [0, 480]")
+            quit() 
+
+        elif core['bitband'] < 0 or core['bitband'] > 1:    
+            print("ERROR: [config.core.bitband] must be a boolean value (0 or 1)")
+            quit()
+            
+    # Generate default core options
+    if 'core' not in config['config']:
+        print("yo")
+        config['config'].update({'core': {'cpu_model': "none",
+                                          'num_irq': 480,
+                                          #'sVTOR': hex(0),   # Unused
+                                          'bitband': 0
+                                          #'idau': 1          # Unused
+                                          }})
+        #core.indent(4)                
+   
+def update_mem_map(config):
+
+    mem_map = config['config']['mem_map']
+    
+    # Perform basic mem_map boundary checks
+    if 'mem_map' in config['config']:
+        if mem_map['flash_base'] < 0 or mem_map['flash_base'] > 0xffffffff:
+            print("ERROR: [config.mem_map.flash_base] must be in range [0, 0xffffffff]")
+            quit()
+                            
+        elif mem_map['flash_size'] < 0 or mem_map['flash_size'] > 0x20000000:
+            print("ERROR: [config.mem_map.flash_size] must be in range [0, 0x20000000]")
+            quit()   
+                        
+        elif mem_map['sram_base'] < 0 or mem_map['sram_base'] > 0xffffffff:
+            print("ERROR: [config.mem_map.sram_base] must be in range [0, 0xffffffff]")
+            quit()  
+                            
+        elif mem_map['sram_size'] < 0 or mem_map['sram_size'] > 0xffffffff:
+            print("ERROR: [config.mem_map.sram_size] must be in range [0, 0x0x20000000]")
+            quit()
+                            
+        elif mem_map['sram_base2'] < 0 or mem_map['sram_base2'] > 0xffffffff:
+            print("ERROR: [config.mem_map.sram_base2] must be in range [0, 0xffffffff]")
+            quit()  
+                            
+        elif mem_map['sram_size2'] < 0 or mem_map['sram_size2'] > 0xffffffff:
+            print("ERROR: [config.mem_map.sram_size2] must be in range [0, 0x0x20000000]")
+            quit()     
+                            
+        elif mem_map['sram_base3'] < 0 or mem_map['sram_base3'] > 0xffffffff:
+            print("ERROR: [config.mem_map.sram_base] must be in range [0, 0xffffffff]")
+            quit()  
+                            
+        elif mem_map['sram_size3'] < 0 or mem_map['sram_size3'] > 0xffffffff:
+            print("ERROR: [config.mem_map.sram_size] must be in range [0, 0x0x20000000]")
+            quit()  
+                
+    # Generate default mem_map options
+    else:
+        config['config'].update({'mem_map': {'flash_base': hex(0x0),
+                                          'flash_size': hex(0x0),
+                                          'sram_base': hex(0x0),
+                                          'sram_size': hex(0x0),
+                                          'sram_base2': hex(0x0),
+                                          'sram_size2': hex(0x0),
+                                          'sram_base3': hex(0x0),
+                                          'sram_size3': hex(0x0)}})
+                                                        
+        #mem_map.indent(4)   
 
 # Generates a default template for a peripheral module
 def generate_module(config, periph, i):
@@ -252,11 +242,18 @@ def generate_module(config, periph, i):
     mod_i = str(i)
     
     # Generate config table
-    config['mmio'][periph].update({mod_i: {'config': {'CR_count': 2, 'SR_count': 2, 'DR_count': 2, 'flag_count': 2}}})
+    config['mmio'][periph].update({mod_i: {'config': {'peripheral_type': "default", 
+                                                    'CR_count': 2, 
+                                                    'SR_count': 2, 
+                                                    'DR_count': 2, 
+                                                    'flag_count': 2}}})
+    
+    """
+    Keep for adding other inline tables
     config['mmio'][periph][mod_i]['config'].add('irq', inline_table())
     config['mmio'][periph][mod_i]['config']['irq'].append('enabled', 0)
     config['mmio'][periph][mod_i]['config']['irq'].append('irqn', "null")
-    
+    """
     # TODO: Move the indentations to the end of this.
 						
     config['mmio'][periph][mod_i].indent(4)
@@ -389,11 +386,12 @@ def update_regs(config, periph, count):
 			
         # Delete excess CR	
         elif CR_count < CR_exist:
-            print("Deleting %0d %s.%s CRs" % (flag_exist-flag_count, periph, mod_i))
+            print("Deleting %0d [%s.%s] CRs" % (CR_exist - CR_count, periph, mod_i))
             del_CR(config_tab, addr_tab, reset_tab, CR_count, CR_exist)
 		
         # Add additional CR	
         elif CR_count > CR_exist:
+            print("Adding %0d [%s.%s] CRs" % (CR_count - CR_exist, periph, mod_i))
             add_CR(config_tab, addr_tab, reset_tab, CR_count, CR_exist)
 		
         # Nothing to update
@@ -402,11 +400,12 @@ def update_regs(config, periph, count):
 			
         # Delete excess SR	
         elif SR_count < SR_exist:
-            print("Deleting %0d %s.%s SRs" % (flag_exist-flag_count, periph, mod_i))
+            print("Deleting %0d [%s.%s] SRs" % (SR_exist - SR_count, periph, mod_i))
             del_SR(config_tab, addr_tab, reset_tab, SR_count, SR_exist)
 		
         # Add additional SR	
         elif SR_count > SR_exist:
+            print("Adding %0d [%s.%s] SRs" % (SR_count - SR_exist, periph, mod_i))
             add_SR(config_tab, addr_tab, reset_tab, SR_count, SR_exist)								
 		
         # Nothing to update, 
@@ -415,11 +414,12 @@ def update_regs(config, periph, count):
 			
         # Delete excess DR	
         elif DR_count < DR_exist:
-            print("Deleting %0d %s.%s DRs" % (flag_exist-flag_count, periph, mod_i))
+            print("Deleting %0d [%s.%s] DRs" % (DR_exist-DR_count, periph, mod_i))
             del_DR(config_tab, addr_tab, reset_tab, DR_count, DR_exist)				
 		
         # Add additional DR	
         elif DR_count > DR_exist:
+            print("Adding %0d [%s.%s] DRs" % (DR_count - DR_exist, periph, mod_i))
             add_DR(config_tab, addr_tab, reset_tab, DR_count, DR_exist)		
 
         # Nothing to update
@@ -435,15 +435,37 @@ def update_regs(config, periph, count):
         elif flag_count > flag_exist:
             add_flag(config_tab, flag_tab, flag_count, flag_exist)       
 
+        
+
     return
 
-# Add additional CRs while preserving order of CRs, SRs, and DRs    
+# Add additional CRs while preserving order of CRs, SRs, and DRs
+"""
+    Note on re-ordering:
+    
+    When adding a CR, it will naturally be placed at the end of the table.
+    We must re-order the other registers so that they come after the CR to
+    maintain the vertical order CR, SR, DR 
+    
+    The same must be done in add_SR to maintain order, but not in add_DR since 
+    added DRs goes at the end where they belong.
+    
+    We achieve this by removing the other registers and adding them back in the correct order.
+    We add them back WITH the hex() function so they appear as hexadecimal values in TOML.
+    (hex() produces a hex string but we remove the string quotations with del_quotes() )
+    DO NOT use this hex function to re-order registers in add_SR because the values will 
+    already be in hex string format from add_CR's re-ordering.
+    
+    Additional quirks:
+    
+"""   
 def add_CR(config_tab, addr_tab, reset_tab, CR_count, CR_exist):
 
     # Save keys order for re-ordering registers later
     config_keys = list(zip(config_tab.keys(), config_tab.values()))
     addr_keys = list(zip(addr_tab.keys(), addr_tab.values()))
     reset_keys = list(zip(reset_tab.keys(), reset_tab.values()))
+
 
     if CR_count > 20:
         CR_count = 20       
@@ -465,6 +487,7 @@ def add_CR(config_tab, addr_tab, reset_tab, CR_count, CR_exist):
         if "SR" in key[0]:
             addr_tab.remove(key[0])
             addr_tab.add(key[0], hex(key[1]))
+
            
     # Remove the SR reset(s) and add back at correct position
     for key in reset_keys:
@@ -482,17 +505,40 @@ def add_CR(config_tab, addr_tab, reset_tab, CR_count, CR_exist):
     for key in reset_keys:
         if "DR" in key[0]:
             reset_tab.remove(key[0])
-            reset_tab.add(key[0], hex(key[1]))           	
+            reset_tab.add(key[0], hex(key[1]))
         
     return
 
-# Add additional SRs while preserving order of CRs, SRs, and DRs     
+# Add additional SRs while preserving order of CRs, SRs, and DRs
+"""
+    Note on re-ordering:
+    
+    When adding a SR, it will naturally be placed at the end of the table.
+    We must re-order the other registers so that they maintain the vertical 
+    order CR, SR, DR.
+     
+    CRs will already be in correct position, so we are really 
+    swapping SRs and DRs here.
+    
+    Re-ordering is also done in add_CR but not in add_DR.    
+    See add_CR for full explanation.
+    
+    We DO NOT use the hex() function in add_SR to re-order SRs and DRs because
+    they have already been placed in hex string format in add_CR 
+    
+    Additional quirks:
+    The DRs need to be indented after re-ordering to maintain their
+    original indention. Not quite sure why this is the case here since it
+    isn't the case in the other add_xx() functions. 
+    
+"""      
 def add_SR(config_tab, addr_tab, reset_tab, SR_count, SR_exist):
 
     # Save keys order for re-ordering registers later
     config_keys = list(zip(config_tab.keys(), config_tab.values()))
     addr_keys = list(zip(addr_tab.keys(), addr_tab.values()))
     reset_keys = list(zip(reset_tab.keys(), reset_tab.values()))
+    
     
     # HACK. To change SR_count: Need to remove and add to prevent extra indentation. Also need to re-order DRs.
     if SR_count > 20:
@@ -513,16 +559,26 @@ def add_SR(config_tab, addr_tab, reset_tab, SR_count, SR_exist):
     for key in addr_keys:
         if "DR" in key[0]:	
             addr_tab.remove(key[0])					
-            addr_tab.add(key[0], hex(key[1]))
+            addr_tab.add(key[0], key[1])
+            addr_tab[key[0]].indent(4)
 			
     # Remove the DR reset(s) and add back at correct position		
     for key in reset_keys:
         if "DR" in key[0]:					
             reset_tab.remove(key[0])					
-            reset_tab.add(key[0], hex(key[1]))
+            reset_tab.add(key[0], key[1])
+            reset_tab[key[0]].indent(4)
             
     return
-				
+
+# Add DRs to addr and reset tables.
+"""
+    Note on re-ordering:
+    
+    DRs don't need re-ordered! Since they are naturally going to the
+    end of the table where they belong.
+    
+""" 				
 def add_DR(config_tab, addr_tab, reset_tab, DR_count, DR_exist):
 
     if DR_count > 2:
@@ -536,7 +592,7 @@ def add_DR(config_tab, addr_tab, reset_tab, DR_count, DR_exist):
         DR_addr = "DR" + str(DR_exist+1) + "_addr"
         DR_reset = "DR" + str(DR_exist+1) + "_reset"			
         addr_tab.add(DR_addr, hex(0))
-        reset_tab.add(DR_reset, hex(0))
+        reset_tab.add(DR_reset, hex(0))      
         DR_exist = DR_exist + 1	
         		
     return
@@ -638,8 +694,8 @@ def del_quotes(config):
     parsed_config = ""
 
     # IMPORTANT: Add to this list anytime you want to keep quotations on a particular line.    
-    # Keep quotations on lines these keys appear on
-    keep_quotes = ["reg", "cpu_model", "irq"]
+    #            Otherwise, quotes will be deleted on that line  
+    keep_quotes = ["reg", "cpu_model", "irq", "peripheral_type"]
     
     # Re-write line by line
     for line in config.splitlines():
@@ -661,9 +717,8 @@ def del_quotes(config):
     		
 
 # If using elf file, extract useful FW and Emulator information from elf file
-# TODO: Can use arm-none-eabi-objcopy -O binary <elf> <bin> instead for ARM ELFs.
-#       However, keeping this incase it's needed for other architectures
-#       or has other benefits.
+# XXX:  Can use arm-none-eabi-objcopy -O binary <elf> <bin> instead for ARM ELFs.
+#       However, keeping this incase this has other benefits
 #       Can also just call the above command from this function given an architecture.
 def extract_elf(elf):
 	# Get emulator and firmware configuration details
@@ -857,7 +912,8 @@ def list_arch(x):
                                    'cpu4': "cortex-m4",
                                    'cpu5': "cortex-m7"},
                                    
-                          'avr': {'cpu1': "None"}
+                          # TODO: Add the remaining unsupported architectures!         
+                          'avr': {'cpu1': "None"}           
                           }}
 
     
@@ -868,10 +924,10 @@ def list_arch(x):
         
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description='Setup emulator and configuration file')
+    parser = argparse.ArgumentParser(description='Setup emulator configurations')
     parser.add_argument('-g', '--gen-config',
                         help='Generate peripheral & emulator configurations',
-                        metavar='TOML_File',
+                        metavar=('TOML_File'),
                         dest='gen_periph')	
 	
     parser.add_argument('-e', '--extract-elf',

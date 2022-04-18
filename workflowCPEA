@@ -178,8 +178,7 @@ Testing Emulator with Real Firmware
 3) [p] Building
        1) [x] Make 'build/' directory and enter it.  
        2) [x] Run './configure --enable-debug --target-list=arm-softmmu' to only build files for ARM.
-       3) [p] Run 'make.' (Very Lengthy Process to build the binaries. Would like to lessen the time by building only what we need.)
-              // TODO: Can (probably) delete files we don't need care to compile.
+       3) [p] Run 'make.' 
        4) [x] Need to figure out how to include my own files into the build.
        5) SEE 4.2) for adding own files. 
 
@@ -195,7 +194,28 @@ Testing Emulator with Real Firmware
                  
               3) All virtual hardware emulated is in hw/ (Can probably leave this alone)
               
-       2) [p] Add a machine. See 3.2) above. 
+       2) [p] Adding files to QEMU build (e.g. Adding a machine) See 3.2) above. 
+              [x] 0) Adding a new file to the build in general:              
+                     0.1) Kconfig files: These contain variables that help the Meson build system determine
+                                         what files get built. Make sure to source other directory Kconfig files you need
+                                         so Meson knows what directories to search in.
+                                         (e.g. The interaction between "../qemu/Kconfig" & "../qemu/cpea/Kconfig")                    
+
+                     0.2) meson.build files: These determine which set of object files your new file will be built with
+                                             based on the Kconfig variables you made.
+                                             You may need to specify further subdirectories in some meson.build files
+                                             (e.g. "../qemu/cpea/meson.build", based on the config variable "CPEA", we 
+                                              build "toml.c" alongside all other files within the "softmmu_ss" build) 
+                                              
+                     0.3) Adding file to the right sourceset can be tricky. The problem I've ran into is:
+                          armv7m.c is apart of the arm_ss source set, but I try and include it into the
+                          softmmu_ss by accident because the armvm7.h file is included somewhere.
+                          We run into this problem because we mix target dependent (arm_ss) and target-independent (softmmu_ss)
+                          code in our header files (specifically cpea.h) and this causes issues building.
+                                              
+                     - NOTE: The machine source example below is more complicated and isn't a perfect example 
+                             of how to add regular files so use the examples just above this note. Although, it does
+                             follow the same concepts.                                               
                                
               [x] 1) A new machine source file should go into "hw/arm/" (to fit QEMUs directory structure)
                    -> Defined "CPEA_ARM_GENERIC" variable in "hw/arm/Kconfig" by adding a config section for it.
@@ -385,7 +405,16 @@ Testing Emulator with Real Firmware
                 Character Devices: Directory which contains code for all the character devices. (e.g. serial, socket, stdio, etc)       
                         @ "~/school/thesis/CPEA/qemu/chardev/"
                         
-             0.12) QEMU Logging           
+             0.12) Where to find QEMU CLI Parsing
+                General Option Parsing: In the function 'qemu_init()' which is the first function called by main()
+                        @ "~/school/thesis/CPEA/qemu/softmmu/vl.c": 2631
+                        
+                Chardev Option: "-chardev"
+                        @ "~/school/thesis/CPEA/qemu/softmmu/vl.c": 2941           
+                 
+                 
+                           
+             0.13) QEMU Logging           
                            
                                                         
         5) Following code execution to find how it fails
@@ -940,7 +969,136 @@ Testing Emulator with Real Firmware
              [x] Can add peripherals, edit number of DR/SRs, apply addresses registers, and 
                  set/unset SR bits at particular addresses to pass SR checks.    
                  
-8) Create test cases for testing interrupts                 
+8) Create test cases for testing interrupts
+
+   0) General Information
+   0.0) This is all for ARM Cortex-M based MCUs                 
+   0.1) Unit Tests: "../CPEA/firmware/unit_tests"
+        This is where unit tests for individual peripherals will reside
+   0.2) Files in "../CPEA/firmware/unit_tests/common" are built across all unit tests
+        and are meant for tailoring the FW to Cortex-M architecture
+        - startup.c, handlers.c, etc
+   0.3 Files in "../CPEA/firmware/unit_tests/lib" are also built across unit tests
+       and contain (knock-offs) library functions for writing firmware.
+       -> To add/modify functions and API, modify library.c and library.h
+          and make sure to include library.h in your firmware's main source file.
+          library.h includes descriptions of the functions.           
+   0.4) Linker script in "../CPEA/firmware/unit_tests/ld" defines a general memory layout
+        which can be modified easily.
+   0.5) Each peripheral (e.g. "../CPEA/firmware/unit_tests/UART") has a README which explains all of 
+        the unit tests specific to that peripheral
+   0.6) Each unit test (e.g. "../CPEA/firmware/unit_tests/UART/HelloWorld") has 
+        a makefile and source files specific to that test. Some source files
+        have more than 1 test commented out and can be modified to test additional
+        functionality. Each unit test should include "library.h" to leverage basic
+        library functions        
+   0.7) Makefiles exist in each unit test directory to build the code for that unit test
+        The contents of these makefiles only differ in their "PROJECT" name at the top
+        of the file. Make sure the "PROJECT" name matches the name of your unit test
+        'make all' and 'make clean' are used to build and clean the tests
+        
+   1) To add a new unit test
+   1.1) Make a new directory "<unit_test_name>" within the peripheral directory it belongs to.
+        (e.g. "UART/<unit_test_name>"). You may have to make a new peripheral directory if it
+        doesn't exist.
+        Move into your new directory to do the next steps!!        
+   1.2) Copy over the Makefile from another unit test and CHANGE the "PROJECT" name within it
+        to match your "<unit_test_name>". This is all you need to modify in the Makefile
+   1.3) Create both "inc/" and "src/" directories and write the test code for the firmware you want
+        to emulate. The makefile will compile and link everything in these directories. 
+   1.4) Once code is written, type "make all". The "bin/" and "obj/" directories should be created
+        with new files inside. 
+        "bin/" should contain an ELF file and a raw exectuable binary.
+               You can choose either one to emulate your code.
+        "obj/" should contain the new object files you compiled that were then linked
+        "make clean" will delete everything in the "bin/" and "obj/" directories
+                   
+      
+9) User Communication W/ Peripherals: Configure a host backend to connect with a guest frontend
+    0) Hardcoded Example: STDIO to Serial
+    
+       1) Via QEMU option: 1) Activate stdio host backend, muxed to only 1 monitor 
+                           2) Activate serial Chrdev frontend global variables (up to 4) which allows
+                              serial_hd() to be called and return them
+                          
+       2) Via 'qemu_chr_fe_init()': Connect Host backend to Serial frontend
+       
+       3) Initialize handlers for the frontend                   
+                                 
+    1) Host to Virtual Serial (e.g. Host STDIO to UART)
+       0) Configurations: Per any given peripheral
+          - Give Host config option (e.g. stdio, serial, etc)
+            Allow configurable parameters specific to the communication
+          - Give Guest config option (e.g. serial, sockets, etc)
+            Allow configurable parameters specific to the communication
+            
+       1) Parsing Configurations: Want API specific to that peripheral (e.g. Only allow serial for UART)
+          - Host: Should allow a few options such as stdio, serial, etc each w/ their own specific options
+                  For example, if we chose serial, we'd need to give the path to the host serial port we want to use.
+                  The additional config would probably be something we'd autogenerate w/ Python AFTER the interface was chosen
+          - Guest: Only allow serial as the option w/ some additional configuration parameters
+                   For now, don't need additional configuration parameters.
+                   The guest interface would be hardcoded opposed
+          - Need to give Guest the SAME chardev ID as the host backend (E.g. UART0, same name as the peripheral and its module #)
+          - Need to tap into the functions used by the '-chardev' option to give the ID & mux=on
+          - Need to tap into the functions used by the '-mon' option to give the chardev ID, and set 'mode=readline'
+            'mode' could change depending on implementation
+          - Need to tap into the functions used by the '-serial' option to give the chardev ID to it so we know which host backend it belongs to
+            Only up to 4 serial interfaces allowed in QEMU, so we need to keep track of that.
+                                        
+10) CPEA Code Base description
+    1) Peripheral Configuration Parsing
+       The parameters for a particular peripheral must be parsed and stored 
+       somewhere so they can be used later during peripheral emulation.
+       - Need to map out directories and files for this   
+       
+    2) Peripheral Emulation
+    2.1) MMIO callbacks is where peripheral emulation functions reside: "CPEA/qemu/hw/arm/cpea.c"
+         The two functions below primarily server as wrappers for the specific peripheral emulation
+         functions.
+         - mmio_read()
+         - mmio_write()
+         
+    2.2) Code for an Emulated Peripheral 
+         Files which contain functions for emulating a peripheral reside in a QEMU directory that
+         best suites the peripheral type being emulated.
+         Generally: "CPEA/qemu/hw/<suiting_directory>/cpea_<peripheral_name>.c"
+         - Where "cpea_<peripheral_name>.c" is the name of the c file
+         - Where "<suiting_directory>" is a directory containing other similar peripheral files
+         - e.g. "CPEA/qemu/hw/char/cpea_uart.c"                                    
+         The file "cpea_uart.c" will contain functions that handle reads and writes to particular registers
+         It will also contain other supporting hardware emulation.
+                       
+    2.3) Description of an Emulated Peripheral's Code
+         Descriptions of the functions which emulate a peripheral should reside in it's
+         matching header file.
+         - e.g. "CPEA/qemu/include/hw/char/cpea_uart.h"
+                    
+    3) TOML Generation
+       All resides in the single Python file            
+       - Probably should make that more complete for what I currently have ... 
+       
+       
+11) Adding New Peripheral Support for Emulation
+    // XXX: Right now is more of a plan then instructions
+    1) TOML Peripheral Configuration Parsing API
+    2) Peripheral Emulation API
+       - Want an array of structs that contains peripheral read/write functions (EmuTable)
+         - Anytime someone wants to add peripheral support, they just add a new struct
+           entry.
+         - Should make the struct large and reserve indices for particular peripheral IDs
+           AKA, Each peripheral will have a unique ID which corresponds to its place in the 
+           struct. (e.g. uartID = 1, gpioID = 2, etc)
+         - Someone configuring a peripheral WOULD have to be aware of that peripheral's ID
+           The ID could also be paired with a string (e.g. periphID = "uart" is same as periphID = 1)
+           in an ID table. The ID table indicies would correspond to the struct I mentioned above
+           but they wouldn't necessarily interact.
+           IDtable is for parsing string and assigning the ID to an MMIO struct
+              - Only real use I see for this is incase someone enters a string in place of a peripheral ID               
+           
+           EmuTable is for emulation AKA easily accessing a peripheral's emulation functions
+              - The peripheral IDs assigned should line up with the EmuTable's          
+    3) TOML Generation API                 
 
 /* Getting executable binary from a proper ELF */  
 arm-none-eabi-objcopy -O binary <elf> <bin>

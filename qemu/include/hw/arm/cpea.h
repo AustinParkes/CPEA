@@ -1,6 +1,6 @@
 /*
  * MachineState for CPEA. Contains all configurable variables needed for Cortex-M
- * TODO: Extend description
+ *
  * Written by Austin Parkes.
 */
 
@@ -11,11 +11,11 @@
 #include "cpea/toml.h"
 #include "hw/boards.h"
 #include "hw/sysbus.h"
-#include "hw/arm/armv7m.h"
 #include "hw/irq.h"
 #include "sysemu/sysemu.h"
 #include "chardev/char-fe.h"
 #include "chardev/char.h"
+
 
 #define SET_BIT(reg, k)     (reg |= (1<<k))	
 #define CLEAR_BIT(reg, k)   (reg &= ~(1<<k))
@@ -61,7 +61,6 @@ struct CpeaMachineState {
     uint32_t sram_base3;
     uint32_t sram_size3;
     
-    ARMv7MState *armv7m;
     CpeaIRQDriverState *irq_state;
 
 };
@@ -209,6 +208,9 @@ typedef struct uart{
 
     // Peripheral Interaction. Guest's "backend"
 	CharBackend chrbe;
+	
+	
+	
 	QEMUTimer *fifo_timer;
 
 } CpeaUART;	
@@ -389,28 +391,20 @@ int setFlags(toml_table_t *, int);
 void parseKeys(toml_table_t*, char *, const char *, toml_table_t *, const char *, int);
 
 /**
- * findMod: Find peripheral module accessed in callback.
+ * findMod: Find peripheral module accessed in MMIO callback.
  *
+ * Returns Pointer to peripheral being accessed
+ *         NULL if none found
  */	
-CpeaMMIO *findMod(uint64_t, CpeaMMIO**);
+CpeaMMIO *findMod(uint64_t address, CpeaMMIO** periph);
 
-/**
- * uart_can_receive: 
- *
- */
+
+/*
 int uart_can_receive(void *opaque);
-
-/**
- * uart_receive: 
- *
- */
 void uart_receive(void *opaque, const uint8_t *buf, int size);
-
-/**
- * uart_event:
- *
- */
 void uart_event(void *opaque, QEMUChrEvent event);
+*/
+
 
 /**
  * intr_alloc: Allocate an interrupt struct for each enabled interrupt
@@ -522,8 +516,7 @@ int fifoTrigger(toml_table_t* IntrTypeTable, const char *IntrName,
  */
 toml_datum_t GetIntrData(toml_table_t* IntrTypeTable, toml_table_t* AddrTab, 
             const char *IntrName, const char *ConfigName, const char *dataKey);
-                      
-            
+           
 /**
  * error: 
  *

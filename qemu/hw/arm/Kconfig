@@ -1,3 +1,8 @@
+config CPEA_ARM_GENERIC
+    bool
+    select ARM_V7M
+    select CPEA_UART
+
 config ARM_VIRT
     bool
     imply PCI_DEVICES
@@ -519,6 +524,3 @@ config ARMSSE_CPUID
 
 config ARMSSE_MHU
     bool
-    
-config CPEA_ARM_GENERIC
-    bool 

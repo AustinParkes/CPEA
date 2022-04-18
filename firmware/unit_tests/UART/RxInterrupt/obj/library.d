@@ -1,4 +1,4 @@
-obj/hello_world.o: src/hello_world.c \
+obj/library.o: ../../lib/src/library.c \
  /home/austin/Programs/gcc-arm-none-eabi-10-2020-q4-major-x86_64-linux/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/stdio.h \
  /home/austin/Programs/gcc-arm-none-eabi-10-2020-q4-major-x86_64-linux/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/_ansi.h \
  /home/austin/Programs/gcc-arm-none-eabi-10-2020-q4-major-x86_64-linux/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/newlib.h \

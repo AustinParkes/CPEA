@@ -1,9 +1,4 @@
 [config]
-[config.core]
-cpu_model = "cortex-m4"
-num_irq = 480
-bitband = 1
-
 [config.mem_map]
 flash_base = 0x0
 flash_size = 0x1f40000
@@ -13,34 +8,55 @@ sram_base2 = 0x0
 sram_size2 = 0x0
 sram_base3 = 0x0
 sram_size3 = 0x0
-   
+    
+[config.core]
+cpu_model = "cortex-m4"
+num_irq = 480
+bitband = 1
+ 
     
 [mmio]
 [mmio.count]
-uart_count = 1		
+uart_count = 1
+mcg_count = 0
 
     [mmio.uart]
     [mmio.uart.0]
     [mmio.uart.0.config]
-    peripheral_type = "default"
-    CR_count = 1
-    SR_count = 1
-    DR_count = 1
-    flag_count = 2
+    peripheral_type = "uart"
+    CR_count = 2
+    SR_count = 5
+    DR_count = 2
+    flag_count = 0
 
     [mmio.uart.0.addr]
     base_addr = 0x0
     CR1_addr = 0x0
+    CR2_addr = 0x0
     SR1_addr = 0x0
+    SR2_addr = 0x0
+    SR3_addr = 0x0
+    SR4_addr = 0x0
+    SR5_addr = 0x0
     DR1_addr = 0x0
+    DR2_addr = 0x0
 
     [mmio.uart.0.reset]
     CR1_reset = 0x0
+    CR2_reset = 0x0
     SR1_reset = 0x0
+    SR2_reset = 0x0
+    SR3_reset = 0x0
+    SR4_reset = 0x0
+    SR5_reset = 0x0
     DR1_reset = 0x0
+    DR2_reset = 0x0
+
+    [mmio.uart.0.hardware]
 
     [mmio.uart.0.interrupts]
 
+    [mmio.uart.0.interface]
+
     [mmio.uart.0.flags]
-    Flag1 = {reg = "reg", bit = 0, val = 1, addr = "optional"}
-    Flag2 = {reg = "reg", bit = 0, val = 1, addr = "optional"}
+

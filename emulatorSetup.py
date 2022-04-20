@@ -1,21 +1,5 @@
 #!/usr/bin/env python3
 
-"""
-Things to add:
-    - Argument parsing when running script.
-        1) Elf File 
-        2) Verbose Mode to print results
-        3) Option to generate a TOML template from scratch, incase original template is messed up.
-           Preferably without overwriting original, so original isn't accidently overwritten.
-
-"""
-
-"""
-Queries
-    1) Does TOML let you insert keys into the middle of a table? 
-       Currently re-ordering keys to achieve this illusion.
-    
-"""
 import argparse
 import subprocess
 from tomlkit import parse
@@ -33,126 +17,39 @@ from elftools.elf.elffile import SymbolTableSection
 # Acceptable model names for ARM TODO: Can update this now for supported QEMU cortex-m models
 arm_cpus = ["none", "cortex-m4"]
 
-def generate_periph(config_file):
-                           
-    count = 0           # Number of modules we want to generate	
-    num_exist = 0       # Number of modules that currently exist in TOML
-    index = 0           # Index of modules
+# Update TOML by: 1) generating or 2) removing configurations
+def update_toml(config_file):
 
     # Load entire TOML as a dictionary
     # Returns TOMLDocument/Dictionary
     config = parse(open(config_file).read())
-    
-    """
-    core and mem_map
-    """
-    # Update emulator configurations
-    # TODO: Drastically modify this so it isn't confusing to read ... 
-    
-    # TODO: Modify this to add [config] if it doesn't exist
-    if config['config']:     # if config['config']['options']:
-    
-        #options = ["core", "mem_map"]    
-        
-        update_core(config)
-        update_mem_map(config)
 
+    # Update core, memory, and mmio tables
+    update_core(config)
+    update_mem_map(config)
     
-    # Update mmio table
-    if config['mmio']:
-        
-        # Cycle Peripheral Counts
-        for p_count in config['mmio']['count']:
-           
-            # Get [periph] from [periph]_count
-            if p_count.endswith("_count"):
-                periph = p_count[:-6]    
-            
-            else:
-                print("ERROR: Naming convention for [mmio.count] keys must be [periph]_count")
-                print("       You have: %s" % (p_count))
-                quit()
-            
-            count = config['mmio']['count'][p_count]
-
-            if count < 0:
-                continue
-
-            # No more than 16 peripherals of any kind. TODO: This could change :). Need to figure out reasonable counts. 	
-            elif count > 16:
-                count = 16
-                config['mmio']['count'][p_count] = 16
-                print("No more than 16 modules allowed. Generating 16.")
-
-            # Check if current peripheral already exists in TOML.				
-            num_exist = check_existance(config, periph)
-										
-            # Peripheral already exists at specified count, so don't update.	
-            if count == num_exist:	
-                # Check if we need to update register counts before we leave
-                # TODO: Will also need to check if flag count has changed.
-                update_regs(config, periph, count)					
-				
-            # Erase the excess peripheral modules
-            elif count < num_exist:
-                diff = num_exist - count
-                print("Deleting %0d %s" % (diff, periph))	
-                                
-                index = str(num_exist-1)
-                while (count < num_exist):
-						
-                    # Erase peripheral
-                    if count == 0:
-                        config['mmio'].remove(periph)
-                        break
-							
-                    # Erase modules	
-                    else:	
-                        config['mmio'][periph].remove(index)
-                        index = str( int(index)-1 )
-                        num_exist = num_exist - 1
-								
-                # Check if we need to update register counts before we leave	
-                # TODO: Will need to check if flag count has changed	
-                update_regs(config, periph, count)									
-					
-            # Generate more modules TODO: Make this an else statement? idk why it's elif
-            elif count > num_exist:	
-                diff = count - num_exist
-                print("Adding %0d more %s" % (diff, periph))
-                	
-                # Only indent first instance. Don't overwrite existing modules
-                if num_exist == 0:
-                    config['mmio'][periph] = table()
-                    config['mmio'][periph].indent(4)
-					
-                # Generate as many modules as 'count' specifies
-                for i in range(num_exist, count):
-                    generate_module(config, periph, i)
-							
-                # Check if we need to update register counts before we leave
-                update_regs(config, periph, count)
-						
-        # Check if any peripherals exist which are no longer under [mmio.count]
-        check_existance(config, 0)
+    # Updates [mmio] sub-tables      
+    update_mmio(config)
+			
+    # Remove <periph> if it has no corresponding <periph>_count
+    check_count(config)
 						
     # Write to TOML
     config = dumps(config)
 	
-    # Remove unwanted quotations from around hexadecimal vlaues
+    # Remove unwanted quotations from around hexadecimal values
     parsed_config = del_quotes(config)
-
-    #print(parsed_config)        
+      
     with open(config_file, 'w') as f:
         f.write(parsed_config)
 
-
+# Check [core] key boundaries
 def update_core(config):
-    
-    core = config['config']['core']
-    
+
     # Ensure core options have acceptable values
     if 'core' in config['config']:
+        core = config['config']['core']
+        
         # Check all "core" config boundaries
         if core['cpu_model'] not in arm_cpus:
             print("ERROR: Must use a supported CPU model. You used %s" % (core['cpu_model']))
@@ -163,9 +60,7 @@ def update_core(config):
         elif len(core['cpu_model']) > 19:
             print("ERROR: CPU string too long. Must be less than 20 characters.")
             quit()     
-
-                        
-        # TODO: Find an upper limit for num_irq    
+                         
         elif core['num_irq'] < 0 or core['num_irq'] > 480:    
             print("ERROR: [config.core.num_irq] must be in range [0, 480]")
             quit() 
@@ -176,7 +71,6 @@ def update_core(config):
             
     # Generate default core options
     if 'core' not in config['config']:
-        print("yo")
         config['config'].update({'core': {'cpu_model': "none",
                                           'num_irq': 480,
                                           #'sVTOR': hex(0),   # Unused
@@ -184,13 +78,13 @@ def update_core(config):
                                           #'idau': 1          # Unused
                                           }})
         #core.indent(4)                
-   
+
+# Check [mem_map] key boundaries   
 def update_mem_map(config):
 
-    mem_map = config['config']['mem_map']
-    
     # Perform basic mem_map boundary checks
     if 'mem_map' in config['config']:
+        mem_map = config['config']['mem_map']
         if mem_map['flash_base'] < 0 or mem_map['flash_base'] > 0xffffffff:
             print("ERROR: [config.mem_map.flash_base] must be in range [0, 0xffffffff]")
             quit()
@@ -236,67 +130,87 @@ def update_mem_map(config):
                                                         
         #mem_map.indent(4)   
 
-# Generates a default template for a peripheral module
-def generate_module(config, periph, i):
-
-    mod_i = str(i)
+# Updates 1) peripheral module 2) register counts 3) flag counts
+def update_mmio(config):
+    count = 0           # Number of desired modules
+    num_exist = 0       # Number of modules that currently exist in TOML
+    index = 0           # Module index 
     
-    # Generate config table
-    config['mmio'][periph].update({mod_i: {'config': {'peripheral_type': "default", 
-                                                    'CR_count': 2, 
-                                                    'SR_count': 2, 
-                                                    'DR_count': 2, 
-                                                    'flag_count': 2}}})
+    # Peripheral table containing IDs
+    table_path = "peripherals/ptable.toml"    
+    ptable = parse(open(table_path, 'r').read())
     
-    """
-    Keep for adding other inline tables
-    config['mmio'][periph][mod_i]['config'].add('irq', inline_table())
-    config['mmio'][periph][mod_i]['config']['irq'].append('enabled', 0)
-    config['mmio'][periph][mod_i]['config']['irq'].append('irqn', "null")
-    """
-    # TODO: Move the indentations to the end of this.
-						
-    config['mmio'][periph][mod_i].indent(4)
-    config['mmio'][periph][mod_i]['config'].indent(4)					
-					
-    # Generate addr table
-    config['mmio'][periph][mod_i].update({'addr': {'base_addr': hex(0), 'CR1_addr': hex(0), 'CR2_addr': hex(0),
-                                                                        'SR1_addr': hex(0), 'SR2_addr': hex(0),                                                                         
-                                                                        'DR1_addr': hex(0), 'DR2_addr': hex(0)}})
-					
-    config['mmio'][periph][mod_i]['addr'].indent(4)					
-									
-    # Generate reset table
-    config['mmio'][periph][mod_i].update({'reset': {'CR1_reset': hex(0), 'CR2_reset': hex(0),
-                                                    'SR1_reset': hex(0), 'SR2_reset': hex(0), 
-													'DR1_reset': hex(0), 'DR2_reset': hex(0)}})
-					
-    config['mmio'][periph][mod_i]['reset'].indent(4)						
+    # Cycle Peripheral Counts
+    for count_key in config['mmio']['count']:
+           
+        # Get <periph> name from <periph>_count
+        periph = get_periph(count_key)
+        
+        # User's desired # of <periph> modules
+        count = get_count(config, count_key)
 
-    # Generate interrupt table
-    config['mmio'][periph][mod_i].update({'interrupts': {}})
-    config['mmio'][periph][mod_i]['interrupts'].indent(4)
-					
-    # Generate flag table											   
-    config['mmio'][periph][mod_i].update({'flags': {}})
-    config['mmio'][periph][mod_i]['flags'].indent(4)
+        # User's existing # of <periph> modules				
+        num_exist = count_existing(config, periph)
 
-    # Add 2 default flag tables
-    config['mmio'][periph][mod_i]['flags'].add("Flag1", inline_table())
-    config['mmio'][periph][mod_i]['flags']["Flag1"].append('reg', "reg")
-    config['mmio'][periph][mod_i]['flags']["Flag1"].append('bit', 0)
-    config['mmio'][periph][mod_i]['flags']["Flag1"].append('val', 1)
-    config['mmio'][periph][mod_i]['flags']["Flag1"].append('addr', "optional")
+        # No module updates
+        if count == num_exist:
+            pass
+
+        # Generate more peripheral modules
+        elif count > num_exist:
+            add_peripherals(config, periph, count, num_exist)
+							
+        # Remove excess peripheral modules
+        else:
+            del_peripherals(config, periph, count, num_exist)																
+
+		# Update register counts for existing <periph> modules
+        update_regs(config, periph, count)
+        
+        # Update flag counts for existing <periph> modules
+        update_flags(config, periph, count)              
+
+        # Update [hardware] & [interrupts] tables for existing <periph> modules
+        update_hw_intr(config, ptable, periph, count)
+
+
+    return
+
+# Gets <periph> name given its key: <periph>_count
+def get_periph(count_key):
+    if count_key.endswith("_count"):
+        periph = count_key[:-6]    
+        
+    else:
+        print("ERROR: Naming convention for [mmio.count] keys must be [periph]_count")
+        print("       You have: %s" % (count_key))
+        quit()
+
+    return periph
     
-    config['mmio'][periph][mod_i]['flags'].add("Flag2", inline_table())
-    config['mmio'][periph][mod_i]['flags']["Flag2"].append('reg', "reg")
-    config['mmio'][periph][mod_i]['flags']["Flag2"].append('bit', 0)
-    config['mmio'][periph][mod_i]['flags']["Flag2"].append('val', 1)
-    config['mmio'][periph][mod_i]['flags']["Flag2"].append('addr', "optional")    
+# Gets user's desired <periph> count given the key: <periph>_count 
+def get_count(config, count_key):
+    # User's desired number of <periph> modules 
+    count = config['mmio']['count'][count_key]
 
+    # Count must be >= 0 
+    if count < 0:
+        print("ERROR:")
+        print("[mmio.count.%s]: Value must be 0 or greater" % (count_key))
+        print("You gave %0d" % (count))
+        quit()
 
-# Check if peripheral already exists in TOML and how many.
-def check_existance(config, periph):
+    # No more than 16 peripherals of any kind.
+    # TODO: Settle on a max count	
+    elif count > 16:
+        count = 16
+        config['mmio']['count'][count_key] = 16
+        print("[mmio.count.%s]: No more than 16 modules allowed. Generating 16." % (count_key)) 
+   
+    return count
+            
+# Count # of existing <periph> modules already in TOML
+def count_existing(config, periph):
 
     # Check if arg is non-zero
     if periph:
@@ -313,40 +227,52 @@ def check_existance(config, periph):
             
         # If no match is made, periph doesn't exist.
         else:
-            return 0
-    
-    # 0 provided: Check if [periph] exists when its [periph]_count does not exist    
-    else:  
-        del_list = []   # Keep list of existing peripherals to delete   	
-        for existing in config['mmio']:
-            if existing != "count":
-                p_count = existing + "_count"
-                
-                # Add the peripheral to deletion list if its [periph]_count missing
-                if p_count not in config['mmio']['count']:
-                    #print("Doesn't exist anymore: ", end = "")
-                    #print(existing)
-                    del_list.append(existing)
-        
-        # Delete periphs
-        for periph in del_list:
-            config['mmio'].remove(periph)                
-                
-                    
-"""
-Updates register counts in toml
-"""
+            return 0                                          
+
+# Add user's desired # of peripheral modules
+def add_peripherals(config, periph, count, num_exist):
+    diff = count - num_exist
+    print("Adding %0d more %s" % (diff, periph))
+                	
+    # Only indent first instance. Don't overwrite existing modules
+    if num_exist == 0:
+        config['mmio'][periph] = table()
+        config['mmio'][periph].indent(4)
+			
+    # Generate peripheral modules
+    for i in range(num_exist, count):
+        generate_module(config, periph, i)
+
+# Del user's desired # of peripheral modules
+def del_peripherals(config, periph, count, num_exist):
+    diff = num_exist - count
+    print("Deleting %0d %s" % (diff, periph))	
+                        
+    index = str(num_exist-1)
+    while (count < num_exist):
+				
+        # Remove peripheral
+        if count == 0:
+            config['mmio'].remove(periph)
+            break
+					
+        # Remove modules	
+        else:	
+            config['mmio'][periph].remove(index)
+            index = str( int(index)-1 )
+            num_exist = num_exist - 1
+            
+            
+# Update a peripheral's registers given user's desired register counts
 def update_regs(config, periph, count):
 	
     CR_count = 0	# Number of CR that we want to generate
     SR_count = 0	# Number of SR that we want to generate
     DR_count = 0	# Number of DR that we want to generate
-    flag_count = 0  # Numer of flags that we want to generate
     
     CR_exist = 0    # Number of CR that already exist in TOML
     SR_exist = 0	# Number of SR that already exist in TOML
     DR_exist = 0	# Number of DR that already exist in TOML
-    flag_exist = 0  # Number of flags that already exist in TOML
 	
     # Read peripheral configurations for each module	
     for i in range(count):
@@ -355,17 +281,29 @@ def update_regs(config, periph, count):
         config_tab = config['mmio'][periph][mod_i]['config']	        
         addr_tab = config['mmio'][periph][mod_i]['addr']
         reset_tab = config['mmio'][periph][mod_i]['reset']	
-        flag_tab = config['mmio'][periph][mod_i]['flags']
         
         CR_count = config_tab['CR_count']		
         SR_count = config_tab['SR_count']
         DR_count = config_tab['DR_count']	
-        flag_count = config_tab['flag_count']
-        	
+        
+        if CR_count < 0:
+            print("[mmio.%s.%s.config]: CR_count can't go below 0" % (periph, mod_i))
+            print("You gave: %0d" % (CR_count))
+            quit()
+            
+        elif SR_count < 0:
+            print("[mmio.%s.%s.config]: SR_count can't go below 0" % (periph, mod_i))
+            print("You gave: %0d" % (SR_count))
+            quit() 
+                   
+        elif DR_count < 0:
+            print("[mmio.%s.%s.config]: DR_count can't go below 0" % (periph, mod_i))
+            print("You gave: %0d" % (DR_count))
+            quit()   
+                 	
         CR_exist = 0
         SR_exist = 0
         DR_exist = 0
-        flag_exist = 0
         
         # Cycle through register addresses, counting the CR, SR and DR.
         for addr_i in addr_tab:			
@@ -374,11 +312,7 @@ def update_regs(config, periph, count):
             elif "DR" in addr_i:
                 DR_exist = DR_exist + 1
             elif "SR" in addr_i:
-                SR_exist = SR_exist + 1 
-        
-        # Cycle through flags, counting them
-        for flag_i in flag_tab:
-            flag_exist = flag_exist + 1              
+                SR_exist = SR_exist + 1             
 
         # Nothing to update
         if CR_count == CR_exist:
@@ -420,21 +354,7 @@ def update_regs(config, periph, count):
         # Add additional DR	
         elif DR_count > DR_exist:
             print("Adding %0d [%s.%s] DRs" % (DR_count - DR_exist, periph, mod_i))
-            add_DR(config_tab, addr_tab, reset_tab, DR_count, DR_exist)		
-
-        # Nothing to update
-        if flag_count == flag_exist:
-            pass
-        
-        # Delete excess flags    
-        elif flag_count < flag_exist: 
-            print("Deleting %0d %s.%s flags" % (flag_exist-flag_count, periph, mod_i))
-            del_flag(config_tab, flag_tab, flag_count, flag_exist)
-            
-        # Add additional flags
-        elif flag_count > flag_exist:
-            add_flag(config_tab, flag_tab, flag_count, flag_exist)       
-
+            add_DR(config_tab, addr_tab, reset_tab, DR_count, DR_exist)		    
         
 
     return
@@ -487,7 +407,6 @@ def add_CR(config_tab, addr_tab, reset_tab, CR_count, CR_exist):
         if "SR" in key[0]:
             addr_tab.remove(key[0])
             addr_tab.add(key[0], hex(key[1]))
-
            
     # Remove the SR reset(s) and add back at correct position
     for key in reset_keys:
@@ -538,8 +457,7 @@ def add_SR(config_tab, addr_tab, reset_tab, SR_count, SR_exist):
     config_keys = list(zip(config_tab.keys(), config_tab.values()))
     addr_keys = list(zip(addr_tab.keys(), addr_tab.values()))
     reset_keys = list(zip(reset_tab.keys(), reset_tab.values()))
-    
-    
+        
     # HACK. To change SR_count: Need to remove and add to prevent extra indentation. Also need to re-order DRs.
     if SR_count > 20:
         SR_count = 20		       
@@ -597,26 +515,6 @@ def add_DR(config_tab, addr_tab, reset_tab, DR_count, DR_exist):
         		
     return
 
-def add_flag(config_tab, flag_tab, flag_count, flag_exist):
-
-    if (flag_count > 32):
-        flag_count = 32
-        config_tab['flag_count'] = flag_count
-        config_tab['flag_count'].indent(4)
-        print("Flag count can't exceed 32")
-    
-    # Add the flag(s)
-    while flag_count > flag_exist:
-        flag = "Flag" + str(flag_exist+1)
-        flag_tab.add(flag, inline_table())
-        flag_tab[flag].append('reg', "reg")   
-        flag_tab[flag].append('bit', 0)  
-        flag_tab[flag].append('val', 1)  
-        flag_tab[flag].append('addr', "optional")  
-        flag_exist = flag_exist + 1
-        
-    return
-
 def del_CR(config_tab, addr_tab, reset_tab, CR_count, CR_exist):
     
     if CR_count < 0:
@@ -670,8 +568,71 @@ def del_DR(config_tab, addr_tab, reset_tab, DR_count, DR_exist):
         addr_tab.remove(DR_addr)
         reset_tab.remove(DR_reset)
         DR_exist = DR_exist - 1
-    return		
+    return	
 
+# Update flag counts based on user's key input
+def update_flags(config, periph, count):
+
+    flag_count = 0  # User's desired # of flags
+    flag_exist = 0  # Existing # of flags
+    
+    # Read flag configurations for each module	
+    for i in range(count):
+    
+        mod_i = str(i)
+        config_tab = config['mmio'][periph][mod_i]['config']
+        flag_tab = config['mmio'][periph][mod_i]['flags']	
+        flag_count = config_tab['flag_count']
+        flag_exist = 0
+        
+        # Cycle through flags, counting them
+        for flag_i in flag_tab:
+            flag_exist = flag_exist + 1                      
+
+        if flag_count < 0:
+            print("[mmio.%s.%s.config]: flag_count can't go below 0" % (periph, mod_i))
+            print("You gave: %0d" % (flag_count))
+            quit()
+            
+        # Nothing to update
+        if flag_count == flag_exist:
+            pass
+        
+        # Delete excess flags    
+        elif flag_count < flag_exist: 
+            print("Deleting %0d [%s.%s] flags" % (flag_exist-flag_count, periph, mod_i))
+            del_flag(config_tab, flag_tab, flag_count, flag_exist)
+            
+        # Add additional flags
+        elif flag_count > flag_exist:
+            print("Adding %0d [%s.%s] flags" % (flag_count - flag_exist, periph, mod_i))
+            add_flag(config_tab, flag_tab, flag_count, flag_exist)       
+        
+
+    return    
+
+# Add flag(s) to a <periph> module's [flags] table
+def add_flag(config_tab, flag_tab, flag_count, flag_exist):
+
+    if (flag_count > 32):
+        flag_count = 32
+        config_tab['flag_count'] = flag_count
+        config_tab['flag_count'].indent(4)
+        print("Flag count can't exceed 32")
+    
+    # Add the flag(s)
+    while flag_count > flag_exist:
+        flag = "Flag" + str(flag_exist+1)
+        flag_tab.add(flag, inline_table())
+        flag_tab[flag].append('reg', "reg")   
+        flag_tab[flag].append('bit', 0)  
+        flag_tab[flag].append('val', 1)  
+        flag_tab[flag].append('addr', "optional")  
+        flag_exist = flag_exist + 1
+        
+    return	
+
+# Delete flag(s) from a <periph> module's [flags] table
 def del_flag(config_tab, flag_tab, flag_count, flag_exist):
     if flag_count < 0:
         flag_count = 0
@@ -687,15 +648,154 @@ def del_flag(config_tab, flag_tab, flag_count, flag_exist):
         
     return
 
+"""
+    Goal here:
+    1) Read from another toml file the full table of peripherals and IDs
+       (e.g. periph0 = ["default", true, 0]
+             periph1 = ["uart", true, 1]
+       )
+    2) Search to find a match with the periph_type parsed
+    3) If there is a match, autogenerate for that implementation
+    
+    Questions
+    3) Where will that peripheral's tables be stored?
+    
+    If the matched peripheral has an implementation, autogenerate for that implementaton    
+"""
+
+# Update [hardware] and [interrupts] tables based on user's peripheral_type
+def update_hw_intr(config, ptable, periph, count):
+
+    for i in range(count):
+    
+        mod_i = str(i)            
+        config_tab = config['mmio'][periph][mod_i]['config']
+        hw_tab = config['mmio'][periph][mod_i]['hardware']
+        
+        # TODO: Use this to verify and obtain the ID
+        periph_type = config_tab['peripheral_type']
+
+        # What's the point!
+        if periph_type == "default":    
+            return
+
+        # Get the ID index for the peripheral table
+        tab_index = get_IDindex(periph_type, periph, mod_i)        
+        
+        # TODO: 
+        """
+            1) Auto_generate [hw] & [intr] tables from the matching peripheral
+            2) However, must check if given peripheral already has populated [hw] or [intr] table
+               - In this case, do nothing and keep the same
+            3) Must check if a NEW peripheral_type is given.
+               - In this case, we would overwrite the old [hw] & [intr] tables with new peripheral info               
+            4) May check if the peripheral is matched more than once ... that's a problem! easy to check!
+        """                
+        for pkey in ptable:
+        
+            # Peripheral exists in table
+            if periph_type == ptable[pkey][tab_index]:
+                print("%s, %0d" % (ptable[pkey][0], ptable[pkey][2]))
+
+    return 
+
+    
+# Gets the type of ID for peripheral_type (string or integer)    
+def get_IDindex(periph_type, periph, mod_i):
+
+    # Get data type entered for the ID
+    if (isinstance(periph_type, int)):
+        tab_index = 2
+    elif (isinstance(periph_type, str)):
+        tab_index = 0
+    else:
+        print("[mmio.%s.%s.config]: Invalid ID for peripheral_type" % (periph, mod_i))
+        print("Data must be a string ID or integer ID")
+        quit()
+        
+    return tab_index   
+        
+# Generates a default template for a peripheral module
+def generate_module(config, periph, i):
+
+    mod_i = str(i)
+    
+    # Generate config table
+    config['mmio'][periph].update({mod_i: {'config': {'peripheral_type': "default", 
+                                                    'CR_count': 2, 
+                                                    'SR_count': 2, 
+                                                    'DR_count': 2, 
+                                                    'flag_count': 0}}})
+    
+    """
+    Keep for adding other inline tables
+    config['mmio'][periph][mod_i]['config'].add('irq', inline_table())
+    config['mmio'][periph][mod_i]['config']['irq'].append('enabled', 0)
+    config['mmio'][periph][mod_i]['config']['irq'].append('irqn', "null")
+    """
+    # TODO: Move the indentations to the end of this.
+						
+    config['mmio'][periph][mod_i].indent(4)
+    config['mmio'][periph][mod_i]['config'].indent(4)					
+					
+    # Generate addr table
+    config['mmio'][periph][mod_i].update({'addr': {'base_addr': hex(0), 'CR1_addr': hex(0), 'CR2_addr': hex(0),
+                                                                        'SR1_addr': hex(0), 'SR2_addr': hex(0),                                                                         
+                                                                        'DR1_addr': hex(0), 'DR2_addr': hex(0)}})
+					
+    config['mmio'][periph][mod_i]['addr'].indent(4)					
+									
+    # Generate reset table
+    config['mmio'][periph][mod_i].update({'reset': {'CR1_reset': hex(0), 'CR2_reset': hex(0),
+                                                    'SR1_reset': hex(0), 'SR2_reset': hex(0), 
+													'DR1_reset': hex(0), 'DR2_reset': hex(0)}})
+					
+    config['mmio'][periph][mod_i]['reset'].indent(4)						
+
+    # Generate hardware table
+    config['mmio'][periph][mod_i].update({'hardware': {}})
+    config['mmio'][periph][mod_i]['hardware'].indent(4)    
+
+    # Generate interrupt table
+    config['mmio'][periph][mod_i].update({'interrupts': {}})
+    config['mmio'][periph][mod_i]['interrupts'].indent(4)
+	
+	# Generate Interface Table
+    config['mmio'][periph][mod_i].update({'interface': {}})
+    config['mmio'][periph][mod_i]['interface'].indent(4)	
+					
+    # Generate flag table											   
+    config['mmio'][periph][mod_i].update({'flags': {}})
+    config['mmio'][periph][mod_i]['flags'].indent(4)
+
+                           
+# Remove <periph> if it has no corresponding <periph>_count             
+def check_count(config):
+    del_list = []   # Keep list of existing peripherals to delete   	
+    for existing in config['mmio']:
+        if existing != "count":
+            count_key = existing + "_count"
+                
+            # Add the peripheral to deletion list if its [periph]_count missing
+            if count_key not in config['mmio']['count']:
+                del_list.append(existing)
+        
+    # Delete periphs
+    for periph in del_list:
+        config['mmio'].remove(periph)
+    
+    return                                
+                    
+
 # Remove unwanted quotations around hexadecimal values.
 def del_quotes(config):
 
     # Re-write config
     parsed_config = ""
 
-    # IMPORTANT: Add to this list anytime you want to keep quotations on a particular line.    
-    #            Otherwise, quotes will be deleted on that line  
-    keep_quotes = ["reg", "cpu_model", "irq", "peripheral_type"]
+    # Keep quotations on the same line as any of these keywords
+    keep_quotes = ["reg", "cpu_model", "irq", "peripheral_type", "none"
+                   "full", "partial", "host", "guest"]
     
     # Re-write line by line
     for line in config.splitlines():
@@ -709,7 +809,7 @@ def del_quotes(config):
             # Add newline.		
             parsed_config = parsed_config + "\n"
 			
-        # Re-write quotes ONLY if on same line as "reg."		
+        # Keep quotes		
         else:
             parsed_config = parsed_config + line + "\n"
 	
@@ -953,7 +1053,7 @@ if __name__ == "__main__":
     args = parser.parse_args();
 
     if args.gen_periph:
-        generate_periph(args.gen_periph)
+        update_toml(args.gen_periph)
 		
     elif args.extract_elf:
         extract_elf(args.extract_elf)

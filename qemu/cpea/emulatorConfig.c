@@ -99,14 +99,7 @@ toml_table_t* parseConfig(toml_table_t* root_table, CpeaMachineState **config){
  	if (!config_tab){
  		error("missing [config]", "", "", "");
  	}  	
- 	    
- 	/*
-        Traverse to [config.options] table 	 	
- 	*/
- 	toml_table_t* opts_tab = toml_table_in(config_tab, "options");
- 	if (!opts_tab){
- 		error("missing [config.options]", "", "", "");
- 	} 
+
  	
  	/*
  	    Check if core configs exist.
@@ -1283,7 +1276,8 @@ int IntrEnable(toml_table_t* IntrTypeTable, const char *IntrName,
 
         if (!strcmp(RegData.u.s, "none")){
             fprintf(stderr, "[%s.Intr_Enable.CR]: Can't skip this configuration in "
-                            "full emulation mode\n",
+                            "full emulation mode\n"
+                            "Set IRQn to \"none\" if you wish to skip this interrupt\n",
                             IntrName);
             return 0;
         }
@@ -1395,7 +1389,8 @@ int IntrStatus(toml_table_t* IntrTypeTable, const char *IntrName,
 
         if (!strcmp(RegData.u.s, "none")){
             fprintf(stderr, "[%s.Intr_Status.SR]: Can't skip this configuration in "
-                            "full emulation mode\n",
+                            "full emulation mode\n"
+                            "Set IRQn to \"none\" if you wish to skip this interrupt\n",
                             IntrName);
             return 0;
         }

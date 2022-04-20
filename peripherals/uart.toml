@@ -1,0 +1,25 @@
+[uart.hardware]
+RXFIFO_Size = 16
+TXFIFO_Size = 16
+    
+[uart.interrupts]
+[uart.interrupts.RX]
+IRQn = "none"
+Emulation_Mode = "full"
+Intr_Enable = {CR = "none", bit = 0}
+Intr_Disable = {CR = "none", bit = 0}
+Intr_Status = {SR = "none", bit = 0}
+Intr_Clear = {CR = "none"}    
+Trigger = 1
+
+[uart.interrupts.TX]
+IRQn = "none"
+Emulation_Mode = "full"
+Intr_Enable = {CR = "none", bit = 0}
+Intr_Disable = {CR = "none", bit = 0}
+Intr_Status = {SR = "none", bit = 0} 
+Intr_Clear = {CR = "none"}    
+FIFO_Full = {SR = "none", bit = 0, polarity = 1}
+FIFO_Size = {SR = "none"} 
+FIFO_Count = {SR = "none"}        
+Trigger = 8

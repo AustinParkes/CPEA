@@ -34,7 +34,7 @@ for i in range(0, 256):
     
         # No peripheral in place 
         if 'default' in ptable[pkey]:
-            ptable[pkey] = ["default", False, i, toml_path]
+            ptable[pkey] = ["<peripheral>", False, i, toml_path]
             
         # Peripheral already in place XXX: This is an educated guess
         # XXX: Also, this won't modify a peripheral when we want to modify it.
@@ -51,7 +51,7 @@ for i in range(0, 256):
 
 ptable = dumps(ptable)
 
-#print(ptable)  
+print(ptable)  
   
 with open(table_path, 'w') as f:
     f.write(ptable)    

@@ -2,6 +2,7 @@
 
 import argparse
 import subprocess
+from os import path
 from tomlkit import parse
 from tomlkit import dumps
 from tomlkit import integer
@@ -34,12 +35,14 @@ def update_toml(config_file):
     # Remove <periph> if it has no corresponding <periph>_count
     check_count(config)
 						
-    # Write to TOML
+    # Get the TOML formatting via 'dumps'
     config = dumps(config)
-	
+
     # Remove unwanted quotations from around hexadecimal values
     parsed_config = del_quotes(config)
-      
+    #print(parsed_config) 
+     
+     
     with open(config_file, 'w') as f:
         f.write(parsed_config)
 
@@ -671,49 +674,205 @@ def update_hw_intr(config, ptable, periph, count):
         mod_i = str(i)            
         config_tab = config['mmio'][periph][mod_i]['config']
         hw_tab = config['mmio'][periph][mod_i]['hardware']
-        
-        # TODO: Use this to verify and obtain the ID
-        periph_type = config_tab['peripheral_type']
-
-        # What's the point!
-        if periph_type == "default":    
-            return
-
-        # Get the ID index for the peripheral table
-        tab_index = get_IDindex(periph_type, periph, mod_i)        
-        
-        # TODO: 
-        """
-            1) Auto_generate [hw] & [intr] tables from the matching peripheral
-            2) However, must check if given peripheral already has populated [hw] or [intr] table
-               - In this case, do nothing and keep the same
-            3) Must check if a NEW peripheral_type is given.
-               - In this case, we would overwrite the old [hw] & [intr] tables with new peripheral info               
-            4) May check if the peripheral is matched more than once ... that's a problem! easy to check!
-        """                
-        for pkey in ptable:
-        
-            # Peripheral exists in table
-            if periph_type == ptable[pkey][tab_index]:
-                print("%s, %0d" % (ptable[pkey][0], ptable[pkey][2]))
-
-    return 
+        intr_tab = config['mmio'][periph][mod_i]['interrupts']
 
     
-# Gets the type of ID for peripheral_type (string or integer)    
-def get_IDindex(periph_type, periph, mod_i):
+        
+        ptype = config_tab['peripheral_type']
+
+        # Clear [hardware] and [interrupts] 
+        if ptype == "default" or ptype == 0:
+       
+            for key in list(hw_tab):
+                hw_tab.remove(key)
+            
+            for key in list(intr_tab):
+                intr_tab.remove(key)    
+
+            return
+
+        # Get the ID type (string or integer)
+        IDtype = get_IDtype(ptype, periph, mod_i)        
+        
+        # Find peripheral user wants to configure
+        pkey = get_pkey(ptable, ptype, IDtype, periph, mod_i)       
+        pname = ptable[pkey][0]
+        
+        # Open the peripheral's TOML file
+        if (path.exists(ptable[pkey][3])):
+            pdef = parse(open(ptable[pkey][3], 'r').read())
+            
+            default_hw = pdef[pname]['hardware']
+            default_intr = pdef[pname]['interrupts']
+
+            # [hardware] and [interrupts] empty. Free to auto-fill 
+            if (len(hw_tab) == 0 and len(intr_tab) == 0):                                 
+                fill_hw_intr(intr_tab, hw_tab, default_hw, default_intr, pname) 
+                        
+            # peripheral_type remains the same, don't change ANYTHING
+            elif pname in list(intr_tab)[0]:
+                return
+                
+            # User has changed peripheral type. Fill in new peripheral
+            elif pname not in list(intr_tab)[0]:
+            
+                # Remove old keys
+                for key in list(hw_tab):
+                    hw_tab.remove(key)
+                
+                for key in list(intr_tab):
+                    intr_tab.remove(key) 
+               
+                fill_hw_intr(intr_tab, hw_tab, default_hw, default_intr, pname)
+                   
+      
+    return        
+                        
+
+# Get peripheral from table and verify table entry
+"""
+    - Searches for peripheral ID in ptable.toml
+    - Verifies ID exists
+    - Verifies ID is not '<peripheral>'
+    - Verifies IDs appear only once ('<peripheral>' is exception)
+    - Verifies peripheral is implemented    
+    - Verifies the peripheral's toml file exists
+"""
+def get_pkey(ptable, ptype, IDtype, periph, mod_i):
+    
+    # Search table for an ID match
+    for pkey in ptable:
+        if ptype == ptable[pkey][IDtype]:
+            
+            strID = ptable[pkey][0] 
+            impl = ptable[pkey][1]
+            toml = ptable[pkey][3] 
+                     
+            # Verify string ID is valid                       
+            if strID == '<peripheral>':
+                badID(2, 0, ptype, periph, mod_i)
+
+            # Verify ptable has no duplicates
+            check_dup(ptable, pkey)      
+            
+            # Verify peripheral is implemented
+            if impl == False:
+                badID(3, strID, ptype, periph, mod_i)
+            
+            
+            
+            return pkey
+          
+    # ID doesn't exist
+    badID(1, 0, ptype, periph, mod_i)
+    return
+
+# Checks for numeric and string duplicate IDs
+def check_dup(ptable, pkey):
+
+    strID = ptable[pkey][0]
+    numID = ptable[pkey][2]
+   
+    for temp_pkey in ptable:
+    
+        # Check if any duplicate        
+        if pkey != temp_pkey:
+            
+            # String ID dup
+            if strID == ptable[temp_pkey][0]: 
+                print("ERROR")
+                print("Duplicate string IDs in 'peripherals/ptable.toml'")
+                print("%s in %s and %s" % (strID, pkey, temp_pkey))    
+                quit()
+                
+            # Numeric ID dup
+            elif numID == ptable[temp_pkey][2]:
+                print("ERROR")
+                print("Duplicate numeric IDs in 'peripherals/ptable.toml'")
+                print("%0d in %s and %s" % (numID, pkey, temp_pkey))
+                quit()            
+                    
+            
+        # This is the key that contains our current IDs
+        else:
+            pass
+                  
+    return          
+    
+    
+
+ 
+# Gets the ID type for peripheral (string or integer) 
+def get_IDtype(ptype, periph, mod_i):
 
     # Get data type entered for the ID
-    if (isinstance(periph_type, int)):
-        tab_index = 2
-    elif (isinstance(periph_type, str)):
-        tab_index = 0
+    if (isinstance(ptype, int)):
+        IDtype = 2
+    elif (isinstance(ptype, str)):
+        IDtype = 0
     else:
+        print("ERROR")
         print("[mmio.%s.%s.config]: Invalid ID for peripheral_type" % (periph, mod_i))
         print("Data must be a string ID or integer ID")
         quit()
         
-    return tab_index   
+    return IDtype   
+
+# Errors - Quit for various invalid IDs
+def badID(errType, strID, ptype, periph, mod_i):
+    
+    # ID doesn't exist
+    if errType == 1:
+        print("ERROR")
+        if (isinstance(ptype, int)):
+            print("[mmio.%s.%s.config]: The peripheral_type '%0d' does" % (periph, mod_i, ptype), end = " ")
+            print("not exist in 'peripherals/ptable.toml'")
+            
+        elif (isinstance(ptype, str)):
+            print("[mmio.%s.%s.config]: The peripheral_type '%s' does" % (periph, mod_i, ptype), end = " ")
+            print("not exist in 'peripherals/ptable.toml'")
+            
+        print("Please use 'default' or a valid peripheral ID")
+    
+    # String ID can't be <peripheral>
+    elif errType == 2:
+        print("ERROR")
+        print("[mmio.%s.%s.config.peripheral_type]:" % (periph, mod_i), end = " ")
+        print("'<peripherals>' is reserved")
+        print("Please use 'default' or a valid peripheral ID")
+    
+    # Peripheral isn't implemented 
+    elif errType == 3:
+        print("ERROR")
+        print("[mmio.%s.%s.config.peripheral_type]:" % (periph, mod_i), end = " ")
+        print("%s isn't fully implemented" % (strID))
+        print("In ptable.toml: Change 'implemented' field to 'true' if implemented")
+          
+    quit()            
+
+# Fill [hardware] and [interrupts] table with user's peripheral_type template
+def fill_hw_intr(intr_tab, hw_tab, default_hw, default_intr, pname):
+    intrs = list(default_intr)
+    hw_kv = list(zip(default_hw.keys(), default_hw.values()))               
+    intr_tk = list(zip(default_intr.keys(), default_intr.values()))
+
+    intr_tab.add(pname, "nan")
+    intr_tab[pname].comment("Reserved for parser. Do not edit. ")
+
+    # Fill in peripheral's default [hardware] table
+    for pair in hw_kv:
+        hw_tab.add(pair[0], pair[1])
+
+    # Fill in peripheral's default [interrupts] table
+    for intr in intr_tk:
+
+        intr_tab.add(intr[0], table())
+                           
+        intr_kv = list(zip(intr[1].keys(), intr[1].values()))
+        
+        for pair in intr_kv:
+            intr_tab[intr[0]].add(pair[0], pair[1])
+
         
 # Generates a default template for a peripheral module
 def generate_module(config, periph, i):
@@ -728,11 +887,12 @@ def generate_module(config, periph, i):
                                                     'flag_count': 0}}})
     
     """
-    Keep for adding other inline tables
+    # Keep for adding other inline tables
     config['mmio'][periph][mod_i]['config'].add('irq', inline_table())
     config['mmio'][periph][mod_i]['config']['irq'].append('enabled', 0)
     config['mmio'][periph][mod_i]['config']['irq'].append('irqn', "null")
     """
+
     # TODO: Move the indentations to the end of this.
 						
     config['mmio'][periph][mod_i].indent(4)
@@ -743,7 +903,7 @@ def generate_module(config, periph, i):
                                                                         'SR1_addr': hex(0), 'SR2_addr': hex(0),                                                                         
                                                                         'DR1_addr': hex(0), 'DR2_addr': hex(0)}})
 					
-    config['mmio'][periph][mod_i]['addr'].indent(4)					
+    config['mmio'][periph][mod_i]['addr'].indent(4)				
 									
     # Generate reset table
     config['mmio'][periph][mod_i].update({'reset': {'CR1_reset': hex(0), 'CR2_reset': hex(0),
@@ -794,14 +954,14 @@ def del_quotes(config):
     parsed_config = ""
 
     # Keep quotations on the same line as any of these keywords
-    keep_quotes = ["reg", "cpu_model", "irq", "peripheral_type", "none"
+    keep_quotes = ["reg", "cpu_model", "irq", "peripheral_type", "none",
                    "full", "partial", "host", "guest"]
     
     # Re-write line by line
     for line in config.splitlines():
-    	
+
         # Delete quotes.
-        if all(key not in line for key in keep_quotes):
+        if all(key not in line for key in keep_quotes):                
             for ch in range(0, len(line)):
                 if (line[ch] != "\""):
                     parsed_config = parsed_config + line[ch]

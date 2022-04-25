@@ -15,8 +15,6 @@
 #include "exec/memory.h"
 #include "hw/arm/armv7m.h"
 #include "cpea/callbacks.h"
-//#include "cpea/peripherals.h"     // Should be in callbacks.h
-//#include "hw/char/cpea_uart.h"    // Should be in peripherals.h
 #include "hw/arm/cpea.h"
 
 
@@ -27,10 +25,11 @@
 */
 #define SYSCLK_FRQ 120000000ULL
 
-// Callback for writes to mmio region.
+// Callback for writes to mmio region
 static void mmio_write(void *opaque, hwaddr addr,
                       uint64_t val, unsigned size)
 {
+
     int match;                      // Flag set if register type found
 	int DR_i = 0;                   // Data Register Index
 	int CR_i = 0;                   // Control Register Index
@@ -44,7 +43,7 @@ static void mmio_write(void *opaque, hwaddr addr,
     if (MMIO == NULL)
         return;
 
-    // Determine register type accessed (DR, CR, DR). Handle accordingly. 
+    // Determine register type accessed (DR, CR, SR)    
     while (!match){
         match = 0;
                    
@@ -55,8 +54,10 @@ static void mmio_write(void *opaque, hwaddr addr,
             if (reg_addr ==  MMIO->DR_ADDR[DR_i]){
 
                 if ( (emulateIO[MMIO->periphID].DRwrite) != NULL )
-                    (*emulateIO[MMIO->periphID].DRwrite)(MMIO, val);                    
-                match = 1;                   
+                    (*emulateIO[MMIO->periphID].DRwrite)(MMIO, val);
+                                        
+                match = 1; 
+                                  
             }
             DR_i++;
         }      
@@ -89,6 +90,7 @@ static void mmio_write(void *opaque, hwaddr addr,
             break;
         } 
     }
+    
 }   
 
 static uint64_t mmio_read(void *opaque, hwaddr addr,

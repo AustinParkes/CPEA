@@ -235,7 +235,7 @@ int mmioConfig(toml_table_t* mmio){
 	int pid;					// Peripheral ID
 	int p_total;				// Total number of peripherals
 	
-    //"null", 
+    // TODO: Move away from this and use the peripheral table to agree on acceptable peripheral IDs
 	const char valid_id[3][10] = {"generic", "uart", "gpio"};
 	p_total = sizeof(valid_id)/sizeof(valid_id[0]);
 
@@ -301,7 +301,7 @@ int mmioConfig(toml_table_t* mmio){
     	// Get current peripheral ptr
     	periph = toml_table_in(mmio, p_name);
  		if (!periph){
- 			error("missing [mmio.]", p_name, "", "");
+ 			error("missing [mmio.", p_name, "]", "");
  		}
  		
  		// Allocate space for modules. Init MMIO metadata, addresses, resets, and flags		
@@ -375,15 +375,17 @@ void parseKeys(toml_table_t* mmio, char* p_name, const char* module_str,
     uint32_t base_addr;     // Need base address to check if user entered and offset or absolute address.
     uint32_t data;			// Key Data to store.
  	
+ 	int periphID = MMIO[struct_i]->periphID;
+ 	
  	// Hardware Configuration functions
- 	void (*MMIOhwConfig[2])(toml_table_t*, char*, const char*, 
+ 	void (*MMIOhwConfig[])(toml_table_t*, char*, const char*, 
  	                          toml_table_t*, const char*, int) = {
  	    genericHWConfig,
  	    uartHWConfig    
  	}; 	
  	
  	// Interrupt Configuration Functions
- 	void (*MMIOIntrConfig[2])(toml_table_t*, char*, const char*, 
+ 	void (*MMIOIntrConfig[])(toml_table_t*, char*, const char*, 
  	                          toml_table_t*, const char*, int) = {
  	    genericIntrConfig,
  	    uartIntrConfig    
@@ -396,11 +398,13 @@ void parseKeys(toml_table_t* mmio, char* p_name, const char* module_str,
  	    uartInterface    
  	}; 	
  	
-    // Parse CR/SR/DR counts & irq info 
+    // Parse peripheral type & CR/SR/DR counts
     if (!strcmp(table_str, "config")){
         
+        // TODO: Can parse peripheral_type here!!!!!
+        
         // Get CR_count string
-        key_str = toml_key_in(table_ptr, 0);
+        key_str = toml_key_in(table_ptr, 1);
  
  	    // Get CR_count number
 		key_data = toml_int_in(table_ptr, key_str);
@@ -417,7 +421,7 @@ void parseKeys(toml_table_t* mmio, char* p_name, const char* module_str,
 			CR_count = 20;		 	    
  	    
  		// Get SR_count string
-		key_str = toml_key_in(table_ptr, 1);
+		key_str = toml_key_in(table_ptr, 2);
 		
 		// Get SR_count number
 		key_data = toml_int_in(table_ptr, key_str);
@@ -434,7 +438,7 @@ void parseKeys(toml_table_t* mmio, char* p_name, const char* module_str,
 			SR_count = 20;		
 		
 		// Get DR_count string
-		key_str = toml_key_in(table_ptr, 2);
+		key_str = toml_key_in(table_ptr, 3);
 		
 		// Get DR_count number
 		key_data = toml_int_in(table_ptr, key_str);
@@ -556,21 +560,20 @@ void parseKeys(toml_table_t* mmio, char* p_name, const char* module_str,
  		}
  		
  	}		
- 	
+ 	 	
  	else if (!strcmp(table_str, "hardware")){
- 	    MMIOhwConfig[MMIO[struct_i]->periphID](mmio, p_name, module_str,
- 	                                        table_ptr, table_str, struct_i);
+ 	    MMIOhwConfig[periphID](mmio, p_name, module_str,
+ 	                        table_ptr, table_str, struct_i);
  	}
  	
  	else if (!strcmp(table_str, "interrupts")){
- 	    MMIOIntrConfig[MMIO[struct_i]->periphID](mmio, p_name, module_str,
- 	                                        table_ptr, table_str, struct_i);
-                                         	     	                                             	    
+ 	    MMIOIntrConfig[periphID](mmio, p_name, module_str,
+ 	                        table_ptr, table_str, struct_i);                                         	     	                                             	    
  	} 
  	
  	else if (!strcmp(table_str, "interface")){
- 	    MMIOInterface[MMIO[struct_i]->periphID](mmio, p_name, module_str,
- 	                                        table_ptr, table_str, struct_i);
+ 	    MMIOInterface[periphID](mmio, p_name, module_str,
+ 	                        table_ptr, table_str, struct_i);
  	}
  	
  	// flags table is handled in setFlags() 	
@@ -600,12 +603,13 @@ int setFlags(toml_table_t* flag_tab, int struct_i){
 	toml_table_t* flag_ptr;		// ptr to flag table
 	toml_datum_t reg_str;		// Holds register string from flag table
 	toml_datum_t flag_int;		// Holds an int value from flag table
-	toml_datum_t addr_str;      // Holds "optional" string from address value.
+	toml_datum_t addr_str;      // Holds "none" string from address value.
 	
 	// Access upper/lower case SR string
 	enum letter_case {up_case, low_case};
 	
 	// TODO: Only allowing up to 32 str for now. Find better number in future	
+	//       Also, this is probably automatable ...  
 	char reg_name[2][32][5] = {
 	{{"SR1"},{"SR2"},{"SR3"},{"SR4"},{"SR5"},{"SR6"},{"SR7"},{"SR8"},
 	 {"SR9"},{"SR10"},{"SR11"},{"SR12"},{"SR13"},{"SR14"},{"SR15"},{"SR16"},
@@ -637,7 +641,7 @@ int setFlags(toml_table_t* flag_tab, int struct_i){
     	flag_reg = reg_str.u.s;
         		
 		// Skip flag and go to start of loop    		 
-    	if (!strcmp(flag_reg, "reg")){
+    	if (!strcmp(flag_reg, "none")){
             // Need to free string associated with toml_datum_t structure.
 			free(reg_str.u.s);
     		continue;

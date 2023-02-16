@@ -14,7 +14,7 @@
 #include "exec/address-spaces.h"
 #include "exec/memory.h"
 #include "hw/arm/armv7m.h"
-#include "cpea/callbacks.h"
+#include "cpea/handlers.h"
 #include "hw/arm/cpea.h"
 
 
@@ -43,7 +43,8 @@ static void mmio_write(void *opaque, hwaddr addr,
     if (MMIO == NULL)
         return;
 
-    // Determine register type accessed (DR, CR, SR)    
+    // Determine register type accessed (DR, CR, SR)
+    // TODO: Turn the register searching into a function, and return the register type found.    
     while (!match){
         match = 0;
                    
@@ -264,7 +265,7 @@ static void cpea_init(MachineState *machine)
     cms->has_bitband = true;
     cms->num_irq = 480;             // Max out IRQ lines.
     
-    // Default Memory
+    // Default Memory: User TOML configs should overwrite this
     cms->flash_base = 0x0;
     cms->flash_size = 32768000;
     cms->sram_base = 0x1fff0000;

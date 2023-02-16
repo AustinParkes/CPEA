@@ -16,27 +16,36 @@ void uart_update(CpeaMMIO *MMIO, int type, int mode)
     uint32_t enable_flags;
     uint32_t disable_flags;
      
+    uint32_t CRen;
+    uint32_t CRdis; 
+     
     // Interrupt level used in partial emulation 
     int level; 
+    
+    // Indices for enable/disable CRs
+    CRen = MMIO->INTR[type]->CRen;
+    CRdis = MMIO->INTR[type]->CRdis;
     
     enable_permit = MMIO->INTR[type]->enable_permit;
     disable_permit = MMIO->INTR[type]->disable_permit;
     level_permit = MMIO->INTR[type]->flag_permit;
 
-    enable_flags = MMIO->CR[MMIO->INTR[type]->CRen];
-    disable_flags = MMIO->CR[MMIO->INTR[type]->CRdis];
+    enable_flags = MMIO->CR[CRen];
+    disable_flags = MMIO->CR[CRdis];
    
-    // Disable register permitted
+    // 2 registers used for enable/disable
     if (disable_permit){
         if (enable_permit & enable_flags)
-            intr_enabled |= MMIO->CR[MMIO->INTR[type]->CRen];
+            intr_enabled |= MMIO->CR[CRen];
         else if (disable_permit & disable_flags)
-            intr_enabled &= ~MMIO->CR[MMIO->INTR[type]->CRdis];    
+            intr_enabled &= ~MMIO->CR[CRdis];    
         else
             intr_enabled = 0;                                      
     }
+    
+    // 1 register used for enable/disable
     else
-        intr_enabled = MMIO->CR[MMIO->INTR[type]->CRen];
+        intr_enabled = MMIO->CR[CRen];
                     
     intr_level = MMIO->SR[MMIO->INTR[type]->SRflg];
     
@@ -46,7 +55,7 @@ void uart_update(CpeaMMIO *MMIO, int type, int mode)
     case RX:
         switch (mode){
         case full: 
-            if (enable_permit & intr_enabled && level_permit & intr_level)            
+            if (enable_permit & intr_enabled && level_permit & intr_level)
                 qemu_set_irq(MMIO->INTR[type]->irq, 1);                  
 
             else            
@@ -360,10 +369,10 @@ void UARTCR_write(CpeaMMIO *MMIO, hwaddr addr, uint64_t val)
                 //       CHECK IF WORKS
                 if (MMIO->INTR[TX]->trigger_val != 0){
                     TxEmpty = MMIO->uart->txfifo_size - MMIO->uart->txqueue_cnt;
-                        if (TxEmpty >= MMIO->INTR[TX]->trigger_val){
-                            MMIO->SR[MMIO->INTR[TX]->SRflg] |= MMIO->INTR[TX]->flag_permit;
-                            uart_update(MMIO, TX, full);
-                        }    
+                    if (TxEmpty >= MMIO->INTR[TX]->trigger_val){
+                        MMIO->SR[MMIO->INTR[TX]->SRflg] |= MMIO->INTR[TX]->flag_permit;
+                        uart_update(MMIO, TX, full);
+                    }    
                 }   
             }           
         }   

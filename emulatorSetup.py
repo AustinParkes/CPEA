@@ -627,10 +627,10 @@ def add_flag(config_tab, flag_tab, flag_count, flag_exist):
     while flag_count > flag_exist:
         flag = "Flag" + str(flag_exist+1)
         flag_tab.add(flag, inline_table())
-        flag_tab[flag].append('reg', "reg")   
+        flag_tab[flag].append('reg', "none")   
         flag_tab[flag].append('bit', 0)  
         flag_tab[flag].append('val', 1)  
-        flag_tab[flag].append('addr', "optional")  
+        flag_tab[flag].append('addr', "none")  
         flag_exist = flag_exist + 1
         
     return	

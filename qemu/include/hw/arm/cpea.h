@@ -183,7 +183,7 @@ typedef struct interrupt {
  */
 typedef struct uart{
 
-    /* Registers */
+    /* Register Emulation */
     uint32_t txff_permit;
     uint32_t txff_addr;     // TODO: This isn't used
     uint32_t SRtxff;
@@ -194,7 +194,7 @@ typedef struct uart{
     uint32_t txf_cnt_addr;
     uint32_t SRtxf_cnt;
     
-    /* Hardware */
+    /* Hardware Emulation */
 	uint16_t *rx_fifo;
 	int rxfifo_size;     
     int read;
@@ -207,9 +207,7 @@ typedef struct uart{
     int TimerActive;
 
     // Peripheral Interaction. Guest's "backend"
-	CharBackend chrbe;
-	
-	
+	CharBackend chrbe;		
 	
 	QEMUTimer *fifo_timer;
 

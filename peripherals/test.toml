@@ -1,19 +1,21 @@
 [test.hardware]
+New_Hardware = 0
     
 [test.interrupts]
-[test.interrupts.RX]
+[test.interrupts.INTR1]
 IRQn = "none"
 Emulation_Mode = "full"
 Intr_Enable = {CR = "none", bit = 0}
 Intr_Disable = {CR = "none", bit = 0}
 Intr_Status = {SR = "none", bit = 0}
 Intr_Clear = {CR = "none"}    
+New_Inline1 = {CR = "none", bit  = 0}
 
-[test.interrupts.TX]
+[test.interrupts.INTR2]
 IRQn = "none"
 Emulation_Mode = "full"
 Intr_Enable = {CR = "none", bit = 0}
 Intr_Disable = {CR = "none", bit = 0}
 Intr_Status = {SR = "none", bit = 0} 
 Intr_Clear = {CR = "none"}    
-
+New_Inline2 = {CR = "none", bit  = 0}
